@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment Failed - Shrifal Handicrafts</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            padding: 2rem;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+            animation: slideIn 0.5s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .error-icon {
+            font-size: 4rem;
+            color: #ff4757;
+            margin-bottom: 1rem;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(1.1);
+            }
+        }
+
+        h1 {
+            color: #2c2c2c;
+            margin-bottom: 1rem;
+            font-size: 2rem;
+        }
+
+        .error-message {
+            color: #ff4757;
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+
+        .error-details {
+            background: #fff5f5;
+            border: 1px solid #fed7d7;
+            color: #742a2a;
+            padding: 1rem;
+            border-radius: 8px;
+            margin: 1rem 0;
+            text-align: left;
+        }
+
+        .order-info {
+            background: #f8f9fa;
+            padding: 1rem;
+            border-radius: 8px;
+            margin: 1rem 0;
+            text-align: left;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .info-row:last-child {
+            border-bottom: none;
+        }
+
+        .info-label {
+            font-weight: 600;
+            color: #495057;
+        }
+
+        .info-value {
+            color: #6c757d;
+            word-break: break-all;
+        }
+
+        .actions {
+            margin-top: 2rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            text-align: center;
+        }
+
+        .btn-primary {
+            background: #007bff;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #0056b3;
+            transform: translateY(-2px);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #545b62;
+            transform: translateY(-2px);
+        }
+
+        .btn-outline {
+            background: transparent;
+            color: #007bff;
+            border: 2px solid #007bff;
+        }
+
+        .btn-outline:hover {
+            background: #007bff;
+            color: white;
+        }
+
+        .help-section {
+            background: #e3f2fd;
+            border: 1px solid #bbdefb;
+            color: #1565c0;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-top: 2rem;
+            text-align: left;
+        }
+
+        .help-section h4 {
+            color: #1565c0;
+            margin-bottom: 0.5rem;
+        }
+
+        .help-section ul {
+            margin-left: 1rem;
+            margin-top: 0.5rem;
+        }
+
+        .help-section li {
+            margin-bottom: 0.3rem;
+        }
+
+        .contact-info {
+            background: #f8f9fa;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-top: 1rem;
+            font-size: 0.9rem;
+            color: #6c757d;
+        }
+
+        .retry-timer {
+            margin-top: 1rem;
+            padding: 0.5rem;
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 5px;
+            color: #856404;
+            font-size: 0.9rem;
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 1.5rem;
+                margin: 10px;
+            }
+
+            h1 {
+                font-size: 1.5rem;
+            }
+
+            .actions {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="error-icon">
+            ❌
+        </div>
+
+        <h1>Payment Failed</h1>
+
+        <div class="error-message">
+            <%= error || "Payment could not be processed" %>
+        </div>
+
+        <% if (typeof details !=='undefined' && details) { %>
+            <div class="error-details">
+                <strong>Details:</strong><br>
+                <%= details %>
+            </div>
+            <% } %>
+
+                <div class="order-info">
+                    <h3 style="margin-bottom: 1rem; color: #495057;">Transaction Information</h3>
+                    <div class="info-row">
+                        <span class="info-label">Order ID:</span>
+                        <span class="info-value">
+                            <%= orderId || 'N/A' %>
+                        </span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Timestamp:</span>
+                        <span class="info-value">
+                            <%= new Date().toLocaleString() %>
+                        </span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Status:</span>
+                        <span class="info-value" style="color: #ff4757; font-weight: 600;">Failed</span>
+                    </div>
+                    <% if (typeof transactionId !=='undefined' && transactionId) { %>
+                        <div class="info-row">
+                            <span class="info-label">Transaction ID:</span>
+                            <span class="info-value">
+                                <%= transactionId %>
+                            </span>
+                        </div>
+                        <% } %>
+                </div>
+
+                <div class="help-section">
+                    <h4>💡 What went wrong?</h4>
+                    <p>Your payment could not be processed due to one of the following reasons:</p>
+                    <ul>
+                        <li>Insufficient balance in your account</li>
+                        <li>Network connectivity issues</li>
+                        <li>Payment gateway timeout</li>
+                        <li>Invalid payment credentials</li>
+                        <li>Transaction was cancelled by user</li>
+                    </ul>
+                </div>
+
+                <div class="actions">
+                    <a href="/test-payment" class="btn btn-primary">
+                        🔄 Try Again
+                    </a>
+
+                    <a href="<%= process.env.FRONTEND_URL || 'http://localhost:5173' %>" class="btn btn-outline">
+                        🏠 Back to Home
+                    </a>
+
+                    <a href="<%= process.env.FRONTEND_URL || 'http://localhost:5173' %>/cart" class="btn btn-secondary">
+                        🛒 View Cart
+                    </a>
+                </div>
+
+                <div class="contact-info">
+                    <strong>Need Help?</strong><br>
+                    Contact our support team:<br>
+                    📧 Email: support@shrifalhandicrafts.com<br>
+                    📞 Phone: +91-XXXX-XXXX-XX<br>
+                    💬 Live Chat: Available 24/7
+                </div>
+
+                <div class="retry-timer">
+                    <strong>⏰ Auto Retry:</strong> You can try the payment again immediately or wait for 5 minutes for
+                    any temporary issues to resolve.
+                </div>
+    </div>
+
+    <script>
+        // Log failure details for debugging
+        console.log('Payment Failed:', {
+            orderId: '<%= orderId || "N/A" %>',
+            error: '<%= error || "Unknown error" %>',
+            details: '<%= details || "No details" %>',
+            timestamp: new Date().toISOString()
+        });
+
+        // Auto-refresh option after 30 seconds
+        setTimeout(() => {
+            const refreshBtn = document.createElement('button');
+            refreshBtn.textContent = '🔄 Refresh Page';
+            refreshBtn.className = 'btn btn-outline';
+            refreshBtn.style.marginTop = '1rem';
+            refreshBtn.onclick = () => window.location.reload();
+            document.querySelector('.actions').appendChild(refreshBtn);
+        }, 30000);
+
+        // Add keyboard navigation
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                // Focus on first action button
+                document.querySelector('.btn-primary').focus();
+            }
+            if (e.key === 'Escape') {
+                // Go back to home
+                window.location.href = '<%= process.env.FRONTEND_URL || "http://localhost:5173" %>';
+            }
+        });
+    </script>
+</body>
+
+</html>

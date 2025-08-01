@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>
+        <%= success ? 'Payment Successful' : 'Payment Failed' %> - Shrifal Handicrafts
+    </title>
+    <style>
+        /* Critical CSS only - optimized for performance */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+            line-height: 1.5;
+        }
+
+        .container {
+            background: white;
+            padding: 2rem;
+            border-radius: 16px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 2px solid #E2E8F0;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            background: #D2691E;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            color: white;
+        }
+
+        .logo-text {
+            color: #0F172A;
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .status-icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 1rem;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            color: white;
+        }
+
+        .status-icon.success {
+            background: #D2691E;
+        }
+
+        .status-icon.failed {
+            background: #EF4444;
+        }
+
+        .status-title {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            color: #0F172A;
+        }
+
+        .status-message {
+            font-size: 14px;
+            color: #64748B;
+            margin-bottom: 1.5rem;
+        }
+
+        .details {
+            background: #F8FAFC;
+            padding: 1.5rem;
+            border-radius: 12px;
+            margin: 1.5rem 0;
+            text-align: left;
+        }
+
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 0.75rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 1px solid #E2E8F0;
+        }
+
+        .detail-row:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        .detail-label {
+            font-weight: 600;
+            color: #1E293B;
+            font-size: 13px;
+            flex-shrink: 0;
+            margin-right: 1rem;
+        }
+
+        .detail-value {
+            font-size: 13px;
+            color: #0F172A;
+            text-align: right;
+            word-break: break-all;
+            font-family: monospace;
+        }
+
+        .actions {
+            display: flex;
+            gap: 0.75rem;
+            justify-content: center;
+            margin: 1.5rem 0;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 10px 20px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.2s ease;
+            border: 2px solid transparent;
+            flex: 1;
+            justify-content: center;
+            min-width: 120px;
+        }
+
+        .btn-primary {
+            background: #D2691E;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #B8860B;
+        }
+
+        .btn-secondary {
+            background: white;
+            color: #1E293B;
+            border-color: #E2E8F0;
+        }
+
+        .btn-secondary:hover {
+            border-color: #D2691E;
+            color: #D2691E;
+        }
+
+        .redirect-info {
+            background: #E0F2FE;
+            padding: 1rem;
+            border-radius: 8px;
+            border: 1px solid #B3E5FC;
+            color: #0369A1;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .countdown {
+            font-weight: 700;
+            color: #D2691E;
+            font-size: 16px;
+        }
+
+        .loading-bar {
+            width: 100%;
+            height: 4px;
+            background: #E2E8F0;
+            border-radius: 2px;
+            margin-top: 0.75rem;
+            overflow: hidden;
+        }
+
+        .loading-progress {
+            height: 100%;
+            background: #D2691E;
+            border-radius: 2px;
+            transition: width 1s linear;
+        }
+
+        /* Mobile optimizations */
+        @media (max-width: 640px) {
+            .container {
+                padding: 1.5rem;
+                margin: 0.5rem;
+            }
+
+            .actions {
+                flex-direction: column;
+            }
+
+            .btn {
+                flex: none;
+                width: 100%;
+            }
+
+            .status-icon {
+                width: 60px;
+                height: 60px;
+                font-size: 24px;
+            }
+
+            .status-title {
+                font-size: 20px;
+            }
+
+            .detail-row {
+                flex-direction: column;
+                gap: 0.25rem;
+            }
+
+            .detail-value {
+                text-align: left;
+            }
+        }
+
+        /* Reduce animations for better performance */
+        @media (prefers-reduced-motion: reduce) {
+            * {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="logo">
+                <div class="logo-icon">🏆</div>
+                <div class="logo-text">Shrifal Handicrafts</div>
+            </div>
+        </div>
+
+        <!-- Status -->
+        <div class="status-icon <%= success ? 'success' : 'failed' %>">
+            <%= success ? '✓' : '✕' %>
+        </div>
+
+        <h1 class="status-title">
+            <%= success ? 'Payment Successful!' : 'Payment Failed!' %>
+        </h1>
+
+        <p class="status-message">
+            <% if (success) { %>
+                Your payment has been processed successfully! 🎉
+                <% } else { %>
+                    Payment could not be processed. Please try again. ❌
+                    <% } %>
+        </p>
+
+        <!-- Details -->
+        <div class="details">
+            <div class="detail-row">
+                <span class="detail-label">Order ID:</span>
+                <span class="detail-value">
+                    <%= orderId %>
+                </span>
+            </div>
+
+            <% if (typeof transactionId !=='undefined' && transactionId) { %>
+                <div class="detail-row">
+                    <span class="detail-label">Transaction:</span>
+                    <span class="detail-value">
+                        <%= transactionId %>
+                    </span>
+                </div>
+                <% } %>
+
+                    <div class="detail-row">
+                        <span class="detail-label">Status:</span>
+                        <span class="detail-value" style="color: <%= success ? '#D2691E' : '#EF4444' %>;">
+                            <%= success ? 'Completed' : 'Failed' %>
+                        </span>
+                    </div>
+
+                    <div class="detail-row">
+                        <span class="detail-label">Time:</span>
+                        <span class="detail-value">
+                            <%= new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' , month: 'short' ,
+                                day: 'numeric' , hour: '2-digit' , minute: '2-digit' }) %>
+                        </span>
+                    </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="actions">
+            <a href="<%= frontendUrl %>/order/<%= orderId %>" class="btn btn-primary" id="orderBtn">
+                📋 View Order
+            </a>
+            <a href="<%= frontendUrl %>" class="btn btn-secondary">
+                🏆 Shop More
+            </a>
+        </div>
+
+        <!-- Redirect Info -->
+        <% if (success) { %>
+            <div class="redirect-info">
+                <div>
+                    <strong>Auto Redirect:</strong>
+                    Redirecting in <span class="countdown" id="countdown">5</span>s
+                </div>
+                <div class="loading-bar">
+                    <div class="loading-progress" id="progress"></div>
+                </div>
+            </div>
+            <% } %>
+    </div>
+
+    <script>
+        // Optimized redirect script
+        (function () {
+            const success = <%= success %>;
+            const redirectUrl = '<%= frontendUrl %>/order/<%= orderId %>';
+
+            if (!success) return; // Don't redirect on failure
+
+            let countdown = 5;
+            const countdownEl = document.getElementById('countdown');
+            const progressEl = document.getElementById('progress');
+            const orderBtn = document.getElementById('orderBtn');
+
+            // Set initial progress
+            if (progressEl) progressEl.style.width = '0%';
+
+            const timer = setInterval(function () {
+                countdown--;
+
+                if (countdownEl) countdownEl.textContent = countdown;
+                if (progressEl) progressEl.style.width = ((5 - countdown) / 5 * 100) + '%';
+
+                // Visual feedback for last few seconds
+                if (countdown <= 2) {
+                    if (countdownEl) {
+                        countdownEl.style.color = '#EF4444';
+                        countdownEl.style.fontSize = '18px';
+                    }
+                }
+
+                if (countdown <= 0) {
+                    clearInterval(timer);
+                    if (countdownEl) countdownEl.textContent = '0';
+                    if (progressEl) progressEl.style.width = '100%';
+
+                    // Add small delay for visual completion
+                    setTimeout(function () {
+                        try {
+                            window.location.href = redirectUrl;
+                        } catch (e) {
+                            console.error('Redirect failed:', e);
+                            // Fallback: make the button more prominent
+                            if (orderBtn) {
+                                orderBtn.style.background = '#EF4444';
+                                orderBtn.textContent = '⚠️ Click to View Order';
+                                orderBtn.style.animation = 'pulse 1s infinite';
+                            }
+                        }
+                    }, 200);
+                }
+            }, 1000);
+
+            // Allow manual cancellation
+            document.addEventListener('click', function () {
+                if (countdown > 0) {
+                    clearInterval(timer);
+                    if (countdownEl) countdownEl.textContent = 'cancelled';
+                    if (progressEl) progressEl.style.width = '0%';
+                }
+            });
+
+            // Enhanced logging
+            console.log('Payment Status:', {
+                success: success,
+                orderId: '<%= orderId %>',
+                redirectUrl: redirectUrl,
+                timestamp: new Date().toISOString()
+            });
+        })();
+    </script>
+</body>
+
+</html>

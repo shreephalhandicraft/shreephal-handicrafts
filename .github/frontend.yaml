@@ -1,0 +1,51 @@
+name: Frontend CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    # make your VITE_… env vars available to npm run build
+    env:
+      NODE_ENV: production
+      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+      VITE_BACKEND_URL: ${{ secrets.VITE_BACKEND_URL }}
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: 'npm'
+          cache-dependency-path: 'frontend/package-lock.json'
+
+      - name: 📦 Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: ✅ Lint code
+        working-directory: frontend
+        run: npm run lint
+
+      - name: 🔨 Build the app
+        working-directory: frontend
+        run: npm run build
+
+      - name: 🚀 Deploy to Netlify
+        if: github.ref == 'refs/heads/main'
+        uses: nwtgck/actions-netlify@v2.0.0
+        with:
+          publish-dir: frontend/dist
+          production-deploy: true
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}

@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test PhonePe Payment</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+
+        button {
+            background: #5f27cd;
+            color: white;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            width: 100%;
+        }
+
+        button:hover {
+            background: #4834d4;
+        }
+
+        .quick-amounts {
+            display: flex;
+            gap: 10px;
+            margin: 10px 0;
+        }
+
+        .quick-amount {
+            background: #f1f2f6;
+            border: 1px solid #ddd;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .quick-amount:hover {
+            background: #5f27cd;
+            color: white;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>🧪 Test PhonePe Payment</h1>
+
+        <form action="/pay" method="POST" id="paymentForm">
+            <div class="form-group">
+                <label for="orderId">Order ID</label>
+                <input type="text" name="orderId" id="orderId" value="ORDER_<%= Date.now() %>" required>
+            </div>
+
+            <div class="form-group">
+                <label for="customerName">Customer Name</label>
+                <input type="text" name="customerName" id="customerName" value="Test Customer" required>
+            </div>
+
+            <div class="form-group">
+                <label for="customerEmail">Email</label>
+                <input type="email" name="customerEmail" id="customerEmail" value="test@example.com" required>
+            </div>
+
+            <div class="form-group">
+                <label for="customerPhone">Phone Number</label>
+                <input type="tel" name="customerPhone" id="customerPhone" value="9999999999" required>
+            </div>
+
+            <div class="form-group">
+                <label for="amount">Amount (in paise)</label>
+                <div class="quick-amounts">
+                    <button type="button" class="quick-amount" onclick="setAmount(1000)">₹10</button>
+                    <button type="button" class="quick-amount" onclick="setAmount(5000)">₹50</button>
+                    <button type="button" class="quick-amount" onclick="setAmount(10000)">₹100</button>
+                    <button type="button" class="quick-amount" onclick="setAmount(50000)">₹500</button>
+                </div>
+                <input type="number" name="amount" id="amount" value="10000" min="100" step="100" required>
+                <small>100 paise = ₹1</small>
+            </div>
+
+            <button type="submit">💳 Pay with PhonePe</button>
+        </form>
+
+        <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 5px;">
+            <strong>🔧 Debug Info:</strong><br>
+            • Server: http://localhost:3000<br>
+            • Environment: Development<br>
+            • PhonePe: Sandbox Mode<br>
+            • This will POST to /pay endpoint
+        </div>
+    </div>
+
+    <script>
+        function setAmount(paise) {
+            document.getElementById('amount').value = paise;
+        }
+
+        // Auto-generate unique order ID
+        document.addEventListener('DOMContentLoaded', function () {
+            const orderId = 'ORDER_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            document.getElementById('orderId').value = orderId;
+        });
+
+        // Add form submission logging
+        document.getElementById('paymentForm').addEventListener('submit', function (e) {
+            console.log('Form submitted with data:', new FormData(this));
+        });
+    </script>
+</body>
+
+</html>
