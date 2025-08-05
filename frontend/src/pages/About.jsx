@@ -3,13 +3,13 @@ import { Award, Users, Clock, Heart } from "lucide-react";
 
 const About = () => {
   return (
-    <Layout>
+    <Layout data-testid="layout">
       {/* Hero Section */}
-      <div className="bg-gradient-to-br from-primary/5 to-yellow-50 py-20">
+      <section className="bg-gradient-to-br from-primary/5 to-yellow-50 py-20">
         <div className="container mx-auto px-4">
           <div className="text-center max-w-3xl mx-auto">
             <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-6">
-              About Trophy Tale
+              About Shrifal Handicraft
             </h1>
             <p className="text-xl text-gray-600">
               We're passionate about creating beautiful, personalized items that
@@ -18,7 +18,7 @@ const About = () => {
             </p>
           </div>
         </div>
-      </div>
+      </section>
 
       {/* Our Story */}
       <section className="py-20 bg-white">
@@ -29,8 +29,8 @@ const About = () => {
                 Our Story
               </h2>
               <p className="text-gray-600 mb-4">
-                Founded in 2020, Trophy Tale began as a small family business
-                with a simple mission: to help people celebrate their
+                Founded in 2020, Shrifal Handicraft began as a small family
+                business with a simple mission: to help people celebrate their
                 achievements and preserve precious memories through beautiful,
                 custom-made items.
               </p>
@@ -87,7 +87,10 @@ const About = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
             <div className="text-center">
               <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                <Award className="h-8 w-8 text-primary" />
+                <Award
+                  className="h-8 w-8 text-primary"
+                  data-testid="award-icon"
+                />
               </div>
               <h3 className="text-xl font-semibold text-gray-900 mb-3">
                 Quality First
@@ -100,7 +103,10 @@ const About = () => {
 
             <div className="text-center">
               <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                <Users className="h-8 w-8 text-primary" />
+                <Users
+                  className="h-8 w-8 text-primary"
+                  data-testid="users-icon"
+                />
               </div>
               <h3 className="text-xl font-semibold text-gray-900 mb-3">
                 Customer Focus
@@ -113,7 +119,10 @@ const About = () => {
 
             <div className="text-center">
               <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                <Clock className="h-8 w-8 text-primary" />
+                <Clock
+                  className="h-8 w-8 text-primary"
+                  data-testid="clock-icon"
+                />
               </div>
               <h3 className="text-xl font-semibold text-gray-900 mb-3">
                 Reliability
@@ -126,7 +135,10 @@ const About = () => {
 
             <div className="text-center">
               <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                <Heart className="h-8 w-8 text-primary" />
+                <Heart
+                  className="h-8 w-8 text-primary"
+                  data-testid="heart-icon"
+                />
               </div>
               <h3 className="text-xl font-semibold text-gray-900 mb-3">
                 Passion
@@ -148,7 +160,7 @@ const About = () => {
               Meet Our Team
             </h2>
             <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-              The passionate individuals behind Trophy Tale, dedicated to
+              The passionate individuals behind Shrifal Handicraft, dedicated to
               bringing your ideas to life.
             </p>
           </div>
@@ -156,7 +168,10 @@ const About = () => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-4xl mx-auto">
             <div className="text-center">
               <div className="w-32 h-32 bg-gradient-to-br from-primary/20 to-yellow-200 rounded-full mx-auto mb-4 flex items-center justify-center">
-                <Users className="h-12 w-12 text-primary" />
+                <Users
+                  className="h-12 w-12 text-primary"
+                  data-testid="sarah-icon"
+                />
               </div>
               <h3 className="text-xl font-semibold text-gray-900 mb-2">
                 Sarah Johnson
@@ -170,7 +185,10 @@ const About = () => {
 
             <div className="text-center">
               <div className="w-32 h-32 bg-gradient-to-br from-primary/20 to-yellow-200 rounded-full mx-auto mb-4 flex items-center justify-center">
-                <Award className="h-12 w-12 text-primary" />
+                <Award
+                  className="h-12 w-12 text-primary"
+                  data-testid="mike-icon"
+                />
               </div>
               <h3 className="text-xl font-semibold text-gray-900 mb-2">
                 Mike Chen
@@ -186,7 +204,10 @@ const About = () => {
 
             <div className="text-center">
               <div className="w-32 h-32 bg-gradient-to-br from-primary/20 to-yellow-200 rounded-full mx-auto mb-4 flex items-center justify-center">
-                <Heart className="h-12 w-12 text-primary" />
+                <Heart
+                  className="h-12 w-12 text-primary"
+                  data-testid="emma-icon"
+                />
               </div>
               <h3 className="text-xl font-semibold text-gray-900 mb-2">
                 Emma Davis

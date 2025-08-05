@@ -126,3 +126,47 @@ Cypress.Commands.add("mockSupabaseAuth", (scenario = "success") => {
       break;
   }
 });
+
+// Custom commands for better test organization
+Cypress.Commands.add('checkSectionExists', (sectionTitle) => {
+  cy.contains('h2', sectionTitle).should('be.visible');
+});
+
+Cypress.Commands.add('checkListItems', (selector, expectedCount) => {
+  cy.get(`${selector} li`).should('have.length.at.least', expectedCount);
+});
+
+Cypress.Commands.add('checkResponsiveLayout', () => {
+  const viewports = [
+    { width: 375, height: 667 }, // Mobile
+    { width: 768, height: 1024 }, // Tablet
+    { width: 1280, height: 720 }  // Desktop
+  ];
+
+  viewports.forEach(viewport => {
+    cy.viewport(viewport.width, viewport.height);
+    cy.get('h1').should('be.visible');
+    cy.get('.container').should('be.visible');
+  });
+});
+
+// Custom commands for the Unauthorized page
+Cypress.Commands.add('checkUnauthorizedPageElements', () => {
+  cy.get('[data-testid="shield-icon"]').should("be.visible");
+  cy.contains('Access Denied').should('be.visible');
+  cy.contains('You don\'t have permission').should('be.visible');
+  cy.get('button').should('contain.text', 'Go Home');
+});
+
+Cypress.Commands.add('checkUnauthorizedResponsive', () => {
+  const viewports = [
+    { width: 375, height: 667 },
+    { width: 768, height: 1024 },
+    { width: 1280, height: 720 }
+  ];
+
+  viewports.forEach(viewport => {
+    cy.viewport(viewport.width, viewport.height);
+    cy.checkUnauthorizedPageElements();
+  });
+});

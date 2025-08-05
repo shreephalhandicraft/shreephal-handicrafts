@@ -8,7 +8,6 @@ import { useToast } from "@/hooks/use-toast";
 import { Mail, Phone, MapPin, Clock } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient"; // Import your Supabase client
 
-
 const Contact = () => {
   const { toast } = useToast();
   const [formData, setFormData] = useState({
@@ -302,14 +301,14 @@ const Contact = () => {
                   allowFullScreen
                   loading="lazy"
                   referrerPolicy="no-referrer-when-downgrade"
-                  title="Trophy Tale Location"
+                  title="Shrifal Handicraft Location"
                 />
               </div>
               <div className="p-6 bg-white border-t">
                 <div className="flex items-center justify-between flex-wrap gap-4">
                   <div>
                     <h3 className="font-semibold text-gray-900 mb-1">
-                      Trophy Tale Store
+                      Shrifal Handicraft Store
                     </h3>
                     <p className="text-gray-600">
                       Main Road, Kachiyana, Lordganj, Jabalpur, Madhya Pradesh

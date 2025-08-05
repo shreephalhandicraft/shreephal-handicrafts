@@ -188,7 +188,7 @@ export default function PrivacyPolicy() {
                   data practices, please contact us:
                 </p>
                 <div className="mt-4 p-4 bg-muted rounded-lg">
-                  <p className="font-medium">Trophy Tale Privacy Team</p>
+                  <p className="font-medium">Shrifal Handicraft Privacy Team</p>
                   <p className="text-muted-foreground">
                     Email: privacy@trophytale.com
                   </p>

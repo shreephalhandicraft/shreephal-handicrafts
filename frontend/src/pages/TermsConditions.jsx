@@ -5,12 +5,16 @@ import { FileText } from "lucide-react";
 
 export default function TermsConditions() {
   return (
-    <Layout>
+    <Layout data-testid="layout">
       <div className="container mx-auto px-4 py-8">
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-8">
             <div className="flex items-center justify-center gap-2 mb-4">
-              <FileText className="h-8 w-8 text-primary" />
+              {/* Add data-testid to icon */}
+              <FileText
+                className="h-8 w-8 text-primary"
+                data-testid="file-text-icon"
+              />
               <h1 className="text-3xl font-bold">Terms and Conditions</h1>
             </div>
             <p className="text-muted-foreground">
@@ -18,27 +22,27 @@ export default function TermsConditions() {
             </p>
           </div>
 
-          <Card>
-            <CardContent className="p-8 space-y-6">
+          <Card data-testid="card">
+            <CardContent data-testid="card-content" className="p-8 space-y-6">
               <section>
                 <h2 className="text-2xl font-semibold mb-4">
                   1. Acceptance of Terms
                 </h2>
                 <p className="text-muted-foreground leading-relaxed">
-                  By accessing and using Trophy Tale's website and services, you
-                  accept and agree to be bound by the terms and provision of
-                  this agreement. If you do not agree to abide by the above,
-                  please do not use this service.
+                  By accessing and using Shrifal Handicraft's website and
+                  services, you accept and agree to be bound by the terms and
+                  provision of this agreement. If you do not agree to abide by
+                  the above, please do not use this service.
                 </p>
               </section>
 
-              <Separator />
+              <Separator data-testid="separator" />
 
               <section>
                 <h2 className="text-2xl font-semibold mb-4">2. Use License</h2>
                 <p className="text-muted-foreground leading-relaxed mb-3">
                   Permission is granted to temporarily download one copy of the
-                  materials on Trophy Tale's website for personal,
+                  materials on Shrifal Handicraft's website for personal,
                   non-commercial transitory viewing only. This is the grant of a
                   license, not a transfer of title, and under this license you
                   may not:
@@ -60,22 +64,23 @@ export default function TermsConditions() {
                 </ul>
               </section>
 
-              <Separator />
+              <Separator data-testid="separator" />
 
               <section>
                 <h2 className="text-2xl font-semibold mb-4">
                   3. Product Information
                 </h2>
                 <p className="text-muted-foreground leading-relaxed">
-                  Trophy Tale strives to provide accurate product descriptions
-                  and images. However, we do not warrant that product
-                  descriptions or other content is accurate, complete, reliable,
-                  current, or error-free. Colors and details may vary from those
-                  shown due to monitor settings and manufacturing variations.
+                  Shrifal Handicraft strives to provide accurate product
+                  descriptions and images. However, we do not warrant that
+                  product descriptions or other content is accurate, complete,
+                  reliable, current, or error-free. Colors and details may vary
+                  from those shown due to monitor settings and manufacturing
+                  variations.
                 </p>
               </section>
 
-              <Separator />
+              <Separator data-testid="separator" />
 
               <section>
                 <h2 className="text-2xl font-semibold mb-4">
@@ -96,7 +101,7 @@ export default function TermsConditions() {
                 </ul>
               </section>
 
-              <Separator />
+              <Separator data-testid="separator" />
 
               <section>
                 <h2 className="text-2xl font-semibold mb-4">
@@ -105,13 +110,13 @@ export default function TermsConditions() {
                 <p className="text-muted-foreground leading-relaxed">
                   Shipping costs and delivery times vary based on location and
                   product type. Custom engraved items may require additional
-                  processing time. Trophy Tale is not responsible for delays
-                  caused by customs, weather, or carrier issues beyond our
-                  control.
+                  processing time. Shrifal Handicraft is not responsible for
+                  delays caused by customs, weather, or carrier issues beyond
+                  our control.
                 </p>
               </section>
 
-              <Separator />
+              <Separator data-testid="separator" />
 
               <section>
                 <h2 className="text-2xl font-semibold mb-4">
@@ -126,7 +131,7 @@ export default function TermsConditions() {
                 </p>
               </section>
 
-              <Separator />
+              <Separator data-testid="separator" />
 
               <section>
                 <h2 className="text-2xl font-semibold mb-4">7. Privacy</h2>
@@ -138,37 +143,37 @@ export default function TermsConditions() {
                 </p>
               </section>
 
-              <Separator />
+              <Separator data-testid="separator" />
 
               <section>
                 <h2 className="text-2xl font-semibold mb-4">8. Disclaimer</h2>
                 <p className="text-muted-foreground leading-relaxed">
-                  The materials on Trophy Tale's website are provided on an 'as
-                  is' basis. Trophy Tale makes no warranties, expressed or
-                  implied, and hereby disclaims and negates all other warranties
-                  including without limitation, implied warranties or conditions
-                  of merchantability, fitness for a particular purpose, or
-                  non-infringement of intellectual property or other violation
-                  of rights.
+                  The materials on Shrifal Handicraft's website are provided on
+                  an 'as is' basis. Shrifal Handicraft makes no warranties,
+                  expressed or implied, and hereby disclaims and negates all
+                  other warranties including without limitation, implied
+                  warranties or conditions of merchantability, fitness for a
+                  particular purpose, or non-infringement of intellectual
+                  property or other violation of rights.
                 </p>
               </section>
 
-              <Separator />
+              <Separator data-testid="separator" />
 
               <section>
                 <h2 className="text-2xl font-semibold mb-4">9. Limitations</h2>
                 <p className="text-muted-foreground leading-relaxed">
-                  In no event shall Trophy Tale or its suppliers be liable for
-                  any damages (including, without limitation, damages for loss
-                  of data or profit, or due to business interruption) arising
-                  out of the use or inability to use the materials on Trophy
-                  Tale's website, even if Trophy Tale or its authorized
-                  representative has been notified orally or in writing of the
-                  possibility of such damage.
+                  In no event shall Shrifal Handicraft or its suppliers be
+                  liable for any damages (including, without limitation, damages
+                  for loss of data or profit, or due to business interruption)
+                  arising out of the use or inability to use the materials on
+                  Trophy Tale's website, even if Shrifal Handicraft or its
+                  authorized representative has been notified orally or in
+                  writing of the possibility of such damage.
                 </p>
               </section>
 
-              <Separator />
+              <Separator data-testid="separator" />
 
               <section>
                 <h2 className="text-2xl font-semibold mb-4">
@@ -179,9 +184,14 @@ export default function TermsConditions() {
                   please contact us at:
                 </p>
                 <div className="mt-4 p-4 bg-muted rounded-lg">
-                  <p className="font-medium">Trophy Tale Customer Service</p>
+                  <p className="font-medium">
+                    Shrifal Handicraft Customer Service
+                  </p>
                   <p className="text-muted-foreground">
-                    Email: legal@trophytale.com
+                    Email:{" "}
+                    <a href="mailto:legal@trophytale.com">
+                      legal@trophytale.com
+                    </a>
                   </p>
                   <p className="text-muted-foreground">Phone: 1-800-TROPHY-1</p>
                   <p className="text-muted-foreground">

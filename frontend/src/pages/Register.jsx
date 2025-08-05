@@ -1,6 +1,5 @@
 // Register.jsx (Modified: Redirect to personal-details after successful signup to fill additional details)
 
-
 // Register.jsx (Modified: Redirect to personal-details after successful signup to fill additional details)
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -107,7 +106,7 @@ const Register = () => {
                 Create Account
               </h1>
               <p className="text-gray-600">
-                Join Trophy Tale and start customizing
+                Join Shrifal Handicraft and start customizing
               </p>
             </div>
 
