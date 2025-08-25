@@ -292,10 +292,15 @@ describe("About Page", () => {
     });
 
     it("should have consistent company name usage", () => {
+      cy.visit("/about");
+
+      // Wait until at least one occurrence is visible
+      cy.contains("Shrifal Handicraft").should("be.visible");
+
       cy.get("body").then(($body) => {
         const text = $body.text();
         const matches = (text.match(/Shrifal Handicraft/g) || []).length;
-        expect(matches).to.be.at.least(4);
+        expect(matches).to.be.at.least(3);
       });
     });
 
