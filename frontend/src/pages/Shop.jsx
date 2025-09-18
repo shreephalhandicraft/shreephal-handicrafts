@@ -16,9 +16,11 @@ import {
 import { Link } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
 
+
 // Helper function for Cloudinary image optimization
 const getCloudinaryImageUrl = (imageUrl, transformation = "medium") => {
   if (!imageUrl) return null;
+
 
   if (imageUrl.includes("cloudinary.com")) {
     const publicIdMatch = imageUrl.match(
@@ -29,6 +31,7 @@ const getCloudinaryImageUrl = (imageUrl, transformation = "medium") => {
       const baseUrl =
         "https://res.cloudinary.com/Shrifal-Handicraft/image/upload";
 
+
       const transformations = {
         thumbnail: "c_fill,h_150,q_auto,w_150,f_auto",
         medium: "c_fill,h_400,q_auto,w_400,f_auto",
@@ -36,19 +39,23 @@ const getCloudinaryImageUrl = (imageUrl, transformation = "medium") => {
         original: "q_auto,f_auto",
       };
 
+
       return `${baseUrl}/${
         transformations[transformation] || transformations.medium
       }/${publicId}`;
     }
   }
 
+
   return imageUrl;
 };
+
 
 // Category Image Component
 const CategoryImage = ({ category, className }) => {
   const [imageState, setImageState] = useState("loading");
   const [currentImageUrl, setCurrentImageUrl] = useState(null);
+
 
   useEffect(() => {
     if (category.image) {
@@ -60,9 +67,11 @@ const CategoryImage = ({ category, className }) => {
     }
   }, [category.image]);
 
+
   const handleImageLoad = () => {
     setImageState("loaded");
   };
+
 
   const handleImageError = () => {
     if (currentImageUrl !== category.image && category.image) {
@@ -73,10 +82,12 @@ const CategoryImage = ({ category, className }) => {
     }
   };
 
+
   if (imageState === "no-image" || imageState === "error") {
     return (
       <div
         className={`${className} bg-gradient-to-br from-primary/10 to-primary/5 flex flex-col items-center justify-center group-hover:from-primary/15 group-hover:to-primary/10 transition-all duration-300`}
+        data-cy="fallback-icon"
       >
         <ShoppingBag className="h-16 w-16 text-primary group-hover:scale-110 transition-transform duration-300" />
         <span className="text-xs text-primary/70 mt-2 font-medium opacity-0 group-hover:opacity-100 transition-opacity duration-300 text-center px-2">
@@ -86,8 +97,9 @@ const CategoryImage = ({ category, className }) => {
     );
   }
 
+
   return (
-    <div className={`${className} relative overflow-hidden`}>
+    <div className={`${className} relative overflow-hidden`} data-cy="category-image">
       {imageState === "loading" && (
         <div className="absolute inset-0 bg-gradient-to-br from-gray-200 to-gray-300 animate-pulse flex items-center justify-center z-10">
           <div className="flex flex-col items-center">
@@ -96,6 +108,7 @@ const CategoryImage = ({ category, className }) => {
           </div>
         </div>
       )}
+
 
       {currentImageUrl && (
         <img
@@ -113,6 +126,7 @@ const CategoryImage = ({ category, className }) => {
   );
 };
 
+
 // Category Card Component
 const CategoryCard = ({ category, viewMode = "grid" }) => {
   const formatPrice = (price) => {
@@ -123,14 +137,16 @@ const CategoryCard = ({ category, viewMode = "grid" }) => {
       : `Starting from ₹${numPrice.toLocaleString("en-IN")}`;
   };
 
+
   if (viewMode === "list") {
     return (
-      <div className="bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden border border-gray-100 hover:border-primary/20">
+      <div className="bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden border border-gray-100 hover:border-primary/20" data-cy="category-card">
         <div className="flex flex-col sm:flex-row">
           {/* Image */}
           <div className="w-full sm:w-48 h-48 flex-shrink-0 relative group">
             <CategoryImage category={category} className="w-full h-full" />
           </div>
+
 
           {/* Content - Fixed padding and structure */}
           <div className="flex-1 p-4 sm:p-6 min-w-0">
@@ -143,13 +159,14 @@ const CategoryCard = ({ category, viewMode = "grid" }) => {
                     <Badge
                       variant="outline"
                       className="text-yellow-600 border-yellow-300 bg-yellow-50"
+                      data-cy="featured-badge"
                     >
                       <Star className="h-3 w-3 mr-1" />
                       Featured
                     </Badge>
                   )}
                   {category.rating && (
-                    <div className="flex items-center space-x-1">
+                    <div className="flex items-center space-x-1" data-cy="category-rating">
                       <Star className="h-4 w-4 text-yellow-400 fill-current" />
                       <span className="text-sm font-medium">
                         {Number(category.rating).toFixed(1)}
@@ -158,18 +175,21 @@ const CategoryCard = ({ category, viewMode = "grid" }) => {
                   )}
                 </div>
 
+
                 <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-2 line-clamp-2">
                   {category.name}
                 </h3>
+
 
                 <p className="text-gray-600 text-sm mb-4 line-clamp-2">
                   Explore our collection of {category.name.toLowerCase()}
                 </p>
               </div>
 
+
               {/* Price and Button Section - Fixed layout */}
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-auto">
-                <div className="text-xl sm:text-2xl font-bold text-primary">
+                <div className="text-xl sm:text-2xl font-bold text-primary" data-cy="category-price">
                   {formatPrice(category.price)}
                 </div>
                 <div className="flex-shrink-0">
@@ -192,27 +212,32 @@ const CategoryCard = ({ category, viewMode = "grid" }) => {
     );
   }
 
+
   // Grid view - Fixed padding and button positioning
   return (
-    <div className="bg-white rounded-3xl shadow-xl hover:shadow-2xl transition-all duration-500 overflow-hidden group relative border border-gray-100 hover:border-primary/20 w-full max-w-full">
+    <div className="bg-white rounded-3xl shadow-xl hover:shadow-2xl transition-all duration-500 overflow-hidden group relative border border-gray-100 hover:border-primary/20 w-full max-w-full" data-cy="category-card">
       {" "}
       {/* Added width constraints */}
       <div className="relative aspect-[4/3] bg-gradient-to-br from-gray-50 to-gray-100 overflow-hidden">
         <CategoryImage category={category} className="w-full h-full" />
 
+
         <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300" />
+
 
         {category.featured && (
           <div className="absolute top-4 left-4">
             <Badge
               variant="secondary"
               className="bg-yellow-100 text-yellow-700 border-yellow-200 backdrop-blur-sm font-medium"
+              data-cy="featured-badge"
             >
               <Star className="h-3 w-3 mr-1" />
               Featured
             </Badge>
           </div>
         )}
+
 
         {/* Fixed hover button positioning */}
         <div className="absolute bottom-4 left-4 right-4 transform translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300">
@@ -238,7 +263,7 @@ const CategoryCard = ({ category, viewMode = "grid" }) => {
             Category
           </Badge>
           {category.rating && (
-            <div className="flex items-center space-x-1 bg-yellow-50 px-2 py-1 rounded-full">
+            <div className="flex items-center space-x-1 bg-yellow-50 px-2 py-1 rounded-full" data-cy="category-rating">
               <Star className="h-4 w-4 text-yellow-400 fill-current" />
               <span className="text-sm font-medium text-gray-700">
                 {Number(category.rating).toFixed(1)}
@@ -247,10 +272,12 @@ const CategoryCard = ({ category, viewMode = "grid" }) => {
           )}
         </div>
 
+
         <div>
           <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-2 line-clamp-2 leading-tight">
             {category.name}
           </h3>
+
 
           <p className="text-gray-600 text-sm leading-relaxed line-clamp-3">
             Discover our amazing collection of {category.name.toLowerCase()}{" "}
@@ -258,12 +285,14 @@ const CategoryCard = ({ category, viewMode = "grid" }) => {
           </p>
         </div>
 
+
         {/* Fixed bottom section with proper spacing */}
         <div className="pt-4 border-t border-gray-100 w-full">
           <div className="flex flex-col space-y-3">
-            <div className="text-xl sm:text-2xl font-bold text-primary">
+            <div className="text-xl sm:text-2xl font-bold text-primary" data-cy="category-price">
               {formatPrice(category.price)}
             </div>
+
 
             <Link to={`/category/${category.slug}/products`} className="w-full">
               <Button
@@ -280,6 +309,7 @@ const CategoryCard = ({ category, viewMode = "grid" }) => {
   );
 };
 
+
 const Shop = () => {
   const [categories, setCategories] = useState([]);
   const [filteredCategories, setFilteredCategories] = useState([]);
@@ -287,9 +317,11 @@ const Shop = () => {
   const [error, setError] = useState(null);
   const [viewMode, setViewMode] = useState("grid");
 
+
   // Search and sort state
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState("name-asc");
+
 
   // Fetch only categories
   useEffect(() => {
@@ -297,6 +329,7 @@ const Shop = () => {
       try {
         setLoading(true);
         setError(null);
+
 
         // Fetch categories with all the fields from your schema
         const { data: categoriesData, error: categoriesError } = await supabase
@@ -314,7 +347,9 @@ const Shop = () => {
           )
           .order("name", { ascending: true });
 
+
         if (categoriesError) throw categoriesError;
+
 
         setCategories(categoriesData || []);
         setFilteredCategories(categoriesData || []);
@@ -328,12 +363,15 @@ const Shop = () => {
       }
     };
 
+
     fetchCategories();
   }, []);
+
 
   // Enhanced search and filter functionality
   useEffect(() => {
     let filtered = [...categories];
+
 
     // Enhanced search filter
     if (searchQuery.trim()) {
@@ -350,8 +388,10 @@ const Shop = () => {
           .join(" ")
           .toLowerCase();
 
+
         // Also search for partial matches and multiple words
         const searchWords = query.split(" ").filter((word) => word.length > 0);
+
 
         return searchWords.every(
           (word) =>
@@ -360,6 +400,7 @@ const Shop = () => {
         );
       });
     }
+
 
     // Sort categories
     filtered.sort((a, b) => {
@@ -384,20 +425,23 @@ const Shop = () => {
       }
     });
 
+
     setFilteredCategories(filtered);
   }, [categories, searchQuery, sortBy]);
+
 
   // Clear search function
   const clearSearch = () => {
     setSearchQuery("");
   };
 
+
   if (loading) {
     return (
       <Layout>
         <section className="py-16 bg-gradient-to-br from-gray-50 to-white min-h-screen">
           <div className="container mx-auto px-4 text-center">
-            <div className="flex flex-col items-center justify-center space-y-4">
+            <div className="flex flex-col items-center justify-center space-y-4" data-cy="loader">
               <Loader2 className="h-16 w-16 animate-spin text-primary" />
               <div className="space-y-2">
                 <p className="text-gray-700 text-xl font-medium">
@@ -413,6 +457,7 @@ const Shop = () => {
       </Layout>
     );
   }
+
 
   if (error) {
     return (
@@ -440,6 +485,7 @@ const Shop = () => {
     );
   }
 
+
   return (
     <Layout>
       {/* Hero Section */}
@@ -454,6 +500,7 @@ const Shop = () => {
               frames and gifts, find the perfect category for your needs.
             </p>
 
+
             {/* Enhanced Search Bar */}
             <div className="max-w-lg mx-auto">
               <div className="relative">
@@ -464,11 +511,13 @@ const Shop = () => {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full pl-12 pr-12 py-3 sm:py-4 text-base sm:text-lg border-2 border-gray-300 rounded-2xl focus:ring-2 focus:ring-primary/20 focus:border-primary shadow-lg transition-all duration-200"
+                  data-cy="search-input"
                 />
                 {searchQuery && (
                   <button
                     onClick={clearSearch}
                     className="absolute right-4 top-1/2 transform -translate-y-1/2 p-1 hover:bg-gray-100 rounded-full transition-colors duration-200"
+                    data-cy="clear-search"
                   >
                     <X className="h-5 w-5 text-gray-500" />
                   </button>
@@ -485,6 +534,7 @@ const Shop = () => {
         </div>
       </div>
 
+
       {/* Main Categories Content */}
       <div className="py-8 bg-gray-50">
         <div className="container mx-auto px-4">
@@ -492,15 +542,17 @@ const Shop = () => {
           <div className="mb-8 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-                <span className="text-sm text-gray-600">
+                <span className="text-sm text-gray-600" data-cy="results-count">
                   {filteredCategories.length} of {categories.length} categories
                   found
                 </span>
+
 
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value)}
                   className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  data-cy="sort-select"
                 >
                   <option value="name-asc">Name: A to Z</option>
                   <option value="name-desc">Name: Z to A</option>
@@ -511,11 +563,13 @@ const Shop = () => {
                 </select>
               </div>
 
-              <div className="flex items-center space-x-2">
+
+              <div className="flex items-center space-x-2" data-cy="view-mode-controls">
                 <Button
                   variant={viewMode === "grid" ? "default" : "outline"}
                   size="sm"
                   onClick={() => setViewMode("grid")}
+                  data-cy="grid-view-btn"
                 >
                   <Grid3X3 className="h-4 w-4" />
                 </Button>
@@ -523,12 +577,14 @@ const Shop = () => {
                   variant={viewMode === "list" ? "default" : "outline"}
                   size="sm"
                   onClick={() => setViewMode("list")}
+                  data-cy="list-view-btn"
                 >
                   <List className="h-4 w-4" />
                 </Button>
               </div>
             </div>
           </div>
+
 
           {/* Categories Grid/List */}
           {filteredCategories.length === 0 ? (
@@ -566,6 +622,7 @@ const Shop = () => {
                   ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
                   : "space-y-6"
               }
+              data-cy="categories-container"
             >
               {filteredCategories.map((category) => (
                 <CategoryCard
@@ -581,5 +638,6 @@ const Shop = () => {
     </Layout>
   );
 };
+
 
 export default Shop;
