@@ -70,6 +70,22 @@ describe("Register Component", () => {
       },
     }).as("signupRequest");
 
+    // Mock successful sign-in response (new intercept for signInWithPassword)
+    cy.intercept("POST", "**/auth/v1/token?grant_type=password**", {
+      statusCode: 200,
+      body: {
+        user: {
+          id: "123",
+          email: "john@example.com",
+          user_metadata: { name: "John Doe", phone: "1234567890" },
+        },
+        session: {
+          access_token: "mock-access-token",
+          refresh_token: "mock-refresh-token",
+        },
+      },
+    }).as("signInRequest");
+
     // Mock customers table insert
     cy.intercept("POST", "**/rest/v1/customers**", {
       statusCode: 201,
@@ -87,6 +103,7 @@ describe("Register Component", () => {
     cy.get('button[type="submit"]').click();
 
     cy.wait("@signupRequest");
+    cy.wait("@signInRequest"); // Wait for the new sign-in request
     cy.wait("@insertCustomer");
 
     // Check success toast and redirect

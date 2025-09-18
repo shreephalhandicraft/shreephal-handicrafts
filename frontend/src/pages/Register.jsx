@@ -1,6 +1,5 @@
-// Register.jsx (Modified: Redirect to personal-details after successful signup to fill additional details)
+// Register.jsx (Fixed: Added explicit sign-in after signUp to create an active session before navigating to personal-details)
 
-// Register.jsx (Modified: Redirect to personal-details after successful signup to fill additional details)
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Layout } from "@/components/Layout";
@@ -48,30 +47,51 @@ const Register = () => {
 
     setIsSubmitting(true);
 
-    const { data, error } = await supabase.auth.signUp({
-      email: formData.email,
-      password: formData.password,
-      options: {
-        data: {
-          name: `${formData.firstName} ${formData.lastName}`,
-          phone: formData.phone, // Store phone in user metadata
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp(
+      {
+        email: formData.email,
+        password: formData.password,
+        options: {
+          data: {
+            name: `${formData.firstName} ${formData.lastName}`,
+            phone: formData.phone, // Store phone in user metadata
+          },
         },
-      },
-    });
+      }
+    );
 
-    if (error) {
+    if (signUpError) {
       toast({
         title: "Registration Failed",
-        description: error.message,
+        description: signUpError.message,
         variant: "destructive",
       });
       setIsSubmitting(false);
       return;
     }
 
-    // Insert phone into customers table (assuming table structure with user_id and phone)
+    // Explicitly sign in the user to create an active session
+    const { data: signInData, error: signInError } =
+      await supabase.auth.signInWithPassword({
+        email: formData.email,
+        password: formData.password,
+      });
+
+    if (signInError) {
+      toast({
+        title: "Sign In Failed",
+        description:
+          signInError.message ||
+          "Unable to sign in after registration. Please try logging in manually.",
+        variant: "destructive",
+      });
+      setIsSubmitting(false);
+      return;
+    }
+
+    // Insert phone into customers table using the user ID from the session
     const { error: insertError } = await supabase.from("customers").insert({
-      user_id: data.user.id,
+      user_id: signInData.user.id,
       phone: formData.phone,
     });
 
@@ -92,7 +112,7 @@ const Register = () => {
       description: "Please complete your personal details.",
     });
 
-    // Redirect to personal details page to fill additional details
+    // Now navigate to personal details (user is authenticated)
     navigate("/personal-details");
   };
 
