@@ -1,0 +1,31 @@
+{
+  "data": [
+    {
+      "id": 1,
+      "name": "Trophy Collection",
+      "slug": "trophy-collection",
+      "image": "https://res.cloudinary.com/Shrifal-Handicraft/image/upload/v1234567890/trophy1.jpg",
+      "price": 500,
+      "rating": 4.5,
+      "featured": true
+    },
+    {
+      "id": 2,
+      "name": "Photo Frames",
+      "slug": "photo-frames",
+      "image": "https://res.cloudinary.com/Shrifal-Handicraft/image/upload/v1234567890/frame1.jpg",
+      "price": 250,
+      "rating": 4.2,
+      "featured": false
+    },
+    {
+      "id": 3,
+      "name": "Custom Gifts",
+      "slug": "custom-gifts",
+      "image": "https://res.cloudinary.com/Shrifal-Handicraft/image/upload/v1234567890/gift1.jpg",
+      "price": 750,
+      "rating": 4.8,
+      "featured": true
+    }
+  ]
+}
