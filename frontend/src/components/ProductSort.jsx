@@ -17,7 +17,11 @@ const ProductSort = ({ sortBy, onSortChange, productCount }) => {
 
       <div className="flex items-center space-x-2">
         <ArrowUpDown className="h-4 w-4 text-gray-500" />
-        <Select value={sortBy} onValueChange={onSortChange}>
+        <Select
+          data-testid="sort-select"
+          value={sortBy}
+          onValueChange={onSortChange}
+        >
           <SelectTrigger className="w-48 border-gray-300">
             <SelectValue placeholder="Sort by" />
           </SelectTrigger>

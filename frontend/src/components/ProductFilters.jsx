@@ -123,11 +123,13 @@ const ProductFilters = ({
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
           <Input
+            data-testid="search-input"
             placeholder="Search products, materials, features..."
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             className="pl-10 pr-4 h-12 text-lg border-2 border-gray-300 focus:border-primary"
           />
+
           {searchQuery && (
             <button
               onClick={() => onSearchChange("")}
@@ -169,6 +171,7 @@ const ProductFilters = ({
                 Active Filters
               </span>
               <Button
+                data-testid="clear-filters"
                 variant="ghost"
                 size="sm"
                 onClick={onClearFilters}
@@ -237,7 +240,10 @@ const ProductFilters = ({
           open={openSections.price}
           onOpenChange={() => toggleSection("price")}
         >
-          <CollapsibleTrigger className="flex items-center justify-between w-full p-4 hover:bg-gray-50 border-b border-gray-200">
+          <CollapsibleTrigger
+            data-testid="filter-material"
+            className="flex items-center justify-between w-full p-4 hover:bg-gray-50 border-b border-gray-200"
+          >
             <div className="flex items-center">
               <DollarSign className="h-4 w-4 mr-2 text-gray-600" />
               <span className="font-medium">Price Range</span>
@@ -281,7 +287,10 @@ const ProductFilters = ({
             open={openSections.material}
             onOpenChange={() => toggleSection("material")}
           >
-            <CollapsibleTrigger className="flex items-center justify-between w-full p-4 hover:bg-gray-50 border-b border-gray-200">
+            <CollapsibleTrigger
+              data-testid="filter-material"
+              className="flex items-center justify-between w-full p-4 hover:bg-gray-50 border-b border-gray-200"
+            >
               <div className="flex items-center">
                 <Palette className="h-4 w-4 mr-2 text-gray-600" />
                 <span className="font-medium">Material</span>
@@ -327,7 +336,10 @@ const ProductFilters = ({
             open={openSections.features}
             onOpenChange={() => toggleSection("features")}
           >
-            <CollapsibleTrigger className="flex items-center justify-between w-full p-4 hover:bg-gray-50 border-b border-gray-200">
+            <CollapsibleTrigger
+              data-testid="filter-material"
+              className="flex items-center justify-between w-full p-4 hover:bg-gray-50 border-b border-gray-200"
+            >
               <div className="flex items-center">
                 <Package className="h-4 w-4 mr-2 text-gray-600" />
                 <span className="font-medium">Features</span>

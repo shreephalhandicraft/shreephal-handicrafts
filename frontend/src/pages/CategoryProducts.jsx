@@ -154,7 +154,10 @@ const ProductImage = ({ product, className }) => {
     <div className={`${className} relative overflow-hidden`}>
       {imageState === "loading" && (
         <div className="absolute inset-0 bg-gradient-to-br from-gray-200 to-gray-300 animate-pulse flex items-center justify-center z-10">
-          <div className="flex flex-col items-center">
+          <div
+            className="flex flex-col items-center"
+            data-testid="loading-spinner"
+          >
             <Loader2 className="h-6 w-6 text-gray-400 animate-spin mb-2" />
             <span className="text-xs text-gray-500">Loading...</span>
           </div>
@@ -200,12 +203,16 @@ const ProductCard = ({
 
   if (viewMode === "list") {
     return (
-      <div className="bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden border border-gray-100 hover:border-primary/20">
+      <div
+        data-testid="product-card"
+        className="bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden border border-gray-100 hover:border-primary/20"
+      >
         <div className="flex">
           {/* Image */}
           <div className="w-48 h-48 flex-shrink-0 relative">
             <ProductImage product={product} className="w-full h-full" />
             <button
+              data-testid="favourite-button"
               onClick={() => onToggleFavourite(product)}
               className="absolute top-3 right-3 p-2 bg-white/90 backdrop-blur-sm rounded-full shadow-lg hover:bg-white transition-all duration-300 hover:scale-110"
             >
@@ -301,7 +308,10 @@ const ProductCard = ({
 
   // Keep your existing grid ProductCard JSX
   return (
-    <div className="bg-white rounded-3xl shadow-xl hover:shadow-2xl transition-all duration-500 overflow-hidden group relative border border-gray-100 hover:border-primary/20">
+    <div
+      data-testid="product-card"
+      className="bg-white rounded-3xl shadow-xl hover:shadow-2xl transition-all duration-500 overflow-hidden group relative border border-gray-100 hover:border-primary/20"
+    >
       {/* Your existing grid card JSX here */}
       <div className="relative aspect-[4/3] bg-gradient-to-br from-gray-50 to-gray-100 overflow-hidden">
         <ProductImage product={product} className="w-full h-full" />
@@ -533,24 +543,14 @@ const Category = () => {
         setError(null);
 
         // Parallel fetch for better performance
-        const [categoryResponse, productsResponse, allCategoriesResponse] =
-          await Promise.all([
-            supabase
-              .from("categories")
-              .select("id, name")
-              .eq("slug", slug)
-              .single(),
-            supabase
-              .from("products")
-              .select(
-                `
-            *,
-            categories (name)
-          `
-              )
-              .eq("category_id", null), // Will be updated with actual category_id
-            supabase.from("categories").select("id, name, slug"),
-          ]);
+        const [categoryResponse, allCategoriesResponse] = await Promise.all([
+          supabase
+            .from("categories")
+            .select("id, name")
+            .eq("slug", slug)
+            .single(),
+          supabase.from("categories").select("id, name, slug"),
+        ]);
 
         // Handle category
         if (categoryResponse.error || !categoryResponse.data) {
@@ -756,7 +756,10 @@ const Category = () => {
         <section className="py-16 bg-gradient-to-br from-gray-50 to-white min-h-screen">
           <div className="container mx-auto px-4 text-center">
             <div className="flex flex-col items-center justify-center space-y-4">
-              <Loader2 className="h-16 w-16 animate-spin text-primary" />
+              <Loader2
+                className="h-16 w-16 animate-spin text-primary"
+                data-testid="loading-spinner"
+              />
               <div className="space-y-2">
                 <p className="text-gray-700 text-xl font-medium">
                   Loading products...
@@ -802,7 +805,7 @@ const Category = () => {
     <Layout>
       <section className="py-8 bg-gradient-to-br from-gray-50 to-white min-h-screen">
         <div className="container mx-auto px-4">
-          {/* Category Header - fade out when search is active */}
+          {/* Category Header */}
           <div
             className={`text-center mb-8 transition-all duration-500 ${
               isSearchActive ? "opacity-50 transform scale-95" : "opacity-100"
@@ -838,7 +841,7 @@ const Category = () => {
 
             {/* Main Content */}
             <div className="lg:col-span-3 space-y-6">
-              {/* Sort and View Controls */}
+              {/* ✅ Always show ProductSort — even when no products */}
               <div className="flex items-center justify-between">
                 <ProductSort
                   sortBy={sortBy}
@@ -848,6 +851,7 @@ const Category = () => {
 
                 <div className="flex items-center space-x-2">
                   <Button
+                    data-testid="view-grid"
                     variant={viewMode === "grid" ? "default" : "outline"}
                     size="sm"
                     onClick={() => setViewMode("grid")}
@@ -855,6 +859,7 @@ const Category = () => {
                     <Grid3X3 className="h-4 w-4" />
                   </Button>
                   <Button
+                    data-testid="view-list"
                     variant={viewMode === "list" ? "default" : "outline"}
                     size="sm"
                     onClick={() => setViewMode("list")}
