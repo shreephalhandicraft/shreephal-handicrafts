@@ -198,7 +198,7 @@ export const FeaturedProducts = () => {
 
   // Format price to Indian currency
   const formatPrice = (priceInCents) => {
-    const price = priceInCents / 100;
+    const price = priceInCents;
     return new Intl.NumberFormat("en-IN", {
       style: "currency",
       currency: "INR",
