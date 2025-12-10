@@ -7,26 +7,23 @@ class CorsMiddleware {
 
     return cors({
       origin: (origin, callback) => {
-        // ✅ CRITICAL FIX: Always allow requests with no origin
-        // This includes PhonePe redirects, mobile apps, Postman, etc.
+        // 1. Allow mobile apps, Postman, and server-to-server (null origin)
         if (!origin) {
-          console.log(
-            "🔓 Allowing request with null origin (payment gateway/mobile app)"
-          );
+          console.log("🔓 Allowing request with no origin");
           return callback(null, true);
         }
 
+        // 2. Check if origin is allowed
         if (allowedOrigins.includes(origin)) {
-          console.log("✅ Allowing request from:", origin);
+          // console.log("✅ Allowed:", origin); // Uncomment for debugging
           callback(null, true);
         } else {
-          console.warn("❌ CORS blocked request from:", origin);
-          // ✅ TEMPORARY: Be more lenient during development
-          if (process.env.NODE_ENV !== "production") {
-            console.log("🔧 Development mode: Allowing blocked origin");
-            return callback(null, true);
-          }
-          callback(new Error("Not allowed by CORS"));
+          console.warn(`❌ CORS Blocked: ${origin}`);
+          
+          // Optional: Allow all in development/testing if needed
+          // return callback(null, true); 
+          
+          callback(new Error(`CORS not allowed for origin: ${origin}`));
         }
       },
       credentials: true,
@@ -39,129 +36,77 @@ class CorsMiddleware {
         "X-Verify",
       ],
       exposedHeaders: ["X-Total-Count", "X-RateLimit-Remaining"],
-      maxAge: 86400, // 24 hours
+      maxAge: 86400,
     });
   }
 
-  // Production CORS with payment gateway support
+  // Production CORS (Use this for your main routes)
   productionCors() {
-    const allowedOrigins = this.getAllowedOrigins();
-
-    return cors({
-      origin: (origin, callback) => {
-        // ✅ FIXED: Always allow null origin for payment gateways
-        if (!origin) {
-          console.log(
-            "🔓 Allowing null origin request (payment gateway or server-to-server)"
-          );
-          return callback(null, true);
-        }
-
-        // Check against allowed origins
-        if (allowedOrigins.includes(origin)) {
-          callback(null, true);
-        } else {
-          console.error("CORS violation attempt", {
-            origin,
-            timestamp: new Date().toISOString(),
-            allowedOrigins,
-          });
-          callback(new Error("CORS policy violation"));
-        }
-      },
-      credentials: true,
-      methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-      allowedHeaders: [
-        "Content-Type",
-        "Authorization",
-        "X-API-Key",
-        "X-Verify",
-        "X-Requested-With",
-      ],
-      optionsSuccessStatus: 200,
-      maxAge: 3600, // 1 hour
-    });
+    return this.basicCors(); // Re-use the robust logic above
   }
 
-  // ✅ NEW: Specific CORS for payment routes
+  // Payment CORS (More permissive for callbacks)
   paymentCors() {
     return cors({
       origin: (origin, callback) => {
-        // Always allow payment gateway redirects (they often have null origin)
-        if (!origin) {
-          console.log("💳 Allowing payment gateway redirect");
-          return callback(null, true);
-        }
+        // Payment gateways usually send no origin or specific domains
+        if (!origin) return callback(null, true);
 
-        // Allow PhonePe domains
-        const paymentOrigins = [
-          "https://mercury-uat.phonepe.com",
-          "https://mercury.phonepe.com",
-          "https://api.phonepe.com",
-          "https://api-preprod.phonepe.com",
-          ...this.getAllowedOrigins(),
+        const paymentDomains = [
+          "phonepe.com",
+          "mercury-uat.phonepe.com",
+          ...this.getAllowedOrigins()
         ];
 
-        if (paymentOrigins.some((allowed) => origin.startsWith(allowed))) {
+        // Allow if it matches our list OR if it is a subdomain of phonepe
+        if (
+          this.getAllowedOrigins().includes(origin) ||
+          origin.includes("phonepe.com")
+        ) {
           callback(null, true);
         } else {
-          console.log("🔓 Allowing payment request from:", origin);
-          // Be more lenient for payment routes
-          callback(null, true);
+          console.log(`💳 Allowing payment redirect from unknown: ${origin}`);
+          callback(null, true); // Be permissive for payments to avoid failed transactions
         }
       },
       credentials: true,
       methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-      allowedHeaders: [
-        "Content-Type",
-        "Authorization",
-        "X-Requested-With",
-        "X-API-Key",
-        "X-Verify",
-      ],
-      optionsSuccessStatus: 200,
-      maxAge: 300, // 5 minutes for payment routes
+      allowedHeaders: ["Content-Type", "Authorization", "X-API-Key", "X-Verify", "X-Requested-With"],
+      optionsSuccessStatus: 200
     });
   }
 
+  // ✅ FIXED: Updated with correct URLs
   getAllowedOrigins() {
     const baseOrigins = [
-      `http://localhost:3000`,
-      `http://localhost:5173`,
-      `http://localhost:3001`,
-      `https://shrifal-handicrafts.netlify.app`,
-      `https://shrifal-handicrafts.onrender.com`,
+           
+      // ✅ YOUR OLD SPELLING (Keep just in case)
+      "https://shrifal-handicrafts.netlify.app",
+      "https://shrifal-handicrafts.onrender.com",
+
+      // ✅ YOUR NEW SPELLING (The Fix)
+      "https://shreephal-handicrafts.onrender.com",
+      
+      // ⚠️ IMPORTANT: ADD YOUR FRONTEND URL HERE IF IT CHANGED
+      // "https://shreephal-handicrafts.netlify.app", 
     ];
 
-    // Add custom origins from environment
+    // Add env variables if they exist
     if (process.env.ALLOWED_ORIGINS) {
-      return baseOrigins.concat(
-        process.env.ALLOWED_ORIGINS.split(",").map((origin) => origin.trim())
-      );
-    }
-
-    if (process.env.NODE_ENV === "production") {
-      return [...baseOrigins, `https://shrifal-handicrafts.onrender.com`];
+      const envOrigins = process.env.ALLOWED_ORIGINS.split(",").map(o => o.trim());
+      return [...baseOrigins, ...envOrigins];
     }
 
     return baseOrigins;
   }
 
-  // CORS error handler
   handleCorsError(err, req, res, next) {
     if (err.message.includes("CORS")) {
-      console.warn("CORS error", {
-        origin: req.get("origin"),
-        method: req.method,
-        path: req.path,
-        ip: req.ip,
-        userAgent: req.get("User-Agent"),
-      });
-
+      console.error("⛔ CORS ERROR CAUGHT:", err.message);
       return res.status(403).json({
         success: false,
         message: "CORS policy violation",
-        timestamp: new Date().toISOString(),
+        error: err.message
       });
     }
     next(err);
