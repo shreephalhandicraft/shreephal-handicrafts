@@ -21,17 +21,17 @@ const httpsRedirect = require("./middleware/httpsRedirect");
 const app = express();
 app.set("trust proxy", true);
 
-// 1. CORS (Keep this first)
+// 1. CORS
 app.use(
   ["/pay", "/redirect", "/callback", "/webhook"],
   corsMiddleware.paymentCors()
 );
-app.use(corsMiddleware.basicCors()); // Default for everything else
+app.use(corsMiddleware.basicCors());
 
 // 2. HTTPS Redirect
 app.use(httpsRedirect);
 
-// 3. Security (Helmet)
+// 3. Security
 app.use(
   helmet({
     contentSecurityPolicy: {
@@ -40,36 +40,49 @@ app.use(
         styleSrc: ["'self'", "'unsafe-inline'"],
         scriptSrc: ["'self'"],
         imgSrc: ["'self'", "data:", "https://res.cloudinary.com"],
-        // ✅ Allow form submissions to PhonePe
         formAction: ["'self'", "https://api-preprod.phonepe.com", "https://api.phonepe.com"],
       },
     },
   })
 );
 
-// 4. Body Parsing (Move up before Rate Limiting for logging purposes if needed)
+// 4. Body Parsing
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-// 5. Rate Limiting
-const limiter = rateLimit({ /* ... */ });
-const paymentLimiter = rateLimit({ /* ... */ });
+// 5. Rate Limiting (FIXED CONFIG)
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per `window`
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+});
+
+const paymentLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20,
+  message: "Too many payment attempts, please try again later.",
+});
 
 // Apply limiters
 app.use("/api/", limiter);
 app.use(["/pay", "/api/orders"], paymentLimiter);
-// Note: Do NOT rate limit /callback or /redirect strongly, as they come from PhonePe/Users
 
 // 6. View Engine
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "../views"));
 
-// 7. Routes
-app.get("/health", /* ... */);
-app.get("/test", /* ... */);
+// 7. Routes (FIXED HANDLERS)
+app.get("/health", (req, res) => {
+  res.status(200).json({ status: "OK", timestamp: new Date().toISOString() });
+});
 
-// Payment Routes (Mount these first to avoid collisions)
-app.use("/", paymentRoutes); 
+app.get("/test", (req, res) => {
+  res.render("test-payment"); // Ensure 'test-payment.ejs' exists in views
+});
+
+// Payment Routes
+app.use("/", paymentRoutes);
 
 // API Routes
 app.use("/api/users", userRoutes);
@@ -79,7 +92,14 @@ app.use("/api/orders", orderRoutes);
 app.use("/api/upload", uploadRoutes);
 
 // 8. Errors
-app.use("/*catchAll", /* ... */);
+app.use("*", (req, res) => { // Fixed 404 handler syntax
+  res.status(404).json({
+    error: "Route not found",
+    path: req.originalUrl,
+    method: req.method,
+  });
+});
+
 app.use(errorHandler.handleErrors.bind(errorHandler));
 app.use(corsMiddleware.handleCorsError);
 
