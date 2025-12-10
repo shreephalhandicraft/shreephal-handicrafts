@@ -1,3 +1,23 @@
+const express = require("express");
+const cors = require("cors");
+const helmet = require("helmet");
+const compression = require("compression");
+const rateLimit = require("express-rate-limit");
+const path = require("path");
+
+const config = require("./config/environment");
+const errorHandler = require("./middleware/errorHandler");
+const corsMiddleware = require("./middleware/cors");
+
+// Route imports
+const paymentRoutes = require("./routes/payment");
+const orderRoutes = require("./routes/orders");
+const productRoutes = require("./routes/products");
+const userRoutes = require("./routes/users");
+const uploadRoutes = require("./routes/upload");
+const categoryRoutes = require("./routes/categories");
+const httpsRedirect = require("./middleware/httpsRedirect");
+
 const app = express();
 app.set("trust proxy", true);
 
