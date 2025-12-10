@@ -92,7 +92,8 @@ app.use("/api/orders", orderRoutes);
 app.use("/api/upload", uploadRoutes);
 
 // 8. Errors
-app.use("*", (req, res) => { // Fixed 404 handler syntax
+// Use regex syntax to match everything for 404
+app.use(/(.*)/, (req, res) => { 
   res.status(404).json({
     error: "Route not found",
     path: req.originalUrl,
