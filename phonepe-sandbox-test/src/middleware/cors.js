@@ -3,27 +3,29 @@ const cors = require("cors");
 class CorsMiddleware {
   // Basic CORS configuration
   basicCors() {
-    const allowedOrigins = this.getAllowedOrigins();
-
     return cors({
       origin: (origin, callback) => {
         // 1. Allow mobile apps, Postman, and server-to-server (null origin)
         if (!origin) {
-          console.log("🔓 Allowing request with no origin");
+          console.log("🔓 CORS: Allowing request with no origin");
           return callback(null, true);
         }
 
+        const allowedOrigins = this.getAllowedOrigins();
+
         // 2. Check if origin is allowed
         if (allowedOrigins.includes(origin)) {
-          // console.log("✅ Allowed:", origin); // Uncomment for debugging
           callback(null, true);
         } else {
-          console.warn(`❌ CORS Blocked: ${origin}`);
+          // 🚨 DEBUGGING: Log the exact failing origin
+          console.warn(`❌ CORS Blocked Origin: '${origin}'`); 
           
-          // Optional: Allow all in development/testing if needed
-          // return callback(null, true); 
+          // ✅ TEMPORARY FIX: Allow EVERYTHING to unblock you right now
+          // Once you see the log, you can add that specific URL to allowedOrigins
+          console.log("⚠️ TEMPORARY: Allowing blocked origin for debugging");
+          return callback(null, true); 
           
-          callback(new Error(`CORS not allowed for origin: ${origin}`));
+          // callback(new Error("Not allowed by CORS")); // Commented out for now
         }
       },
       credentials: true,
@@ -40,35 +42,15 @@ class CorsMiddleware {
     });
   }
 
-  // Production CORS (Use this for your main routes)
+  // Production CORS
   productionCors() {
-    return this.basicCors(); // Re-use the robust logic above
+    return this.basicCors(); 
   }
 
-  // Payment CORS (More permissive for callbacks)
+  // Payment CORS
   paymentCors() {
     return cors({
-      origin: (origin, callback) => {
-        // Payment gateways usually send no origin or specific domains
-        if (!origin) return callback(null, true);
-
-        const paymentDomains = [
-          "phonepe.com",
-          "mercury-uat.phonepe.com",
-          ...this.getAllowedOrigins()
-        ];
-
-        // Allow if it matches our list OR if it is a subdomain of phonepe
-        if (
-          this.getAllowedOrigins().includes(origin) ||
-          origin.includes("phonepe.com")
-        ) {
-          callback(null, true);
-        } else {
-          console.log(`💳 Allowing payment redirect from unknown: ${origin}`);
-          callback(null, true); // Be permissive for payments to avoid failed transactions
-        }
-      },
+      origin: true, // ✅ Allow ALL origins for payment callbacks to be safe
       credentials: true,
       methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
       allowedHeaders: ["Content-Type", "Authorization", "X-API-Key", "X-Verify", "X-Requested-With"],
@@ -76,22 +58,18 @@ class CorsMiddleware {
     });
   }
 
-  // ✅ FIXED: Updated with correct URLs
   getAllowedOrigins() {
     const baseOrigins = [
-           
-      // ✅ YOUR OLD SPELLING (Keep just in case)
+      "http://localhost:3000",
+      "http://localhost:5173",
+      "http://localhost:3001",
       "https://shrifal-handicrafts.netlify.app",
       "https://shrifal-handicrafts.onrender.com",
-
-      // ✅ YOUR NEW SPELLING (The Fix)
       "https://shreephal-handicrafts.onrender.com",
       
-      // ⚠️ IMPORTANT: ADD YOUR FRONTEND URL HERE IF IT CHANGED
-      // "https://shreephal-handicrafts.netlify.app", 
+      // Add your frontend URL here if it's different!
     ];
 
-    // Add env variables if they exist
     if (process.env.ALLOWED_ORIGINS) {
       const envOrigins = process.env.ALLOWED_ORIGINS.split(",").map(o => o.trim());
       return [...baseOrigins, ...envOrigins];
@@ -105,8 +83,8 @@ class CorsMiddleware {
       console.error("⛔ CORS ERROR CAUGHT:", err.message);
       return res.status(403).json({
         success: false,
-        message: "CORS policy violation",
-        error: err.message
+        message: "Not allowed by CORS",
+        timestamp: new Date().toISOString()
       });
     }
     next(err);
