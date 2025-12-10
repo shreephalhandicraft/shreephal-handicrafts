@@ -23,7 +23,7 @@ const ProductVariants = ({ variants, selectedVariant, onVariantSelect }) => {
   if (!variants || variants.length === 0) return null;
 
   const formatPrice = (priceInPaise) =>
-    ((priceInPaise || 0) / 100).toLocaleString("en-IN");
+    (priceInPaise || 0).toLocaleString("en-IN");
 
   return (
     <div className="space-y-4 p-6 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl border border-blue-200">

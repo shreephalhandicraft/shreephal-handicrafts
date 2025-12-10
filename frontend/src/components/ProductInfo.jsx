@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 
 const formatPrice = (priceInPaise) =>
-  ((priceInPaise || 0) / 100).toLocaleString("en-IN");
+  (priceInPaise || 0).toLocaleString("en-IN");
 
 const formatDimensions = (dimensions) => {
   if (!dimensions) return null;

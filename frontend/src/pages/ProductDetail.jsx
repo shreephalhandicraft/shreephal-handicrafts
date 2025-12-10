@@ -171,7 +171,7 @@ const ProductDetail = () => {
   const maxQuantity = product?.max_order_qty || 50;
 
   const formatPrice = (priceInPaise) =>
-    ((priceInPaise || 0) / 100).toLocaleString("en-IN");
+    (priceInPaise || 0).toLocaleString("en-IN");
 
   // Action handlers
   const handleVariantSelect = (variant) => {
@@ -209,7 +209,7 @@ const ProductDetail = () => {
       productId: product.id,
       variantId: selectedVariant?.id,
       name: product.title,
-      price: getCurrentPrice() / 100,
+      price: getCurrentPrice(),
       image: product.image_url,
       quantity: quantity,
       variant: selectedVariant
