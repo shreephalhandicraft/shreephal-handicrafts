@@ -21,7 +21,7 @@ describe("About Page", () => {
   describe("Hero Section", () => {
     it("should display the main heading", () => {
       cy.get("h1")
-        .should("contain.text", "About Shrifal Handicraft")
+        .should("contain.text", "About Shreephal-Handicrafts")
         .and("have.class", "text-4xl")
         .and("have.class", "md:text-5xl")
         .and("be.visible");
@@ -54,7 +54,7 @@ describe("About Page", () => {
     });
 
     it("should display story content paragraphs", () => {
-      cy.contains("Founded in 2020, Shrifal Handicraft began").should(
+      cy.contains("Founded in 2020, Shreephal-Handicrafts began").should(
         "be.visible"
       );
       cy.contains("What started as a local shop").should("be.visible");
@@ -158,7 +158,7 @@ describe("About Page", () => {
         .and("have.class", "text-3xl");
 
       cy.contains(
-        "The passionate individuals behind Shrifal Handicraft"
+        "The passionate individuals behind Shreephal-Handicrafts"
       ).should("be.visible");
     });
 
@@ -295,11 +295,11 @@ describe("About Page", () => {
       cy.visit("/about");
 
       // Wait until at least one occurrence is visible
-      cy.contains("Shrifal Handicraft").should("be.visible");
+      cy.contains("Shreephal-Handicrafts").should("be.visible");
 
       cy.get("body").then(($body) => {
         const text = $body.text();
-        const matches = (text.match(/Shrifal Handicraft/g) || []).length;
+        const matches = (text.match(/Shreephal-Handicrafts/g) || []).length;
         expect(matches).to.be.at.least(3);
       });
     });
@@ -390,7 +390,7 @@ describe("About Page", () => {
       cy.scrollTo("bottom");
       cy.contains("Meet Our Team").should("be.visible");
       cy.scrollTo("top");
-      cy.contains("About Shrifal Handicraft").should("be.visible");
+      cy.contains("About Shreephal-Handicrafts").should("be.visible");
     });
 
     it("should maintain visual hierarchy throughout", () => {

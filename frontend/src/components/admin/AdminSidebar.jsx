@@ -95,7 +95,7 @@ export function AdminSidebar() {
             {!collapsed && (
               <div className="flex flex-col">
                 <span className="text-sm font-semibold text-sidebar-foreground">
-                  Shrifal Handicrafts
+                  Shreephal-Handicraftss
                 </span>
                 <span className="text-xs text-sidebar-foreground/70">
                   Admin Panel

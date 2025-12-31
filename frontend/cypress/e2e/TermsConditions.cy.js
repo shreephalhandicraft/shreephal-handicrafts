@@ -40,9 +40,9 @@ describe("Terms and Conditions Page", () => {
 
     it("should display acceptance of terms section content", () => {
       cy.contains("h2", "1. Acceptance of Terms").should("be.visible");
-      cy.contains("By accessing and using Shrifal Handicraft's website").should(
-        "be.visible"
-      );
+      cy.contains(
+        "By accessing and using Shreephal-Handicrafts's website"
+      ).should("be.visible");
       cy.contains("please do not use this service").should("be.visible");
     });
 
@@ -70,7 +70,9 @@ describe("Terms and Conditions Page", () => {
 
     it("should display contact information section", () => {
       cy.contains("h2", "10. Contact Information").should("be.visible");
-      cy.contains("Shrifal Handicraft Customer Service").should("be.visible");
+      cy.contains("Shreephal-Handicrafts Customer Service").should(
+        "be.visible"
+      );
       cy.contains("legal@trophytale.com").should("be.visible");
       cy.contains("1-800-TROPHY-1").should("be.visible");
       cy.contains("123 Trophy Lane, Achievement City, AC 12345").should(
@@ -92,7 +94,7 @@ describe("Terms and Conditions Page", () => {
     });
 
     it("should display contact information in a highlighted box", () => {
-      cy.contains("Shrifal Handicraft Customer Service")
+      cy.contains("Shreephal-Handicrafts Customer Service")
         .parent()
         .should("have.class", "bg-muted")
         .and("have.class", "rounded-lg");
@@ -174,11 +176,11 @@ describe("Terms and Conditions Page", () => {
     });
 
     it("should have consistent company name usage", () => {
-      cy.get("body").should("contain.text", "Shrifal Handicraft");
+      cy.get("body").should("contain.text", "Shreephal-Handicrafts");
       // Fixed: More flexible counting
       cy.get("body").then(($body) => {
         const text = $body.text();
-        const matches = (text.match(/Shrifal Handicraft/g) || []).length;
+        const matches = (text.match(/Shreephal-Handicrafts/g) || []).length;
         expect(matches).to.be.at.least(5);
       });
     });

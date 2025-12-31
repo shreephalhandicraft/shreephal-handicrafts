@@ -195,7 +195,7 @@ export function DashboardOverview({ dashboardData }) {
             Dashboard Overview
           </h1>
           <p className="text-muted-foreground text-sm sm:text-base lg:text-lg max-w-2xl">
-            Welcome back! Here's what's happening with Shrifal Handicrafts
+            Welcome back! Here's what's happening with Shreephal-Handicraftss
             today.
           </p>
         </div>

@@ -15,7 +15,7 @@ const testimonials = [
     role: "Office Manager",
     image: "/placeholder.svg",
     rating: 5,
-    text: "We ordered personalized key holders for our office team. The craftsmanship is excellent and the delivery was super fast. Highly recommend Shrifal Handicraft!",
+    text: "We ordered personalized key holders for our office team. The craftsmanship is excellent and the delivery was super fast. Highly recommend Shreephal-Handicrafts!",
   },
   {
     id: 3,
@@ -31,7 +31,7 @@ const testimonials = [
     role: "Sports Coach",
     image: "/placeholder.svg",
     rating: 5,
-    text: "Shrifal Handicraft has been our go-to for all team awards. Consistent quality, fair prices, and they always deliver on time. The kids love their personalized trophies!",
+    text: "Shreephal-Handicrafts has been our go-to for all team awards. Consistent quality, fair prices, and they always deliver on time. The kids love their personalized trophies!",
   },
 ];
 
@@ -45,7 +45,7 @@ export const HappyCustomers = () => {
           </h2>
           <p className="text-xl text-gray-600 max-w-2xl mx-auto">
             Don't just take our word for it - hear what our satisfied customers
-            have to say about their Shrifal Handicraft experience.
+            have to say about their Shreephal-Handicrafts experience.
           </p>
         </div>
 

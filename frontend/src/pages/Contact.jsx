@@ -301,14 +301,14 @@ const Contact = () => {
                   allowFullScreen
                   loading="lazy"
                   referrerPolicy="no-referrer-when-downgrade"
-                  title="Shrifal Handicraft Location"
+                  title="Shreephal-Handicrafts Location"
                 />
               </div>
               <div className="p-6 bg-white border-t">
                 <div className="flex items-center justify-between flex-wrap gap-4">
                   <div>
                     <h3 className="font-semibold text-gray-900 mb-1">
-                      Shrifal Handicraft Store
+                      Shreephal-Handicrafts Store
                     </h3>
                     <p className="text-gray-600">
                       Main Road, Kachiyana, Lordganj, Jabalpur, Madhya Pradesh

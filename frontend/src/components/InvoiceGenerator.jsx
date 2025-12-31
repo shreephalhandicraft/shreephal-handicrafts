@@ -135,7 +135,7 @@ const InvoiceGenerator = ({ order, onClose }) => {
                 </div>
                 <div>
                   <h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900">
-                    Shrifal Handicrafts
+                    Shreephal-Handicraftss
                   </h1>
                   <p className="text-xs sm:text-sm text-gray-600">
                     Premium Handicraft Solutions
@@ -169,7 +169,7 @@ const InvoiceGenerator = ({ order, onClose }) => {
                 <div className="space-y-2 text-xs sm:text-sm">
                   <div className="flex items-center gap-2">
                     <Building2 className="h-3 w-3 sm:h-4 sm:w-4 text-gray-600 flex-shrink-0" />
-                    <span className="font-medium">Shrifal Handicrafts</span>
+                    <span className="font-medium">Shreephal-Handicraftss</span>
                   </div>
                   <div className="flex items-start gap-2">
                     <MapPin className="h-3 w-3 sm:h-4 sm:w-4 text-gray-600 mt-0.5 flex-shrink-0" />

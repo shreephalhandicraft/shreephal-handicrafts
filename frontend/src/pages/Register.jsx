@@ -126,7 +126,7 @@ const Register = () => {
                 Create Account
               </h1>
               <p className="text-gray-600">
-                Join Shrifal Handicraft and start customizing
+                Join Shreephal-Handicrafts and start customizing
               </p>
             </div>
 
