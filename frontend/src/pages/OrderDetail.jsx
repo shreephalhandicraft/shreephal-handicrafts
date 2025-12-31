@@ -41,7 +41,7 @@ import { supabase } from "@/lib/supabaseClient";
 // PayNow configuration
 const PHONEPE_PAY_URL =
   process.env.NODE_ENV === "production"
-    ? "https://shrifal-handicrafts.onrender.com/pay" // Replace with your actual Render URL
+    ? "https://Shreephal-Handicrafts.onrender.com/pay" // Replace with your actual Render URL
     : "http://localhost:3000/pay";
 
 // Add this helper function at the top of your component, after the imports

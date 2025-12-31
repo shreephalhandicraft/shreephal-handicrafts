@@ -188,15 +188,27 @@ export default function PrivacyPolicy() {
                   data practices, please contact us:
                 </p>
                 <div className="mt-4 p-4 bg-muted rounded-lg">
-                  <p className="font-medium">Shrifal Handicraft Privacy Team</p>
+                  {" "}
+                  <p className="font-medium">
+                    Shreephal Handicrafts Support
+                  </p>{" "}
                   <p className="text-muted-foreground">
-                    Email: privacy@trophytale.com
-                  </p>
-                  <p className="text-muted-foreground">Phone: 1-800-TROPHY-1</p>
+                    {" "}
+                    Email:{" "}
+                    <a href="mailto:support@shreephal-handicrafts.com">
+                      {" "}
+                      shreephalhandicraft@gmail.com{" "}
+                    </a>{" "}
+                  </p>{" "}
                   <p className="text-muted-foreground">
-                    Address: 123 Trophy Lane, Achievement City, AC 12345
-                  </p>
-                </div>
+                    Phone: +91-9424626008
+                  </p>{" "}
+                  <p className="text-muted-foreground">
+                    {" "}
+                    Address: Main Road, Kachiyana, Lordganj , Jabalpur , Madhya
+                    Pradesh{" "}
+                  </p>{" "}
+                </div>{" "}
               </section>
             </CardContent>
           </Card>

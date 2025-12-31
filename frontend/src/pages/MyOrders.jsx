@@ -35,7 +35,7 @@ import {
 // PayNow configuration
 const PHONEPE_PAY_URL =
   process.env.NODE_ENV === "production"
-    ? "https://shrifal-handicrafts.onrender.com/pay" // Replace with your actual Render URL
+    ? "https://Shreephal-Handicrafts.onrender.com/pay" // Replace with your actual Render URL
     : "http://localhost:3000/pay";
 
 const getStatusIcon = (status) => {

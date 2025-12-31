@@ -65,7 +65,7 @@ export const Footer = () => {
           <div className="space-y-4 sm:space-y-6">
             <div>
               <h3 className="text-xl sm:text-2xl font-bold text-primary mb-3 sm:mb-4">
-                Shrifal-Handicrafts
+                Shreephal-Handicrafts
               </h3>
               <p className="text-sm sm:text-base text-gray-300 leading-relaxed mb-4 sm:mb-6">
                 Creating beautiful, customized trophies, mementos, and gifts
@@ -156,7 +156,7 @@ export const Footer = () => {
                   to: "/category/calendars/products",
                   label: "Custom Calendars",
                 },
-             
+
                 { to: "/shop", label: "View All Products" },
               ].map((link) => (
                 <li key={link.to}>
@@ -209,7 +209,7 @@ export const Footer = () => {
                     Email Us
                   </p>
                   <p className="text-sm sm:text-base text-white font-medium break-all">
-                    910761ranu@gmail.com
+                    shreephalhandicraft@gmail.com
                   </p>
                 </div>
               </a>
@@ -243,7 +243,7 @@ export const Footer = () => {
           <div className="flex flex-col sm:flex-row justify-between items-center space-y-4 sm:space-y-0">
             <div className="flex flex-col sm:flex-row items-center space-y-2 sm:space-y-0 sm:space-x-6 text-center sm:text-left">
               <p className="text-sm text-gray-400">
-                &copy; 2024 Shrifal-Handicrafts. All rights reserved.
+                &copy; 2024 Shreephal-Handicrafts. All rights reserved.
               </p>
               <div className="flex items-center space-x-4 text-xs sm:text-sm">
                 <Link
@@ -258,6 +258,13 @@ export const Footer = () => {
                   className="text-gray-400 hover:text-primary transition-colors"
                 >
                   Privacy Policy
+                </Link>
+                <span className="text-gray-600">•</span>
+                <Link
+                  to="/refund-policy"
+                  className="text-gray-400 hover:text-primary transition-colors"
+                >
+                  Refund Policy
                 </Link>
               </div>
             </div>

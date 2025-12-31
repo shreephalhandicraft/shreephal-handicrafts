@@ -130,11 +130,11 @@ export const Header = () => {
           >
             <img
               src="/shrifal.svg"
-              alt="Shrifal-Handicrafts"
+              alt="Shreephal-Handicrafts"
               className="h-8 sm:h-10 md:h-12 lg:h-16 w-auto flex-shrink-0"
             />
             <span className="text-sm sm:text-base md:text-lg lg:text-xl xl:text-2xl font-bold text-primary truncate">
-              <span className="hidden sm:inline">Shrifal-Handicrafts</span>
+              <span className="hidden sm:inline">Shreephal-Handicrafts</span>
               <span className="sm:hidden">Shrifal</span>
             </span>
           </Link>

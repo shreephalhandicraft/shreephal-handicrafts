@@ -32,6 +32,7 @@ import OrderDetail from "./pages/OrderDetail";
 import PersonalDetails from "./pages/PersonalDetails";
 import TermsConditions from "./pages/TermsConditions";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
+import RefundPolicy from "./pages/RefundPolicy";
 import NotFound from "./pages/NotFound";
 import UnauthorizedPage from "./pages/UnauthorizedPage";
 
@@ -121,6 +122,14 @@ const App = () => (
                   element={
                     <GuestRoute>
                       <PrivacyPolicy />
+                    </GuestRoute>
+                  }
+                />
+                <Route
+                  path="/refund-policy"
+                  element={
+                    <GuestRoute>
+                      <RefundPolicy />
                     </GuestRoute>
                   }
                 />
