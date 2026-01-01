@@ -157,6 +157,8 @@ export const CartProvider = ({ children }) => {
               id,
               title,
               price,
+               gst_5pct,     
+               gst_18pct,
               image_url,
               category_id,
               categories!category_id (
@@ -182,12 +184,24 @@ export const CartProvider = ({ children }) => {
             const detailedItem = localCartDetails.find(
               (local) => (local.productId || local.id) === item.product_id
             );
+            const basePrice = item.products?.price || 0;
+            let gstRate = 0;
+            if (item.products?.gst_5pct) {
+              gstRate = 0.05;
+            } else if (item.products?.gst_18pct) {
+              gstRate = 0.18;
+            }
+            const gstAmount = basePrice * gstRate;
+            const priceWithGst = basePrice + gstAmount;
 
             return {
               id: item.product_id,
               productId: item.product_id,
               name: item.products?.title,
-              price: item.products?.price || 0,
+              price: basePrice, // Base price for display
+              gstRate, // GST %
+              gstAmount, // GST ₹
+              priceWithGst, // Total with GST for calculations
               image: item.products?.image_url,
               category: item.products?.categories?.name || "Product",
               quantity: item.quantity,
@@ -368,10 +382,20 @@ export const CartProvider = ({ children }) => {
     }
   };
 
+  // In CartContext.jsx - Add to transformedItems & value export
+  const getBasePrice = () =>
+    cartItems.reduce((total, item) => total + item.price * item.quantity, 0);
+
+  const getTotalGST = () =>
+    cartItems.reduce(
+      (total, item) => total + item.gstAmount * item.quantity,
+      0
+    );
+
   // Rest of your existing functions...
   const getTotalPrice = () => {
     return cartItems.reduce(
-      (total, item) => total + (item.price || 0) * item.quantity,
+      (total, item) => total + item.priceWithGst * item.quantity,
       0
     );
   };
@@ -462,6 +486,8 @@ export const CartProvider = ({ children }) => {
     clearCart,
     getTotalPrice,
     getTotalItems,
+    getBasePrice,
+    getTotalGST,
     getCartForCheckout,
     fetchCartItems,
     syncCartToDatabase,

@@ -78,8 +78,7 @@ const InvoiceGenerator = ({ order, onClose }) => {
   dueDate.setDate(dueDate.getDate() + 30);
 
   const allItems = [...(order.items || []), ...(order.catalog_items || [])];
-  const subtotal = Number(order.amount) / 1.08;
-  const tax = Number(order.amount) - subtotal;
+  const subtotal = (Number(order.amount) / 1.08).toFixed();
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4">
@@ -379,7 +378,10 @@ const InvoiceGenerator = ({ order, onClose }) => {
                     <div className="flex justify-between text-base sm:text-lg font-bold">
                       <span>Total:</span>
                       <span className="text-primary">
-                        ₹{Number(order.amount).toLocaleString()}
+                        ₹
+                        {(Number(order.amount) / 1.08)
+                          .toFixed(2)
+                          .toLocaleString()}{" "}
                       </span>
                     </div>
                   </div>

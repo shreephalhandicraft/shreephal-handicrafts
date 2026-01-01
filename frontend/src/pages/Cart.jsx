@@ -303,35 +303,55 @@ const Cart = () => {
             </div>
 
             {/* Order Summary */}
+            {/* Order Summary - BULLETPROOF VERSION */}
             <div className="bg-gray-50 rounded-lg p-6 h-fit">
               <h2 className="text-xl font-semibold text-gray-900 mb-4">
-                Order Summary
+                Order Summary ({items.length} items)
               </h2>
-              <div className="space-y-3 mb-6">
+
+              <div className="space-y-3 mb-6 text-sm">
+                {/* Base Price - Direct calculation */}
                 <div className="flex justify-between">
-                  <span className="text-gray-600">
-                    Items ({getTotalItems()})
-                  </span>
-                  <span className="font-medium">
-                    ₹{getTotalPrice().toFixed(2)}
+                  <span className="text-gray-600 font-medium">Subtotal</span>
+                  <span className="font-semibold">
+                    ₹
+                    {items
+                      .reduce((sum, i) => sum + i.price * i.quantity, 0)
+                      .toFixed(2)}
                   </span>
                 </div>
+
+                {/* GST - Direct from CartContext items */}
+                <div className="flex justify-between text-orange-600 font-semibold">
+                  <span>GST</span>
+                  <span>
+                    + ₹
+                    {items
+                      .reduce((sum, i) => sum + i.gstAmount * i.quantity, 0)
+                      .toFixed(2)}
+                  </span>
+                </div>
+
                 <div className="flex justify-between">
                   <span className="text-gray-600">Shipping</span>
-                  <span className="font-medium">Free</span>
+                  <span className="text-green-600 font-medium">FREE</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Tax (8%)</span>
-                  <span className="font-medium">
-                    ₹{(getTotalPrice() * 0.08).toFixed(2)}
-                  </span>
-                </div>
+
                 <div className="border-t pt-3">
-                  <div className="flex justify-between">
-                    <span className="text-lg font-semibold">Total</span>
-                    <span className="text-lg font-bold text-primary">
-                      ₹{(getTotalPrice() * 1.08).toFixed(2)}
+                  <div className="flex justify-between text-lg font-bold">
+                    <span>Total</span>
+                    <span className="text-primary text-xl">
+                      ₹
+                      {items
+                        .reduce(
+                          (sum, i) => sum + i.priceWithGst * i.quantity,
+                          0
+                        )
+                        .toFixed(2)}
                     </span>
+                  </div>
+                  <div className="text-xs text-gray-500 text-right mt-1">
+                    Incl. GST (5%/18% per product)
                   </div>
                 </div>
               </div>

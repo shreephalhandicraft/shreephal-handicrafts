@@ -26,6 +26,9 @@ export default function AddProductPage() {
     text_input: false,
     image_upload: false,
   });
+  const [gst_5pct, setGst5pct] = useState(false);
+  const [gst_18pct, setGst18pct] = useState(false);
+
   const [catalogNumber, setCatalogNumber] = useState("");
   // Variants (maximum 3)
   const [variants, setVariants] = useState([
@@ -162,8 +165,11 @@ export default function AddProductPage() {
       customizable_fields: customizableFields,
       featured,
       catalog_number: catalogNumber.trim(),
+      gst_5pct, // Add this line
+      gst_18pct, // Add this line
       created_at: new Date().toISOString(),
     };
+
     const { data: prodData, error } = await supabase
       .from("products")
       .insert([newProduct])
@@ -483,6 +489,47 @@ export default function AddProductPage() {
             className="font-medium text-gray-700 cursor-pointer"
           >
             Allow Custom Image Upload
+          </Label>
+        </div>
+      </fieldset>
+      <fieldset className="border border-gray-300 rounded-md p-4 space-y-4">
+        <legend className="text-lg font-semibold text-gray-700 mb-4">
+          GST Tax Rate
+        </legend>
+        <div className="flex items-center space-x-2">
+          <input
+            id="gst-5pct"
+            type="checkbox"
+            checked={gst_5pct || false}
+            onChange={(e) => {
+              setGst5pct(e.target.checked);
+              if (e.target.checked) setGst18pct(false);
+            }}
+            className="h-5 w-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+          />
+          <Label
+            htmlFor="gst-5pct"
+            className="font-medium text-gray-700 cursor-pointer"
+          >
+            GST 5%
+          </Label>
+        </div>
+        <div className="flex items-center space-x-2">
+          <input
+            id="gst-18pct"
+            type="checkbox"
+            checked={gst_18pct || false}
+            onChange={(e) => {
+              setGst18pct(e.target.checked);
+              if (e.target.checked) setGst5pct(false);
+            }}
+            className="h-5 w-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+          />
+          <Label
+            htmlFor="gst-18pct"
+            className="font-medium text-gray-700 cursor-pointer"
+          >
+            GST 18%
           </Label>
         </div>
       </fieldset>

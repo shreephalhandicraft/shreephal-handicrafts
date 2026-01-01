@@ -518,7 +518,10 @@ export default function MyOrders() {
                             ) : (
                               <>
                                 <CreditCard className="h-3 w-3 mr-1" />
-                                Pay ₹{Number(order.amount)?.toLocaleString()}
+                                Pay ₹
+                                {(Number(order.amount) / 1.08)
+                                  .toFixed(2)
+                                  ?.toLocaleString()}
                               </>
                             )}
                           </Button>
@@ -633,7 +636,10 @@ export default function MyOrders() {
 
                         <div className="text-left sm:text-right space-y-2">
                           <p className="text-lg sm:text-xl font-bold text-gray-900">
-                            ₹{Number(order.amount)?.toLocaleString() || "0"}
+                            ₹
+                            {(Number(order.amount) / 1.08)
+                              .toFixed(2)
+                              ?.toLocaleString() || "0"}
                           </p>
                           <div className="space-y-1">
                             {order.payment_method && (
@@ -863,7 +869,9 @@ export default function MyOrders() {
                               <>
                                 <CreditCard className="h-4 w-4 mr-2" />
                                 Pay Now - ₹
-                                {Number(order.amount)?.toLocaleString()}
+                                {(Number(order.amount) / 1.08)
+                                  .toFixed(2)
+                                  ?.toLocaleString()}
                               </>
                             )}
                           </Button>

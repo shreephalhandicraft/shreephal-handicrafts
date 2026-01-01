@@ -557,7 +557,10 @@ export default function OrderDetail() {
 
                     <div className="text-right">
                       <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900">
-                        ₹{Number(order.amount)?.toLocaleString() || "0"}
+                        ₹
+                        {(Number(order.amount) / 1.08)
+                          .toFixed(2)
+                          ?.toLocaleString() || "0"}
                       </p>
                       <Badge
                         className={`${getPaymentStatusColor(
@@ -604,7 +607,10 @@ export default function OrderDetail() {
                         ) : (
                           <>
                             <CreditCard className="h-4 w-4 mr-2" />
-                            Pay ₹{Number(order.amount)?.toLocaleString() || "0"}
+                            Pay ₹
+                            {(Number(order.amount) / 1.08)
+                              .toFixed(2)
+                              ?.toLocaleString() || "0"}
                           </>
                         )}
                       </Button>
@@ -868,16 +874,7 @@ export default function OrderDetail() {
                         <span>Subtotal</span>
                         <span>₹{(Number(order.amount) / 1.08).toFixed(2)}</span>
                       </div>
-                      <div className="flex justify-between text-sm">
-                        <span>Tax (8%)</span>
-                        <span>
-                          ₹
-                          {(
-                            Number(order.amount) -
-                            Number(order.amount) / 1.08
-                          ).toFixed(2)}
-                        </span>
-                      </div>
+
                       {order.shipping_cost && (
                         <div className="flex justify-between text-sm">
                           <span>Shipping</span>
@@ -890,7 +887,10 @@ export default function OrderDetail() {
                       <div className="flex justify-between font-bold text-base sm:text-lg">
                         <span>Total Paid</span>
                         <span>
-                          ₹{Number(order.amount)?.toLocaleString() || "0"}
+                          ₹
+                          {(Number(order.amount) / 1.08)
+                            .toFixed(2)
+                            ?.toLocaleString() || "0"}
                         </span>
                       </div>
                     </div>
@@ -1047,7 +1047,9 @@ export default function OrderDetail() {
                             <>
                               <CreditCard className="h-4 w-4 mr-2" />
                               Pay Now - ₹
-                              {Number(order.amount)?.toLocaleString() || "0"}
+                              {(Number(order.amount) / 1.08)
+                                .toFixed(2)
+                                ?.toLocaleString() || "0"}
                             </>
                           )}
                         </Button>

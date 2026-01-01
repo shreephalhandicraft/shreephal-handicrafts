@@ -42,7 +42,7 @@ export function OrdersListItem({ order, onView, onEdit, onDelete }) {
         <div className="flex items-center gap-4">
           <div className="text-center">
             <p className="font-medium text-foreground text-sm sm:text-base">
-              ₹{Number(order.amount) || 0}
+              ₹{(Number(order.amount) / 1.08).toFixed(2) || 0}
             </p>
             <p className="text-xs text-muted-foreground">Total</p>
           </div>
