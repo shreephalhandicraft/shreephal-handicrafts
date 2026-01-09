@@ -35,7 +35,7 @@ import {
   Search,
   Package,
   Filter,
-  Grid3x3,
+  LayoutGrid,
   List,
   Star,
   IndianRupee,
@@ -360,7 +360,7 @@ export function ProductsPage() {
                   onClick={() => setViewMode("grid")}
                   className="rounded-r-none"
                 >
-                  <Grid3x3 className="h-4 w-4" />
+                  <LayoutGrid className="h-4 w-4" />
                 </Button>
                 <Button
                   variant={viewMode === "list" ? "default" : "ghost"}
@@ -628,7 +628,8 @@ export function ProductsPage() {
             <AlertDialogAction
               onClick={handleDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >              Delete Product
+            >
+              Delete Product
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
