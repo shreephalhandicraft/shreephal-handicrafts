@@ -7,7 +7,7 @@ import {
   X,
   Star,
   Loader2,
-  Grid3x3,
+  LayoutGrid,
   List,
   ShoppingBag,
   Tag,
@@ -596,7 +596,7 @@ const Shop = () => {
                   onClick={() => setViewMode("grid")}
                   data-cy="grid-view-btn"
                 >
-                  <Grid3x3 className="h-4 w-4" />
+                  <LayoutGrid className="h-4 w-4" />
                 </Button>
                 <Button
                   variant={viewMode === "list" ? "default" : "outline"}
