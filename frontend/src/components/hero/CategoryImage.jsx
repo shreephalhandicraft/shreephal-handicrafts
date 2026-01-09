@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Award, Image, Key, Calendar, Package } from "lucide-react";
+import { getCardImageUrl, getResponsiveSrcSet, getImageSizes } from "@/utils/cloudinaryHelpers";
 
 // Icon mapping
 const iconMap = {
@@ -13,43 +14,20 @@ const iconMap = {
 export const CategoryImage = ({ category, className }) => {
   const [imageState, setImageState] = useState("loading");
   const [currentImageUrl, setCurrentImageUrl] = useState(null);
-
-  const getCloudinaryImageUrl = (imageUrl, transformation = "medium") => {
-    if (!imageUrl) return null;
-
-    if (imageUrl.includes("cloudinary.com")) {
-      const publicIdMatch = imageUrl.match(
-        /\/([^\/]+)\.(jpg|jpeg|png|webp|auto)$/i
-      );
-      if (publicIdMatch) {
-        const publicId = publicIdMatch[1];
-        const baseUrl =
-        //   process.env.REACT_APP_CLOUDINARY_BASE_URL ||
-        //   import.meta.env.VITE_CLOUDINARY_BASE_URL ||
-          "https://res.cloudinary.com/Shrifal-Handicraft/image/upload";
-
-        const transformations = {
-          thumbnail: "c_fill,h_200,q_auto,w_200,f_auto",
-          medium: "c_fill,h_400,q_auto,w_400,f_auto",
-          large: "c_fill,h_600,q_auto,w_600,f_auto",
-          square: "c_fill,h_300,q_auto,w_300,f_auto",
-          original: "q_auto,f_auto",
-        };
-
-        return `${baseUrl}/${
-          transformations[transformation] || transformations.square
-        }/${publicId}`;
-      }
-    }
-    return imageUrl;
-  };
+  const [srcSet, setSrcSet] = useState("");
 
   const IconComponent = iconMap[category.slug] || iconMap.default;
 
   useEffect(() => {
     if (category.image) {
-      const optimizedUrl = getCloudinaryImageUrl(category.image, "square");
+      // Get optimized WebP URL for card display (400x400)
+      const optimizedUrl = getCardImageUrl(category.image);
       setCurrentImageUrl(optimizedUrl);
+      
+      // Generate responsive srcSet for different screen sizes
+      const responsiveSrcSet = getResponsiveSrcSet(category.image, [320, 400, 640, 768]);
+      setSrcSet(responsiveSrcSet);
+      
       setImageState("loading");
     } else {
       setImageState("no-image");
@@ -59,8 +37,10 @@ export const CategoryImage = ({ category, className }) => {
   const handleImageLoad = () => setImageState("loaded");
 
   const handleImageError = () => {
+    // Fallback to original URL if optimized URL fails
     if (currentImageUrl !== category.image && category.image) {
       setCurrentImageUrl(category.image);
+      setSrcSet(""); // Clear srcSet on error
     } else {
       setImageState("error");
     }
@@ -90,6 +70,8 @@ export const CategoryImage = ({ category, className }) => {
       {currentImageUrl && (
         <img
           src={currentImageUrl}
+          srcSet={srcSet}
+          sizes={getImageSizes('card')}
           alt={category.name}
           className={`w-full h-full object-cover transition-all duration-700 group-hover:scale-110 ${
             imageState === "loaded" ? "opacity-100" : "opacity-0"
@@ -97,6 +79,7 @@ export const CategoryImage = ({ category, className }) => {
           onLoad={handleImageLoad}
           onError={handleImageError}
           loading="lazy"
+          decoding="async"
         />
       )}
 
