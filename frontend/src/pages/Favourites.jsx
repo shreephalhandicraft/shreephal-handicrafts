@@ -1,17 +1,28 @@
 import { Link } from "react-router-dom";
 import { Layout } from "@/components/Layout";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Heart, ShoppingCart, Trash2, Star } from "lucide-react";
 import { useFavourites } from "@/contexts/FavouritesContext";
-import { Star, Heart, ShoppingCart } from "lucide-react";
 import { useCart } from "@/contexts/CartContext";
 import { useToast } from "@/hooks/use-toast";
+import { SEOHead } from "@/components/SEO/SEOHead";
+import { PAGE_SEO } from "@/config/seoConfig";
 
 const Favourites = () => {
-  const { favourites, removeFromFavourites } = useFavourites();
-  const { addItem } = useCart();
+  const { items, removeFromFavourites } = useFavourites();
+  const { addToCart } = useCart();
   const { toast } = useToast();
 
-  const handleRemoveFromFavourites = (id) => {
+  const handleAddToCart = (item) => {
+    addToCart(item);
+    toast({
+      title: "Added to Cart",
+      description: `${item.name} has been added to your cart.`,
+    });
+  };
+
+  const handleRemove = (id) => {
     removeFromFavourites(id);
     toast({
       title: "Removed from Favourites",
@@ -19,34 +30,26 @@ const Favourites = () => {
     });
   };
 
-  const handleAddToCart = (product) => {
-    addItem({
-      id: product.id,
-      name: product.name,
-      price: product.price,
-      image: product.image,
-    });
-
-    toast({
-      title: "Added to Cart!",
-      description: `${product.name} has been added to your cart.`,
-    });
-  };
-
-  if (favourites.length === 0) {
+  if (items.length === 0) {
     return (
       <Layout>
+        <SEOHead
+          title={PAGE_SEO.favourites.title}
+          description={PAGE_SEO.favourites.description}
+          keywords={PAGE_SEO.favourites.keywords}
+          path={PAGE_SEO.favourites.path}
+        />
         <div className="py-20">
           <div className="container mx-auto px-4 text-center">
-            <Heart className="h-16 w-16 text-gray-400 mx-auto mb-6" />
+            <Heart className="h-24 w-24 text-gray-300 mx-auto mb-6" />
             <h1 className="text-3xl font-bold text-gray-900 mb-4">
-              Your Favourites
+              Your Favourites is Empty
             </h1>
             <p className="text-gray-600 mb-8">
-              You haven't added any items to your favourites yet.
+              Start adding items to your favourites to see them here.
             </p>
             <Link to="/shop">
-              <Button size="lg">Start Shopping</Button>
+              <Button size="lg">Explore Products</Button>
             </Link>
           </div>
         </div>
@@ -56,69 +59,87 @@ const Favourites = () => {
 
   return (
     <Layout>
-      <div className="py-8">
-        <div className="container mx-auto px-4">
-          <h1 className="text-3xl font-bold text-gray-900 mb-8">
-            Your Favourites
-          </h1>
+      {/* SEO Metadata */}
+      <SEOHead
+        title={PAGE_SEO.favourites.title}
+        description={PAGE_SEO.favourites.description}
+        keywords={PAGE_SEO.favourites.keywords}
+        path={PAGE_SEO.favourites.path}
+      />
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-            {favourites.map((product) => (
+      <div className="py-12">
+        <div className="container mx-auto px-4">
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">
+                My Favourites
+              </h1>
+              <p className="text-gray-600">
+                {items.length} {items.length === 1 ? "item" : "items"} saved
+              </p>
+            </div>
+            <Link to="/shop">
+              <Button variant="outline">Continue Shopping</Button>
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {items.map((item) => (
               <div
-                key={product.id}
-                className="bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden group"
+                key={item.id}
+                className="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all duration-300 border border-gray-100"
               >
-                {/* Product Image */}
-                <div className="relative aspect-square bg-gray-100 overflow-hidden">
+                <div className="relative aspect-[4/3]">
                   <img
-                    src={product.image}
-                    alt={product.name}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    src={item.image}
+                    alt={item.name}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      e.target.src =
+                        "https://via.placeholder.com/300x225?text=No+Image";
+                    }}
                   />
                   <button
-                    onClick={() => handleRemoveFromFavourites(product.id)}
-                    className="absolute top-4 right-4 p-2 bg-white rounded-full shadow-md hover:bg-gray-50 transition-colors"
+                    onClick={() => handleRemove(item.id)}
+                    className="absolute top-3 right-3 p-2 bg-white/90 backdrop-blur-sm rounded-full shadow-lg hover:bg-white transition-all hover:scale-110"
                   >
-                    <Heart className="h-4 w-4 text-red-500 fill-current" />
+                    <Trash2 className="h-4 w-4 text-red-500" />
                   </button>
+                  <div className="absolute top-3 left-3">
+                    <Badge
+                      variant="secondary"
+                      className="bg-white/90 backdrop-blur-sm"
+                    >
+                      {item.category}
+                    </Badge>
+                  </div>
                 </div>
 
-                {/* Product Info */}
-                <div className="p-6">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm text-primary font-medium">
-                      {product.category}
-                    </span>
-                    <div className="flex items-center">
-                      <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                      <span className="text-sm text-gray-600 ml-1">
-                        {product.rating}
-                      </span>
-                    </div>
-                  </div>
-
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                    {product.name}
+                <div className="p-4">
+                  <h3 className="font-semibold text-gray-900 mb-2 line-clamp-2">
+                    {item.name}
                   </h3>
-
-                  <div className="flex items-center justify-between">
-                    <span className="text-2xl font-bold text-primary">
-                      ${product.price}
-                    </span>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleAddToCart(product)}
-                      >
-                        <ShoppingCart className="h-4 w-4 mr-1" />
-                        Add to Cart
-                      </Button>
-                      <Link to={`/category/${slug}/products/${product.id}`}>
-                        <Button size="sm">View</Button>
-                      </Link>
+                  
+                  {item.rating && (
+                    <div className="flex items-center mb-2">
+                      <Star className="h-4 w-4 text-yellow-400 fill-current" />
+                      <span className="text-sm ml-1">{item.rating}</span>
                     </div>
+                  )}
+
+                  <div className="flex items-center justify-between mb-4">
+                    <span className="text-2xl font-bold text-primary">
+                      ₹{item.price}
+                    </span>
                   </div>
+
+                  <Button
+                    onClick={() => handleAddToCart(item)}
+                    className="w-full"
+                  >
+                    <ShoppingCart className="h-4 w-4 mr-2" />
+                    Add to Cart
+                  </Button>
                 </div>
               </div>
             ))}
