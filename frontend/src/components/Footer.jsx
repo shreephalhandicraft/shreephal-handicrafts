@@ -73,7 +73,7 @@ export const Footer = () => {
               </p>
             </div>
 
-            {/* Social Media */}
+            {/* Social Media - FIXED ACCESSIBILITY */}
             <div>
               <h5 className="text-sm font-semibold mb-3 text-gray-200">
                 Follow Us
@@ -83,25 +83,28 @@ export const Footer = () => {
                   href="https://facebook.com/shrifalhandicrafts"
                   target="_blank"
                   rel="noopener noreferrer"
+                  aria-label="Follow us on Facebook"
                   className="group p-2 sm:p-3 rounded-full bg-white/10 hover:bg-primary/20 border border-white/20 hover:border-primary/50 transition-all duration-300"
                 >
-                  <Facebook className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400 group-hover:text-primary transition-colors" />
+                  <Facebook className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400 group-hover:text-primary transition-colors" aria-hidden="true" />
                 </a>
                 <a
                   href="https://instagram.com/shrifalhandicrafts"
                   target="_blank"
                   rel="noopener noreferrer"
+                  aria-label="Follow us on Instagram"
                   className="group p-2 sm:p-3 rounded-full bg-white/10 hover:bg-primary/20 border border-white/20 hover:border-primary/50 transition-all duration-300"
                 >
-                  <Instagram className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400 group-hover:text-primary transition-colors" />
+                  <Instagram className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400 group-hover:text-primary transition-colors" aria-hidden="true" />
                 </a>
                 <a
                   href="https://twitter.com/shrifalhandicrafts"
                   target="_blank"
                   rel="noopener noreferrer"
+                  aria-label="Follow us on Twitter"
                   className="group p-2 sm:p-3 rounded-full bg-white/10 hover:bg-primary/20 border border-white/20 hover:border-primary/50 transition-all duration-300"
                 >
-                  <Twitter className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400 group-hover:text-primary transition-colors" />
+                  <Twitter className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400 group-hover:text-primary transition-colors" aria-hidden="true" />
                 </a>
               </div>
             </div>
@@ -126,7 +129,7 @@ export const Footer = () => {
                     to={link.to}
                     className="group flex items-center text-sm sm:text-base text-gray-300 hover:text-primary transition-all duration-300"
                   >
-                    <ArrowRight className="h-3 w-3 sm:h-4 sm:w-4 mr-2 opacity-0 group-hover:opacity-100 transform -translate-x-2 group-hover:translate-x-0 transition-all duration-300" />
+                    <ArrowRight className="h-3 w-3 sm:h-4 sm:w-4 mr-2 opacity-0 group-hover:opacity-100 transform -translate-x-2 group-hover:translate-x-0 transition-all duration-300" aria-hidden="true" />
                     <span className="group-hover:translate-x-1 transition-transform duration-300">
                       {link.label}
                     </span>
@@ -164,7 +167,7 @@ export const Footer = () => {
                     to={link.to}
                     className="group flex items-center text-sm sm:text-base text-gray-300 hover:text-primary transition-all duration-300"
                   >
-                    <ArrowRight className="h-3 w-3 sm:h-4 sm:w-4 mr-2 opacity-0 group-hover:opacity-100 transform -translate-x-2 group-hover:translate-x-0 transition-all duration-300" />
+                    <ArrowRight className="h-3 w-3 sm:h-4 sm:w-4 mr-2 opacity-0 group-hover:opacity-100 transform -translate-x-2 group-hover:translate-x-0 transition-all duration-300" aria-hidden="true" />
                     <span className="group-hover:translate-x-1 transition-transform duration-300">
                       {link.label}
                     </span>
@@ -182,10 +185,11 @@ export const Footer = () => {
             <div className="space-y-4 sm:space-y-5">
               <a
                 href="tel:+919424626008"
+                aria-label="Call us at +91 9424626008"
                 className="group flex items-start space-x-3 p-3 sm:p-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-primary/30 transition-all duration-300"
               >
                 <div className="p-2 rounded-lg bg-primary/20 group-hover:bg-primary/30 transition-colors">
-                  <Phone className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
+                  <Phone className="h-4 w-4 sm:h-5 sm:w-5 text-primary" aria-hidden="true" />
                 </div>
                 <div>
                   <p className="text-xs sm:text-sm text-gray-400 mb-1">
@@ -198,11 +202,12 @@ export const Footer = () => {
               </a>
 
               <a
-                href="mailto:910761ranu@gmail.com"
+                href="mailto:shreephalhandicraft@gmail.com"
+                aria-label="Email us at shreephalhandicraft@gmail.com"
                 className="group flex items-start space-x-3 p-3 sm:p-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-primary/30 transition-all duration-300"
               >
                 <div className="p-2 rounded-lg bg-primary/20 group-hover:bg-primary/30 transition-colors">
-                  <Mail className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
+                  <Mail className="h-4 w-4 sm:h-5 sm:w-5 text-primary" aria-hidden="true" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-xs sm:text-sm text-gray-400 mb-1">
@@ -218,10 +223,11 @@ export const Footer = () => {
                 href="https://maps.google.com/?q=Main+Road+Kachiyana+Lordganj+Jabalpur+Madhya+Pradesh"
                 target="_blank"
                 rel="noopener noreferrer"
+                aria-label="Visit us at Main Road, Kachiyana, Lordganj, Jabalpur"
                 className="group flex items-start space-x-3 p-3 sm:p-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-primary/30 transition-all duration-300"
               >
                 <div className="p-2 rounded-lg bg-primary/20 group-hover:bg-primary/30 transition-colors">
-                  <MapPin className="h-4 w-4 sm:h-5 sm:w-5 text-primary flex-shrink-0" />
+                  <MapPin className="h-4 w-4 sm:h-5 sm:w-5 text-primary flex-shrink-0" aria-hidden="true" />
                 </div>
                 <div>
                   <p className="text-xs sm:text-sm text-gray-400 mb-1">
@@ -252,14 +258,14 @@ export const Footer = () => {
                 >
                   Terms & Conditions
                 </Link>
-                <span className="text-gray-600">•</span>
+                <span className="text-gray-600" aria-hidden="true">•</span>
                 <Link
                   to="/privacy-policy"
                   className="text-gray-400 hover:text-primary transition-colors"
                 >
                   Privacy Policy
                 </Link>
-                <span className="text-gray-600">•</span>
+                <span className="text-gray-600" aria-hidden="true">•</span>
                 <Link
                   to="/refund-policy"
                   className="text-gray-400 hover:text-primary transition-colors"

@@ -1,35 +1,21 @@
-# Robots.txt for Shreephal Handicrafts
-# Controls search engine crawler access
-
+# https://www.robotstxt.org/robotstxt.html
 User-agent: *
-Allow: /
-
-# Disallow private/authenticated pages
 Disallow: /admin/
-Disallow: /admin/*
-Disallow: /checkout
-Disallow: /my-orders
-Disallow: /order/
-Disallow: /personal-details
-Disallow: /favourites
+Disallow: /checkout/
+Disallow: /cart/
+Disallow: /favourites/
+Disallow: /api/
 Disallow: /login
-Disallow: /register
-Disallow: /verify-phone
-Disallow: /unauthorized
+Disallow: /signup
 
-# Allow public pages
-Allow: /
+# Allow crawling of product pages
+Allow: /category/
 Allow: /shop
 Allow: /about
 Allow: /contact
-Allow: /category/
-Allow: /terms-conditions
-Allow: /privacy-policy
-Allow: /refund-policy
-Allow: /cart
 
 # Sitemap location
-Sitemap: https://shreefalhandicarfts.netlify.app/sitemap.xml
+Sitemap: https://shreephalhandicrafts.com/sitemap.xml
 
-# Crawl-delay for politeness (1 second)
+# Crawl-delay for better performance
 Crawl-delay: 1
