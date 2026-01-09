@@ -20,6 +20,10 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabaseClient";
 import ProductFilters from "@/components/ProductFilters";
 import ProductSort from "@/components/ProductSort";
+import { SEOHead } from "@/components/SEO/SEOHead";
+import { StructuredData } from "@/components/SEO/StructuredData";
+import { getCategorySEO, SITE_URL } from "@/config/seoConfig";
+import { generateBreadcrumbSchema, generateItemListSchema } from "@/utils/schemaGenerators";
 
 // Keep all your existing helper functions
 const formatDimensions = (dimensions) => {
@@ -107,7 +111,7 @@ const getCloudinaryImageUrl = (imageUrl, transformation = "medium") => {
   return imageUrl;
 };
 
-// Keep your existing ProductImage and ProductCard components
+// Keep your existing ProductImage and ProductCard components unchanged...
 const ProductImage = ({ product, className }) => {
   const [imageState, setImageState] = useState("loading");
   const [currentImageUrl, setCurrentImageUrl] = useState(null);
@@ -306,18 +310,15 @@ const ProductCard = ({
     );
   }
 
-  // Keep your existing grid ProductCard JSX
+  // Keep your existing grid ProductCard JSX - truncated for brevity
   return (
     <div
       data-testid="product-card"
       className="bg-white rounded-3xl shadow-xl hover:shadow-2xl transition-all duration-500 overflow-hidden group relative border border-gray-100 hover:border-primary/20"
     >
-      {/* Your existing grid card JSX here */}
       <div className="relative aspect-[4/3] bg-gradient-to-br from-gray-50 to-gray-100 overflow-hidden">
         <ProductImage product={product} className="w-full h-full" />
-
         <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300" />
-
         <button
           onClick={() => onToggleFavourite(product)}
           className="absolute top-4 right-4 p-2.5 bg-white/90 backdrop-blur-sm rounded-full shadow-lg hover:bg-white transition-all duration-300 hover:scale-110 active:scale-95"
@@ -330,7 +331,6 @@ const ProductCard = ({
             }`}
           />
         </button>
-
         {product.stock_quantity !== undefined && (
           <div className="absolute top-4 left-4">
             <Badge
@@ -347,7 +347,6 @@ const ProductCard = ({
             </Badge>
           </div>
         )}
-
         <div className="absolute bottom-4 left-4 right-4 transform translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300">
           <Link
             to={`/category/${slug}/products/${product.id}`}
@@ -363,7 +362,6 @@ const ProductCard = ({
           </Link>
         </div>
       </div>
-
       <div className="p-6 space-y-4">
         <div className="flex items-center justify-between">
           <Badge
@@ -382,12 +380,10 @@ const ProductCard = ({
             </div>
           )}
         </div>
-
         <div>
           <h3 className="text-xl font-bold text-gray-900 mb-2 line-clamp-2 leading-tight">
             {product.title || product.name}
           </h3>
-
           {product.description && (
             <p
               className={`text-gray-600 text-sm leading-relaxed transition-all duration-300 ${
@@ -397,7 +393,6 @@ const ProductCard = ({
               {product.description}
             </p>
           )}
-
           {product.description && product.description.length > 120 && (
             <button
               onClick={() => setShowDescription(!showDescription)}
@@ -407,7 +402,6 @@ const ProductCard = ({
             </button>
           )}
         </div>
-
         <div className="space-y-2">
           {(product.material_type || product.material) && (
             <div className="flex items-center text-sm text-gray-600">
@@ -416,7 +410,6 @@ const ProductCard = ({
               <span>{product.material_type || product.material}</span>
             </div>
           )}
-
           {formattedDimensions && (
             <div className="flex items-center text-sm text-gray-600">
               <div className="h-4 w-4 mr-2 text-gray-400 flex items-center justify-center">
@@ -426,7 +419,6 @@ const ProductCard = ({
               <span>{formattedDimensions}</span>
             </div>
           )}
-
           {(product.weight_grams || product.weight) && (
             <div className="flex items-center text-sm text-gray-600">
               <div className="h-4 w-4 mr-2 text-gray-400 flex items-center justify-center">
@@ -441,7 +433,6 @@ const ProductCard = ({
             </div>
           )}
         </div>
-
         {features.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {features.slice(0, 3).map((feature, index) => (
@@ -463,7 +454,6 @@ const ProductCard = ({
             )}
           </div>
         )}
-
         <div className="flex items-center space-x-4 pt-2 border-t border-gray-100">
           <div className="flex items-center text-xs text-gray-500">
             <Shield className="h-3 w-3 mr-1" />
@@ -474,7 +464,6 @@ const ProductCard = ({
             Quality Assured
           </div>
         </div>
-
         <div className="flex items-center justify-between pt-4 border-t border-gray-100">
           <div className="flex flex-col">
             {product.original_price &&
@@ -496,7 +485,6 @@ const ProductCard = ({
                 </span>
               )}
           </div>
-
           <Link to={`/category/${slug}/products/${product.id}`}>
             <Button
               size="lg"
@@ -534,6 +522,21 @@ const Category = () => {
   const { addToFavourites, removeFromFavourites, isFavourite } =
     useFavourites();
   const { toast } = useToast();
+
+  // Generate SEO data
+  const categorySEO = getCategorySEO(categoryName, slug);
+  
+  // Generate structured data
+  const breadcrumbs = [
+    { name: "Home", url: SITE_URL },
+    { name: "Shop", url: `${SITE_URL}/shop` },
+    { name: categoryName, url: `${SITE_URL}/category/${slug}/products` }
+  ];
+  
+  const productList = filteredProducts.slice(0, 20).map(p => ({
+    name: p.title || p.name,
+    url: `${SITE_URL}/category/${slug}/products/${p.id}`
+  }));
 
   // Fetch data
   useEffect(() => {
@@ -594,7 +597,7 @@ const Category = () => {
     }
   }, [slug]);
 
-  // Filter and search products
+  // Filter and search products - keep existing logic...
   useEffect(() => {
     let filtered = [...allProducts];
 
@@ -753,6 +756,12 @@ const Category = () => {
   if (loading) {
     return (
       <Layout>
+        <SEOHead
+          title={categorySEO.title}
+          description={categorySEO.description}
+          keywords={categorySEO.keywords}
+          path={categorySEO.path}
+        />
         <section className="py-16 bg-gradient-to-br from-gray-50 to-white min-h-screen">
           <div className="container mx-auto px-4 text-center">
             <div className="flex flex-col items-center justify-center space-y-4">
@@ -778,6 +787,12 @@ const Category = () => {
   if (error) {
     return (
       <Layout>
+        <SEOHead
+          title={categorySEO.title}
+          description={categorySEO.description}
+          keywords={categorySEO.keywords}
+          path={categorySEO.path}
+        />
         <section className="py-16 bg-gradient-to-br from-gray-50 to-white min-h-screen">
           <div className="container mx-auto px-4 text-center">
             <div className="bg-white rounded-2xl p-8 shadow-lg max-w-md mx-auto">
@@ -803,6 +818,21 @@ const Category = () => {
 
   return (
     <Layout>
+      {/* Dynamic SEO Metadata */}
+      <SEOHead
+        title={categorySEO.title}
+        description={categorySEO.description}
+        keywords={categorySEO.keywords}
+        path={categorySEO.path}
+        type="website"
+      />
+      
+      {/* Structured Data */}
+      <StructuredData data={[
+        generateBreadcrumbSchema(breadcrumbs),
+        productList.length > 0 ? generateItemListSchema(productList, `${categoryName} Products`) : null
+      ].filter(Boolean)} />
+
       <section className="py-8 bg-gradient-to-br from-gray-50 to-white min-h-screen">
         <div className="container mx-auto px-4">
           {/* Category Header */}
