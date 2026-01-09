@@ -8,13 +8,13 @@ const phonepeConfig = {
 
   getRedirectUrl: (port = config.PORT) => {
     return config.NODE_ENV === "production"
-      ? "https://shrifal-handicrafts-api.onrender.com/redirect"
+      ? "https://Shreephal-Handicrafts-api.onrender.com/redirect"
       : `http://localhost:${port}/redirect`;
   },
 
   getCallbackUrl: (port = config.PORT) => {
     return config.NODE_ENV === "production"
-      ? "https://shrifal-handicrafts-api.onrender.com/callback"
+      ? "https://Shreephal-Handicrafts-api.onrender.com/callback"
       : `http://localhost:${port}/callback`;
   },
 };

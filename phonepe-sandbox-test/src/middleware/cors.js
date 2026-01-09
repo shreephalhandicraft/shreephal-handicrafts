@@ -18,13 +18,13 @@ class CorsMiddleware {
           callback(null, true);
         } else {
           // 🚨 DEBUGGING: Log the exact failing origin
-          console.warn(`❌ CORS Blocked Origin: '${origin}'`); 
-          
+          console.warn(`❌ CORS Blocked Origin: '${origin}'`);
+
           // ✅ TEMPORARY FIX: Allow EVERYTHING to unblock you right now
           // Once you see the log, you can add that specific URL to allowedOrigins
           console.log("⚠️ TEMPORARY: Allowing blocked origin for debugging");
-          return callback(null, true); 
-          
+          return callback(null, true);
+
           // callback(new Error("Not allowed by CORS")); // Commented out for now
         }
       },
@@ -44,7 +44,7 @@ class CorsMiddleware {
 
   // Production CORS
   productionCors() {
-    return this.basicCors(); 
+    return this.basicCors();
   }
 
   // Payment CORS
@@ -53,8 +53,14 @@ class CorsMiddleware {
       origin: true, // ✅ Allow ALL origins for payment callbacks to be safe
       credentials: true,
       methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-      allowedHeaders: ["Content-Type", "Authorization", "X-API-Key", "X-Verify", "X-Requested-With"],
-      optionsSuccessStatus: 200
+      allowedHeaders: [
+        "Content-Type",
+        "Authorization",
+        "X-API-Key",
+        "X-Verify",
+        "X-Requested-With",
+      ],
+      optionsSuccessStatus: 200,
     });
   }
 
@@ -63,15 +69,17 @@ class CorsMiddleware {
       "http://localhost:3000",
       "http://localhost:5173",
       "http://localhost:3001",
-      "https://shrifal-handicrafts.netlify.app",
-      "https://shrifal-handicrafts.onrender.com",
+      "https://Shreephal-Handicrafts.netlify.app",
+      "https://Shreephal-Handicrafts.onrender.com",
       "https://shreephal-handicrafts.onrender.com",
-      
+
       // Add your frontend URL here if it's different!
     ];
 
     if (process.env.ALLOWED_ORIGINS) {
-      const envOrigins = process.env.ALLOWED_ORIGINS.split(",").map(o => o.trim());
+      const envOrigins = process.env.ALLOWED_ORIGINS.split(",").map((o) =>
+        o.trim()
+      );
       return [...baseOrigins, ...envOrigins];
     }
 
@@ -84,7 +92,7 @@ class CorsMiddleware {
       return res.status(403).json({
         success: false,
         message: "Not allowed by CORS",
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
     }
     next(err);

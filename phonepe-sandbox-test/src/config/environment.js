@@ -11,10 +11,9 @@ const config = {
   // Domain configuration
   BACKEND_DOMAIN:
     process.env.NODE_ENV === "production"
-      ? "shrifal-handicrafts-api.onrender.com"
+      ? "Shreephal-Handicrafts-api.onrender.com"
       : "localhost",
 
-      
   // Frontend URLs
   FRONTEND_URL:
     process.env.NODE_ENV === "production"

@@ -17,7 +17,7 @@ process.on("SIGINT", () => {
 
 // Start server
 const server = app.listen(PORT, () => {
-  logger.info(`🚀 Shrifal Handicrafts API running on port ${PORT}`);
+  logger.info(`🚀 Shreephal-Handicraftss API running on port ${PORT}`);
   logger.info(`📱 Environment: ${config.NODE_ENV}`);
   logger.info(`🔗 Health check: http://localhost:${PORT}/health`);
 });

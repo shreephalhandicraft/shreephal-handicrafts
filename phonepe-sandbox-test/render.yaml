@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: shrifal-handicrafts-api
+    name: Shreephal-Handicrafts-api
     env: node
     plan: starter
     buildCommand: npm install
@@ -11,7 +11,7 @@ services:
         value: production
       - key: SUPABASE_URL
         fromDatabase:
-          name: shrifal-handicrafts-db
+          name: Shreephal-Handicrafts-db
           property: connectionString
       - key: SUPABASE_ANON_KEY
         sync: false
