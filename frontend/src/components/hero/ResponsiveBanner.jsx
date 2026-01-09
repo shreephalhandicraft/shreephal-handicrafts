@@ -5,18 +5,45 @@ import { Award, ArrowRight } from "lucide-react";
 export const ResponsiveBanner = () => {
   return (
     <div className="relative h-[50vh] sm:h-[60vh] md:h-[70vh] lg:h-[80vh] xl:h-[85vh] w-full overflow-hidden">
-      {/* Mobile Banner (up to md) */}
+      {/* Responsive Banner with WebP optimization */}
       <picture className="absolute inset-0">
+        {/* Mobile - WebP */}
+        <source
+          media="(max-width: 767px)"
+          type="image/webp"
+          srcSet="/banner-hero.webp"
+        />
+        {/* Mobile - Fallback */}
         <source media="(max-width: 767px)" srcSet="/banner-hero.jpg" />
+        
+        {/* Tablet - WebP */}
+        <source
+          media="(min-width: 768px) and (max-width: 1023px)"
+          type="image/webp"
+          srcSet="/banner-hero.webp"
+        />
+        {/* Tablet - Fallback */}
         <source
           media="(min-width: 768px) and (max-width: 1023px)"
           srcSet="/banner-hero.jpg"
         />
+        
+        {/* Desktop - WebP */}
+        <source
+          media="(min-width: 1024px)"
+          type="image/webp"
+          srcSet="/banner-hero.webp"
+        />
+        {/* Desktop - Fallback */}
         <source media="(min-width: 1024px)" srcSet="/banner-hero.jpg" />
+        
+        {/* Default fallback */}
         <img
           src="/banner-hero.jpg"
           alt="Celebrate Your Achievements"
           className="w-full h-full object-cover object-center"
+          fetchpriority="high"
+          decoding="async"
         />
       </picture>
 
