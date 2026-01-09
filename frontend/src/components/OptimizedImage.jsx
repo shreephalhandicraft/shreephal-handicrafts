@@ -1,128 +1,190 @@
-import { useState } from 'react';
-
 /**
  * OptimizedImage Component
- * Provides lazy loading, responsive images, and loading states
+ * 
+ * Provides automatic image optimization with:
+ * - WebP format with fallback to original
+ * - Lazy loading with Intersection Observer
+ * - Responsive srcSet for different screen sizes
+ * - Loading skeleton/blur placeholder
+ * - Proper width/height to prevent CLS
+ * 
+ * Usage:
+ * <OptimizedImage
+ *   src="/images/product.jpg"
+ *   alt="Product name"
+ *   width={800}
+ *   height={600}
+ *   priority={false}
+ *   className="custom-class"
+ * />
  */
-export const OptimizedImage = ({
+
+import { useState, useEffect, useRef } from 'react';
+import PropTypes from 'prop-types';
+
+const OptimizedImage = ({
   src,
   alt,
-  className = '',
   width,
   height,
   priority = false,
+  className = '',
+  sizes = '100vw',
   onLoad,
   onError,
-  ...props
 }) => {
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoaded, setIsLoaded] = useState(false);
   const [hasError, setHasError] = useState(false);
+  const [isInView, setIsInView] = useState(priority);
+  const imgRef = useRef(null);
+
+  // Intersection Observer for lazy loading
+  useEffect(() => {
+    if (priority || !imgRef.current) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            setIsInView(true);
+            observer.unobserve(entry.target);
+          }
+        });
+      },
+      {
+        rootMargin: '50px', // Start loading 50px before image enters viewport
+      }
+    );
+
+    observer.observe(imgRef.current);
+
+    return () => {
+      if (imgRef.current) {
+        observer.unobserve(imgRef.current);
+      }
+    };
+  }, [priority]);
+
+  // Generate WebP and fallback sources
+  const getImageSources = () => {
+    // If Cloudinary URL, use cloudinaryHelpers transformations
+    if (src.includes('cloudinary.com')) {
+      const baseUrl = src.split('/upload/')[0] + '/upload/';
+      const imagePath = src.split('/upload/')[1];
+
+      return {
+        webp: `${baseUrl}f_webp,q_auto:good/${imagePath}`,
+        original: src,
+        srcSet: [
+          `${baseUrl}f_webp,q_auto:good,w_400/${imagePath} 400w`,
+          `${baseUrl}f_webp,q_auto:good,w_800/${imagePath} 800w`,
+          `${baseUrl}f_webp,q_auto:good,w_1200/${imagePath} 1200w`,
+        ].join(', '),
+      };
+    }
+
+    // For local/static images, try WebP if available
+    const webpSrc = src.replace(/\.(jpg|jpeg|png)$/i, '.webp');
+    return {
+      webp: webpSrc,
+      original: src,
+      srcSet: src,
+    };
+  };
+
+  const sources = getImageSources();
+  const aspectRatio = width && height ? (height / width) * 100 : 56.25; // Default 16:9
 
   const handleLoad = (e) => {
-    setIsLoading(false);
-    onLoad?.(e);
+    setIsLoaded(true);
+    if (onLoad) onLoad(e);
   };
 
   const handleError = (e) => {
-    setIsLoading(false);
     setHasError(true);
-    onError?.(e);
+    if (onError) onError(e);
   };
 
-  // Fallback image
-  const fallbackSrc = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300"%3E%3Crect fill="%23f0f0f0" width="400" height="300"/%3E%3Ctext fill="%23999" font-family="sans-serif" font-size="18" dy="10.5" font-weight="bold" x="50%25" y="50%25" text-anchor="middle"%3EImage not available%3C/text%3E%3C/svg%3E';
-
   return (
-    <div className={`relative overflow-hidden ${className}`} style={{ width, height }}>
-      {/* Loading skeleton */}
-      {isLoading && (
-        <div className="absolute inset-0 bg-gray-200 animate-pulse">
-          <div className="w-full h-full flex items-center justify-center">
+    <div
+      ref={imgRef}
+      className={`relative overflow-hidden bg-gray-100 ${className}`}
+      style={{
+        paddingBottom: `${aspectRatio}%`,
+        width: width ? `${width}px` : '100%',
+        maxWidth: '100%',
+      }}
+    >
+      {/* Loading Skeleton */}
+      {!isLoaded && !hasError && (
+        <div className="absolute inset-0 animate-pulse bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200" />
+      )}
+
+      {/* Error State */}
+      {hasError && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
+          <div className="text-center text-gray-400">
             <svg
-              className="w-10 h-10 text-gray-400 animate-spin"
-              xmlns="http://www.w3.org/2000/svg"
+              className="w-12 h-12 mx-auto mb-2"
               fill="none"
               viewBox="0 0 24 24"
+              stroke="currentColor"
             >
-              <circle
-                className="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="4"
-              />
               <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
               />
             </svg>
+            <p className="text-sm">Image not available</p>
           </div>
         </div>
       )}
 
-      {/* Actual image */}
-      <img
-        src={hasError ? fallbackSrc : src}
-        alt={alt}
-        width={width}
-        height={height}
-        loading={priority ? 'eager' : 'lazy'}
-        decoding="async"
-        onLoad={handleLoad}
-        onError={handleError}
-        className={`
-          ${className}
-          ${isLoading ? 'opacity-0' : 'opacity-100'}
-          transition-opacity duration-300
-        `}
-        {...props}
-      />
+      {/* Actual Image */}
+      {isInView && (
+        <picture className="absolute inset-0">
+          {/* WebP source for modern browsers */}
+          <source
+            type="image/webp"
+            srcSet={sources.srcSet}
+            sizes={sizes}
+          />
+
+          {/* Fallback to original format */}
+          <img
+            src={sources.original}
+            alt={alt}
+            width={width}
+            height={height}
+            loading={priority ? 'eager' : 'lazy'}
+            decoding={priority ? 'sync' : 'async'}
+            onLoad={handleLoad}
+            onError={handleError}
+            className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${
+              isLoaded ? 'opacity-100' : 'opacity-0'
+            }`}
+            style={{
+              objectFit: 'cover',
+            }}
+          />
+        </picture>
+      )}
     </div>
   );
 };
 
-/**
- * CloudinaryImage Component
- * Optimized for Cloudinary URLs with automatic transformations
- */
-export const CloudinaryImage = ({
-  src,
-  alt,
-  width = 800,
-  height,
-  quality = 'auto',
-  format = 'auto',
-  crop = 'fill',
-  ...props
-}) => {
-  // Transform Cloudinary URL for optimization
-  const getOptimizedUrl = (url) => {
-    if (!url || !url.includes('cloudinary.com')) return url;
-
-    const transformations = [
-      `w_${width}`,
-      height && `h_${height}`,
-      `c_${crop}`,
-      `q_${quality}`,
-      `f_${format}`,
-      'fl_progressive',
-      'fl_lossy',
-    ]
-      .filter(Boolean)
-      .join(',');
-
-    return url.replace('/upload/', `/upload/${transformations}/`);
-  };
-
-  return (
-    <OptimizedImage
-      src={getOptimizedUrl(src)}
-      alt={alt}
-      width={width}
-      height={height}
-      {...props}
-    />
-  );
+OptimizedImage.propTypes = {
+  src: PropTypes.string.isRequired,
+  alt: PropTypes.string.isRequired,
+  width: PropTypes.number,
+  height: PropTypes.number,
+  priority: PropTypes.bool,
+  className: PropTypes.string,
+  sizes: PropTypes.string,
+  onLoad: PropTypes.func,
+  onError: PropTypes.func,
 };
+
+export default OptimizedImage;
