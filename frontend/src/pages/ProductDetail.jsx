@@ -241,7 +241,30 @@ const ProductDetail = () => {
   if (loading) {
     return (
       <Layout>
-        <div className="py-8"><div className="container mx-auto px-4"><div className="grid grid-cols-1 lg:grid-cols-2 gap-12"><div className="space-y-4"><div className="aspect-square bg-gradient-to-br from-gray-200 to-gray-300 rounded-2xl animate-pulse flex items-center justify-center"><Package className="h-16 w-16 text-gray-400" /></div><div className="grid grid-cols-4 gap-2">{[...Array(4)].map((_, i) => (<div key={i} className="aspect-square bg-gray-200 rounded-lg animate-pulse" />))}</div></div><div className="space-y-6"><div className="space-y-4"><div className="h-6 bg-gray-200 rounded w-32 animate-pulse" /><div className="h-10 bg-gray-200 rounded w-full animate-pulse" /><div className="h-6 bg-gray-200 rounded w-48 animate-pulse" /><div className="h-8 bg-gray-200 rounded w-32 animate-pulse" /></div></div></div></div></div></div>
+        <div className="py-8">
+          <div className="container mx-auto px-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+              <div className="space-y-4">
+                <div className="aspect-square bg-gradient-to-br from-gray-200 to-gray-300 rounded-2xl animate-pulse flex items-center justify-center">
+                  <Package className="h-16 w-16 text-gray-400" />
+                </div>
+                <div className="grid grid-cols-4 gap-2">
+                  {[...Array(4)].map((_, i) => (
+                    <div key={i} className="aspect-square bg-gray-200 rounded-lg animate-pulse" />
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-6">
+                <div className="space-y-4">
+                  <div className="h-6 bg-gray-200 rounded w-32 animate-pulse" />
+                  <div className="h-10 bg-gray-200 rounded w-full animate-pulse" />
+                  <div className="h-6 bg-gray-200 rounded w-48 animate-pulse" />
+                  <div className="h-8 bg-gray-200 rounded w-32 animate-pulse" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </Layout>
     );
   }
@@ -249,7 +272,30 @@ const ProductDetail = () => {
   if (error || !product) {
     return (
       <Layout>
-        <div className="py-8"><div className="container mx-auto px-4"><div className="text-center bg-white rounded-2xl shadow-lg p-12 max-w-md mx-auto"><div className="bg-gradient-to-br from-red-100 to-red-200 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4"><ImageOff className="h-8 w-8 text-red-500" /></div><h3 className="text-xl font-semibold text-gray-900 mb-2">Product Not Found</h3><p className="text-red-600 mb-6">{error || "Product not found"}</p><div className="flex gap-3 justify-center"><Button variant="outline" onClick={() => navigate(-1)}><ArrowLeft className="h-4 w-4 mr-2" />Go Back</Button><Button onClick={() => navigate("/shop")}>Browse Products</Button></div></div></div></div>
+        <div className="py-8">
+          <div className="container mx-auto px-4">
+            <div className="text-center bg-white rounded-2xl shadow-lg p-12 max-w-md mx-auto">
+              <div className="bg-gradient-to-br from-red-100 to-red-200 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                <ImageOff className="h-8 w-8 text-red-500" />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                Product Not Found
+              </h3>
+              <p className="text-red-600 mb-6">
+                {error || "Product not found"}
+              </p>
+              <div className="flex gap-3 justify-center">
+                <Button variant="outline" onClick={() => navigate(-1)}>
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Go Back
+                </Button>
+                <Button onClick={() => navigate("/shop")}>
+                  Browse Products
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
       </Layout>
     );
   }
@@ -271,7 +317,8 @@ const ProductDetail = () => {
           <Breadcrumbs items={breadcrumbs} className="mb-4" />
 
           <Button variant="ghost" onClick={() => navigate(-1)} className="mb-6 hover:bg-gray-100">
-            <ArrowLeft className="h-4 w-4 mr-2" />Back
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back
           </Button>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
@@ -280,23 +327,63 @@ const ProductDetail = () => {
             </div>
 
             <div className="space-y-6">
-              <ProductHeader product={product} selectedVariant={selectedVariant} getCurrentPrice={getCurrentPrice} getCurrentStock={getCurrentStock} getStockQuantity={getStockQuantity} formatPrice={formatPrice} />
+              <ProductHeader 
+                product={product} 
+                selectedVariant={selectedVariant} 
+                getCurrentPrice={getCurrentPrice} 
+                getCurrentStock={getCurrentStock} 
+                getStockQuantity={getStockQuantity} 
+                formatPrice={formatPrice} 
+              />
 
               {product.description && (
                 <div className="prose prose-gray max-w-none bg-gray-50 p-6 rounded-2xl border border-gray-200">
-                  <p className="text-gray-700 leading-relaxed text-lg m-0">{product.description}</p>
+                  <p className="text-gray-700 leading-relaxed text-lg m-0">
+                    {product.description}
+                  </p>
                 </div>
               )}
 
               <ProductSpecs product={product} selectedVariant={selectedVariant} />
-              {productVariants.length > 0 && <ProductVariants variants={productVariants} selectedVariant={selectedVariant} onVariantSelect={handleVariantSelect} />}
+              
+              {productVariants.length > 0 && (
+                <ProductVariants 
+                  variants={productVariants} 
+                  selectedVariant={selectedVariant} 
+                  onVariantSelect={handleVariantSelect} 
+                />
+              )}
+              
               <DeliveryInfo product={product} estimatedDays={7} />
               <ProductFeatures product={product} />
-              <CustomizationOptions product={product} customization={customizations[product.id] || {}} onCustomizationChange={handleCustomizationChange} />
+              <CustomizationOptions 
+                product={product} 
+                customization={customizations[product.id] || {}} 
+                onCustomizationChange={handleCustomizationChange} 
+              />
 
               <div className="space-y-6">
-                <QuantitySelector quantity={quantity} minQuantity={minQuantity} maxQuantity={maxQuantity} onQuantityChange={handleQuantityChange} getCurrentPrice={getCurrentPrice} formatPrice={formatPrice} />
-                <ProductActions product={product} selectedVariant={selectedVariant} getCurrentStock={getCurrentStock} getStockQuantity={getStockQuantity} isAddingToCart={isAddingToCart} isBuying={isBuying} isFavourite={isFavourite} onAddToCart={handleAddToCart} onBuyNow={handleBuyNow} onToggleFavourite={handleToggleFavourite} onShare={handleShare} />
+                <QuantitySelector 
+                  quantity={quantity} 
+                  minQuantity={minQuantity} 
+                  maxQuantity={maxQuantity} 
+                  onQuantityChange={handleQuantityChange} 
+                  getCurrentPrice={getCurrentPrice} 
+                  formatPrice={formatPrice} 
+                />
+                <ProductActions 
+                  product={product} 
+                  selectedVariant={selectedVariant} 
+                  getCurrentStock={getCurrentStock} 
+                  getStockQuantity={getStockQuantity} 
+                  isAddingToCart={isAddingToCart} 
+                  isBuying={isBuying} 
+                  isFavourite={isFavourite} 
+                  onAddToCart={handleAddToCart} 
+                  onBuyNow={handleBuyNow} 
+                  onToggleFavourite={handleToggleFavourite} 
+                  onShare={handleShare} 
+                />
               </div>
             </div>
           </div>
