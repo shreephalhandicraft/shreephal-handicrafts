@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui/badge";
-import { Box, Ruler, Weight } from "lucide-react";
+import { Box, Ruler, Scale } from "lucide-react";
 
 // Helper function to format dimensions
 const formatDimensions = (dimensions) => {
@@ -84,7 +84,7 @@ const ProductVariants = ({ variants, selectedVariant, onVariantSelect }) => {
 
                     {variant.weight_grams && (
                       <div className="flex items-center text-sm text-gray-600">
-                        <Weight className="h-3 w-3 mr-1.5" />
+                        <Scale className="h-3 w-3 mr-1.5" />
                         <span>{variant.weight_grams}g</span>
                       </div>
                     )}
