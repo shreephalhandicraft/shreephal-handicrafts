@@ -12,7 +12,7 @@ import {
   Tag,
   Package,
   Shield,
-  Grid3X3,
+  LayoutGrid,
   List,
 } from "lucide-react";
 import { useFavourites } from "@/contexts/FavouritesContext";
@@ -886,7 +886,7 @@ const Category = () => {
                     size="sm"
                     onClick={() => setViewMode("grid")}
                   >
-                    <Grid3X3 className="h-4 w-4" />
+                    <LayoutGrid className="h-4 w-4" />
                   </Button>
                   <Button
                     data-testid="view-list"
