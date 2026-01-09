@@ -1,11 +1,22 @@
 import { Layout } from "@/components/Layout";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Mail, Phone, MapPin } from "lucide-react";
+import Breadcrumbs from "@/components/Breadcrumbs";
 import { SEOHead } from "@/components/SEO/SEOHead";
+import { OpenGraphTags } from "@/components/SEO/OpenGraphTags";
+import { BreadcrumbSchema } from "@/components/SEO/BreadcrumbSchema";
 import { StructuredData } from "@/components/SEO/StructuredData";
 import { PAGE_SEO } from "@/config/seoConfig";
 import { generateLocalBusinessSchema } from "@/utils/schemaGenerators";
-import { Mail, Phone, MapPin } from "lucide-react";
 
 const Contact = () => {
+  const breadcrumbs = [
+    { name: "Home", url: "/" },
+    { name: "Contact Us", url: "/contact" },
+  ];
+
   const businessInfo = {
     phone: "+91-XXXXXXXXXX",
     email: "info@shreephalhandicrafts.com",
@@ -16,74 +27,58 @@ const Contact = () => {
 
   return (
     <Layout>
-      {/* SEO Metadata */}
-      <SEOHead
-        title={PAGE_SEO.contact.title}
-        description={PAGE_SEO.contact.description}
-        keywords={PAGE_SEO.contact.keywords}
-        path={PAGE_SEO.contact.path}
-        type="website"
-      />
-      
-      {/* Local Business Schema */}
+      {/* SEO */}
+      <SEOHead {...PAGE_SEO.contact} />
+      <OpenGraphTags {...PAGE_SEO.contact} type="website" />
+      <BreadcrumbSchema items={breadcrumbs} />
       <StructuredData data={generateLocalBusinessSchema(businessInfo)} />
 
-      {/* Page Content */}
       <div className="min-h-screen bg-gradient-to-b from-white to-gray-50 py-12">
         <div className="container mx-auto px-4">
-          <div className="max-w-4xl mx-auto">
-            <h1 className="text-4xl md:text-5xl font-bold text-center mb-4 text-gray-900">
-              Contact Us
-            </h1>
-            <p className="text-center text-lg text-gray-600 mb-12">
-              Get in touch with us for custom orders, bulk inquiries, or any questions
-            </p>
-            
-            <div className="grid md:grid-cols-3 gap-8 mb-12">
-              <div className="bg-white p-6 rounded-2xl shadow-lg text-center">
-                <div className="bg-primary/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Phone className="h-8 w-8 text-primary" />
+          <Breadcrumbs items={breadcrumbs} className="mb-6" />
+          
+          <div className="max-w-5xl mx-auto">
+            <h1 className="text-4xl md:text-5xl font-bold text-center mb-4 text-gray-900">Get In Touch</h1>
+            <p className="text-center text-gray-600 mb-12 text-lg">Have questions? We'd love to hear from you. Send us a message!</p>
+
+            <div className="grid md:grid-cols-2 gap-12">
+              <div>
+                <h2 className="text-2xl font-bold mb-6 text-gray-900">Contact Information</h2>
+                
+                <div className="space-y-6">
+                  <div className="flex items-start gap-4">
+                    <div className="bg-primary/10 p-3 rounded-lg"><Phone className="h-6 w-6 text-primary" /></div>
+                    <div><h3 className="font-semibold text-gray-900 mb-1">Phone</h3><p className="text-gray-600">{businessInfo.phone}</p></div>
+                  </div>
+
+                  <div className="flex items-start gap-4">
+                    <div className="bg-primary/10 p-3 rounded-lg"><Mail className="h-6 w-6 text-primary" /></div>
+                    <div><h3 className="font-semibold text-gray-900 mb-1">Email</h3><p className="text-gray-600">{businessInfo.email}</p></div>
+                  </div>
+
+                  <div className="flex items-start gap-4">
+                    <div className="bg-primary/10 p-3 rounded-lg"><MapPin className="h-6 w-6 text-primary" /></div>
+                    <div><h3 className="font-semibold text-gray-900 mb-1">Location</h3><p className="text-gray-600">{businessInfo.city}, {businessInfo.state}, India</p></div>
+                  </div>
                 </div>
-                <h3 className="font-bold text-lg mb-2">Phone</h3>
-                <p className="text-gray-600">+91-XXXXXXXXXX</p>
+
+                <div className="mt-8 p-6 bg-primary/5 rounded-lg">
+                  <h3 className="font-semibold text-gray-900 mb-2">Business Hours</h3>
+                  <p className="text-gray-600">Monday - Saturday: 9:00 AM - 6:00 PM</p>
+                  <p className="text-gray-600">Sunday: Closed</p>
+                </div>
               </div>
-              
-              <div className="bg-white p-6 rounded-2xl shadow-lg text-center">
-                <div className="bg-primary/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Mail className="h-8 w-8 text-primary" />
-                </div>
-                <h3 className="font-bold text-lg mb-2">Email</h3>
-                <p className="text-gray-600">info@shreephalhandicrafts.com</p>
+
+              <div className="bg-white p-8 rounded-lg shadow-lg">
+                <h2 className="text-2xl font-bold mb-6 text-gray-900">Send Us a Message</h2>
+                <form className="space-y-4">
+                  <div><Input placeholder="Your Name" /></div>
+                  <div><Input type="email" placeholder="Your Email" /></div>
+                  <div><Input placeholder="Subject" /></div>
+                  <div><Textarea placeholder="Your Message" rows={5} /></div>
+                  <Button type="submit" className="w-full">Send Message</Button>
+                </form>
               </div>
-              
-              <div className="bg-white p-6 rounded-2xl shadow-lg text-center">
-                <div className="bg-primary/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <MapPin className="h-8 w-8 text-primary" />
-                </div>
-                <h3 className="font-bold text-lg mb-2">Location</h3>
-                <p className="text-gray-600">Narnaund, Haryana, India</p>
-              </div>
-            </div>
-            
-            <div className="bg-white p-8 rounded-2xl shadow-lg">
-              <h2 className="text-2xl font-bold mb-6">Send us a Message</h2>
-              <form className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Name</label>
-                  <input type="text" className="w-full px-4 py-2 border rounded-lg" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Email</label>
-                  <input type="email" className="w-full px-4 py-2 border rounded-lg" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Message</label>
-                  <textarea rows="4" className="w-full px-4 py-2 border rounded-lg"></textarea>
-                </div>
-                <button type="submit" className="w-full bg-primary text-white py-3 rounded-lg font-medium hover:bg-primary/90">
-                  Send Message
-                </button>
-              </form>
             </div>
           </div>
         </div>
