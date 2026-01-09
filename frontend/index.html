@@ -1,56 +1,38 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     
-    <!-- Preconnect to critical origins for faster loading -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin />
-    <link rel="dns-prefetch" href="https://api.supabase.co" />
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#EAB308" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Shreephal" />
     
-    <!-- Favicon Suite - Multiple sizes for all devices -->
-    <link rel="icon" type="image/svg+xml" href="/shrifal.svg" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/shrifal.svg" />
-    <link rel="icon" type="image/png" sizes="16x16" href="/shrifal.svg" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/shrifal.svg" />
+    <!-- Apple Touch Icons -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     
-    <!-- Web App Manifest -->
+    <!-- Manifest -->
     <link rel="manifest" href="/manifest.json" />
     
-    <!-- Theme Color for mobile browsers -->
-    <meta name="theme-color" content="#10b981" />
+    <!-- Preconnect to external domains -->
+    <link rel="preconnect" href="https://res.cloudinary.com" crossorigin />
+    <link rel="dns-prefetch" href="https://res.cloudinary.com" />
     
-    <!-- Default Title and Description (will be overridden by React Helmet) -->
-    <title>Shreephal Handicrafts - Custom Trophies & Awards Manufacturer India</title>
-    <meta name="description" content="Leading manufacturer of custom trophies, awards, and handicrafts in India. Premium quality, customizable designs, and reliable delivery for schools, corporates, and events." />
+    <!-- Default Title (will be overridden by React Helmet) -->
+    <title>Shreephal Handicrafts | Premium Trophies & Awards in Jabalpur</title>
     
-    <!-- Default Open Graph Tags -->
-    <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="Shreephal Handicrafts" />
-    <meta property="og:title" content="Shreephal Handicrafts - Custom Trophies & Awards India" />
-    <meta property="og:description" content="Leading manufacturer of custom trophies, awards, and handicrafts in India." />
-    <meta property="og:image" content="/shrifal.svg" />
+    <!-- Default Meta Description (will be overridden by React Helmet) -->
+    <meta name="description" content="Premium customized trophies, mementos, and awards in Jabalpur. Expert craftsmanship, fast delivery, competitive prices. Order now!" />
     
-    <!-- Twitter Card -->
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Shreephal Handicrafts" />
-    <meta name="twitter:description" content="Custom Trophies & Awards Manufacturer in India" />
-    
-    <!-- Additional Meta Tags -->
-    <meta name="format-detection" content="telephone=no" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <!-- Robots Meta -->
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
-    
-    <!-- Noscript fallback -->
-    <noscript>
-      <div style="padding: 2rem; text-align: center; font-family: sans-serif;">
-        <h1>JavaScript Required</h1>
-        <p>This website requires JavaScript to function properly. Please enable JavaScript in your browser settings.</p>
-      </div>
-    </noscript>
   </body>
 </html>
