@@ -7,6 +7,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Minus, Plus, Trash2, ShoppingBag, Heart, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
+import { SEOHead } from "@/components/SEO/SEOHead";
+import { PAGE_SEO } from "@/config/seoConfig";
 
 const Cart = () => {
   const { user } = useAuth();
@@ -161,6 +163,12 @@ const Cart = () => {
   if (loading) {
     return (
       <Layout>
+        <SEOHead
+          title={PAGE_SEO.cart.title}
+          description={PAGE_SEO.cart.description}
+          keywords={PAGE_SEO.cart.keywords}
+          path={PAGE_SEO.cart.path}
+        />
         <div className="py-20 flex justify-center items-center">
           <Loader2 className="h-8 w-8 animate-spin" />
           <span className="ml-2">Loading cart...</span>
@@ -172,6 +180,12 @@ const Cart = () => {
   if (items.length === 0) {
     return (
       <Layout>
+        <SEOHead
+          title={PAGE_SEO.cart.title}
+          description={PAGE_SEO.cart.description}
+          keywords={PAGE_SEO.cart.keywords}
+          path={PAGE_SEO.cart.path}
+        />
         <div className="py-20">
           <div className="container mx-auto px-4 text-center">
             <ShoppingBag className="h-24 w-24 text-gray-300 mx-auto mb-6" />
@@ -192,6 +206,14 @@ const Cart = () => {
 
   return (
     <Layout>
+      {/* SEO Metadata */}
+      <SEOHead
+        title={PAGE_SEO.cart.title}
+        description={PAGE_SEO.cart.description}
+        keywords={PAGE_SEO.cart.keywords}
+        path={PAGE_SEO.cart.path}
+      />
+
       <div className="py-12">
         <div className="container mx-auto px-4">
           <h1 className="text-3xl font-bold text-gray-900 mb-8">
