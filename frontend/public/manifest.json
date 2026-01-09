@@ -1,0 +1,22 @@
+{
+  "name": "Shreephal Handicrafts",
+  "short_name": "Shreephal",
+  "description": "Custom Trophies & Awards Manufacturer in India",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#10b981",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/shrifal.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["shopping", "business"],
+  "lang": "en",
+  "dir": "ltr",
+  "scope": "/"
+}
