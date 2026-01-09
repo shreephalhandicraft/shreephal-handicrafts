@@ -15,6 +15,9 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
+import { SEOHead } from "@/components/SEO/SEOHead";
+import { StructuredData } from "@/components/SEO/StructuredData";
+import { PAGE_SEO, ORGANIZATION_SCHEMA } from "@/config/seoConfig";
 
 
 // Helper function for Cloudinary image optimization
@@ -439,6 +442,13 @@ const Shop = () => {
   if (loading) {
     return (
       <Layout>
+        <SEOHead
+          title={PAGE_SEO.shop.title}
+          description={PAGE_SEO.shop.description}
+          keywords={PAGE_SEO.shop.keywords}
+          path={PAGE_SEO.shop.path}
+        />
+        <StructuredData data={ORGANIZATION_SCHEMA} />
         <section className="py-16 bg-gradient-to-br from-gray-50 to-white min-h-screen">
           <div className="container mx-auto px-4 text-center">
             <div className="flex flex-col items-center justify-center space-y-4" data-cy="loader">
@@ -462,6 +472,12 @@ const Shop = () => {
   if (error) {
     return (
       <Layout>
+        <SEOHead
+          title={PAGE_SEO.shop.title}
+          description={PAGE_SEO.shop.description}
+          keywords={PAGE_SEO.shop.keywords}
+          path={PAGE_SEO.shop.path}
+        />
         <section className="py-16 bg-gradient-to-br from-gray-50 to-white min-h-screen">
           <div className="container mx-auto px-4 text-center">
             <div className="bg-white rounded-2xl p-8 shadow-lg max-w-md mx-auto">
@@ -488,6 +504,15 @@ const Shop = () => {
 
   return (
     <Layout>
+      {/* SEO Metadata */}
+      <SEOHead
+        title={PAGE_SEO.shop.title}
+        description={PAGE_SEO.shop.description}
+        keywords={PAGE_SEO.shop.keywords}
+        path={PAGE_SEO.shop.path}
+      />
+      <StructuredData data={ORGANIZATION_SCHEMA} />
+
       {/* Hero Section */}
       <div className="bg-gradient-to-br from-primary/5 to-yellow-50 py-12 sm:py-16">
         <div className="container mx-auto px-4">
