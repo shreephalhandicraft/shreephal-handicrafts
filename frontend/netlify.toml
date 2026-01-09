@@ -6,7 +6,7 @@
   command = "npm run build"
 
 [build.environment]
-  NODE_VERSION = "18"
+  NODE_VERSION = "20"
 
 # Image Optimization
 [[plugins]]
@@ -22,7 +22,16 @@
     Referrer-Policy = "strict-origin-when-cross-origin"
     Permissions-Policy = "camera=(), microphone=(), geolocation=()"
     # Content Security Policy
-    Content-Security-Policy = """\n      default-src 'self'; \n      script-src 'self' 'unsafe-inline' 'unsafe-eval' https://res.cloudinary.com; \n      style-src 'self' 'unsafe-inline'; \n      img-src 'self' data: https: blob:; \n      font-src 'self' data:; \n      connect-src 'self' https://*.supabase.co https://res.cloudinary.com; \n      frame-ancestors 'none'; \n      base-uri 'self'; \n      form-action 'self'
+    Content-Security-Policy = """
+      default-src 'self'; 
+      script-src 'self' 'unsafe-inline' 'unsafe-eval' https://res.cloudinary.com; 
+      style-src 'self' 'unsafe-inline'; 
+      img-src 'self' data: https: blob:; 
+      font-src 'self' data:; 
+      connect-src 'self' https://*.supabase.co https://res.cloudinary.com; 
+      frame-ancestors 'none'; 
+      base-uri 'self'; 
+      form-action 'self'
     """
 
 # Cache Control for Static Assets
