@@ -23,7 +23,7 @@ import {
   ArrowRight,
   Loader2,
   Star,
-  Weight,
+  Scale,
   Ruler,
   Tags,
   Wrench,
@@ -783,7 +783,7 @@ export default function MyOrders() {
                                         )}
                                         {item.productDetails.weight_grams && (
                                           <div className="flex items-center gap-1">
-                                            <Weight className="h-3 w-3" />
+                                            <Scale className="h-3 w-3" />
                                             <span>
                                               {item.productDetails.weight_grams}
                                               g
