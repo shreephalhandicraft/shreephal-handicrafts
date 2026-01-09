@@ -1,118 +1,59 @@
 import { Layout } from "@/components/Layout";
-import { Card, CardContent } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
-import { RotateCcw } from "lucide-react";
+import { SEOHead } from "@/components/SEO/SEOHead";
+import { PAGE_SEO } from "@/config/seoConfig";
 
-export default function RefundPolicy() {
+const RefundPolicy = () => {
   return (
     <Layout>
-      <div className="container mx-auto px-4 py-8">
-        <div className="max-w-4xl mx-auto">
-          <div className="text-center mb-8">
-            <div className="flex items-center justify-center gap-2 mb-4">
-              <RotateCcw className="h-8 w-8 text-primary" />
-              <h1 className="text-3xl font-bold">
-                Refund & Cancellation Policy
-              </h1>
-            </div>
-            <p className="text-muted-foreground">
-              Last updated: January 1, 2024
+      <SEOHead
+        title={PAGE_SEO.refundPolicy.title}
+        description={PAGE_SEO.refundPolicy.description}
+        keywords={PAGE_SEO.refundPolicy.keywords}
+        path={PAGE_SEO.refundPolicy.path}
+      />
+      
+      <div className="min-h-screen bg-white py-12">
+        <div className="container mx-auto px-4">
+          <div className="max-w-4xl mx-auto prose prose-lg">
+            <h1 className="text-4xl font-bold mb-8">Refund & Return Policy</h1>
+            <p className="text-gray-600 mb-8">Last updated: {new Date().toLocaleDateString()}</p>
+            
+            <h2>Our Commitment</h2>
+            <p>
+              At Shreephal Handicrafts, we are committed to your satisfaction. If you're 
+              not completely happy with your purchase, we're here to help.
+            </p>
+            
+            <h2>Return Period</h2>
+            <p>
+              You have 7 days from the date of delivery to return an item. To be eligible 
+              for a return, your item must be unused and in the same condition that you received it.
+            </p>
+            
+            <h2>Refund Process</h2>
+            <p>
+              Once we receive your returned item, we will inspect it and notify you of the 
+              approval or rejection of your refund. If approved, your refund will be 
+              processed within 7-10 business days.
+            </p>
+            
+            <h2>Non-Returnable Items</h2>
+            <ul>
+              <li>Customized or personalized products</li>
+              <li>Items marked as final sale</li>
+              <li>Products damaged due to misuse</li>
+            </ul>
+            
+            <h2>Contact Us</h2>
+            <p>
+              For return requests or questions, please contact us at 
+              info@shreephalhandicrafts.com
             </p>
           </div>
-
-          <Card>
-            <CardContent className="p-8 space-y-6">
-              <section>
-                <h2 className="text-2xl font-semibold mb-4">
-                  1. Cancellation Window
-                </h2>
-                <p className="text-muted-foreground leading-relaxed">
-                  We begin preparing your order after 24 hours of successful
-                  placement. You may cancel your order within the first{" "}
-                  <strong>24 hours</strong> and receive a
-                  <strong> full refund with no deduction.</strong> Requests
-                  after 24 hours may incur charges or may not be refundable
-                  depending on progress.
-                </p>
-              </section>
-
-              <Separator />
-
-              <section>
-                <h2 className="text-2xl font-semibold mb-4">
-                  2. Refund Eligibility
-                </h2>
-                <p className="text-muted-foreground leading-relaxed mb-3">
-                  Refund is applicable only under the following conditions:
-                </p>
-                <ul className="list-disc list-inside text-muted-foreground space-y-2 ml-4">
-                  <li>
-                    Full refund available if cancelled within 24 hours of order
-                    placement
-                  </li>
-                  <li>
-                    If designing is completed but printing has not begun —
-                    minimum ₹500 will be deducted
-                  </li>
-                  <li>
-                    No refund will be possible once
-                    printing/customization/production has started
-                  </li>
-                  <li>
-                    Custom-made items cannot be cancelled after customization
-                    begins
-                  </li>
-                </ul>
-              </section>
-
-              <Separator />
-
-              <section>
-                <h2 className="text-2xl font-semibold mb-4">
-                  3. Refund Processing Time
-                </h2>
-                <p className="text-muted-foreground leading-relaxed">
-                  Once approved, refunds will be processed within
-                  <strong> 15 business working days</strong> and will be
-                  credited to the original mode of payment used during purchase.
-                </p>
-              </section>
-
-              <Separator />
-
-              <section>
-                <h2 className="text-2xl font-semibold mb-4">Contact Us</h2>
-                <p className="text-muted-foreground leading-relaxed">
-                  If you have any questions about this Refund Policy or initiate
-                  a refund, please contact us:
-                </p>
-                <div className="mt-4 p-4 bg-muted rounded-lg">
-                  {" "}
-                  <p className="font-medium">
-                    Shreephal Handicrafts Support
-                  </p>{" "}
-                  <p className="text-muted-foreground">
-                    {" "}
-                    Email:{" "}
-                    <a href="mailto:support@shreephal-handicrafts.com">
-                      {" "}
-                      shreephalhandicraft@gmail.com{" "}
-                    </a>{" "}
-                  </p>{" "}
-                  <p className="text-muted-foreground">
-                    Phone: +91-9424626008
-                  </p>{" "}
-                  <p className="text-muted-foreground">
-                    {" "}
-                    Address: Main Road, Kachiyana, Lordganj , Jabalpur , Madhya
-                    Pradesh{" "}
-                  </p>{" "}
-                </div>{" "}
-              </section>
-            </CardContent>
-          </Card>
         </div>
       </div>
     </Layout>
   );
-}
+};
+
+export default RefundPolicy;
