@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import path from 'path'; // <--- added
 
 export default defineConfig({
   plugins: [
@@ -19,48 +20,16 @@ export default defineConfig({
         start_url: '/',
         orientation: 'portrait-primary',
         icons: [
-          {
-            src: '/pwa-192x192.png',
-            sizes: '192x192',
-            type: 'image/png',
-            purpose: 'any'
-          },
-          {
-            src: '/pwa-512x512.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'any'
-          },
-          {
-            src: '/pwa-maskable-192x192.png',
-            sizes: '192x192',
-            type: 'image/png',
-            purpose: 'maskable'
-          },
-          {
-            src: '/pwa-maskable-512x512.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'maskable'
-          }
+          { src: '/pwa-192x192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: '/pwa-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: '/pwa-maskable-192x192.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+          { src: '/pwa-maskable-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }
         ],
         categories: ['shopping', 'business'],
         shortcuts: [
-          {
-            name: 'Shop',
-            url: '/shop',
-            description: 'Browse all products'
-          },
-          {
-            name: 'Trophies',
-            url: '/category/trophies/products',
-            description: 'View trophies collection'
-          },
-          {
-            name: 'Contact',
-            url: '/contact',
-            description: 'Get in touch'
-          }
+          { name: 'Shop', url: '/shop', description: 'Browse all products' },
+          { name: 'Trophies', url: '/category/trophies/products', description: 'View trophies collection' },
+          { name: 'Contact', url: '/contact', description: 'Get in touch' }
         ]
       },
       workbox: {
@@ -71,13 +40,8 @@ export default defineConfig({
             handler: 'CacheFirst',
             options: {
               cacheName: 'cloudinary-images',
-              expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: 60 * 60 * 24 * 30 // 30 days
-              },
-              cacheableResponse: {
-                statuses: [0, 200]
-              }
+              expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 * 30 },
+              cacheableResponse: { statuses: [0, 200] }
             }
           },
           {
@@ -85,10 +49,7 @@ export default defineConfig({
             handler: 'NetworkFirst',
             options: {
               cacheName: 'supabase-api',
-              expiration: {
-                maxEntries: 50,
-                maxAgeSeconds: 60 * 5 // 5 minutes
-              },
+              expiration: { maxEntries: 50, maxAgeSeconds: 60 * 5 },
               networkTimeoutSeconds: 10
             }
           }
@@ -97,11 +58,14 @@ export default defineConfig({
         skipWaiting: true,
         clientsClaim: true
       },
-      devOptions: {
-        enabled: false
-      }
+      devOptions: { enabled: false }
     })
   ],
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, 'src') // <--- added alias for @
+    }
+  },
   build: {
     target: 'esnext',
     minify: 'terser',
@@ -127,12 +91,6 @@ export default defineConfig({
     sourcemap: false,
     assetsInlineLimit: 4096
   },
-  server: {
-    port: 5173,
-    host: true
-  },
-  preview: {
-    port: 4173,
-    host: true
-  }
+  server: { port: 5173, host: true },
+  preview: { port: 4173, host: true }
 });
