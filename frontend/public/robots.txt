@@ -1,0 +1,26 @@
+# Robots.txt for Shreephal Handicrafts
+# https://shreephalhandicrafts.com/robots.txt
+
+User-agent: *
+Allow: /
+
+# Disallow admin and sensitive areas (if any)
+Disallow: /admin/
+Disallow: /api/
+Disallow: /*.json$
+
+# Allow crawling of images and assets
+Allow: /*.jpg$
+Allow: /*.jpeg$
+Allow: /*.png$
+Allow: /*.gif$
+Allow: /*.svg$
+Allow: /*.webp$
+Allow: /*.css$
+Allow: /*.js$
+
+# Sitemap location
+Sitemap: https://shreephalhandicrafts.com/sitemap.xml
+
+# Crawl-delay for polite crawling
+Crawl-delay: 1
