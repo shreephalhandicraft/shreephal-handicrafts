@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import ImageUpload from "@/components/ImageUpload.jsx";
+import ImageUploadDirect from "@/components/ImageUploadDirect.jsx";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -330,9 +330,10 @@ export function EditProductForm({
 
         <div>
           <Label>Image</Label>
-          <ImageUpload
+          <ImageUploadDirect
             onUploadSuccess={onUploadSuccess}
-            onUploadStart={handleUploadStart}
+            maxFiles={1}
+            folder="shreephal-handicrafts/products"
           />
           {uploading && (
             <p className="text-sm text-blue-600 mt-1 animate-pulse">
