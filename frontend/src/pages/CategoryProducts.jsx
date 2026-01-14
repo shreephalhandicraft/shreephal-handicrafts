@@ -39,7 +39,7 @@ const CategoryProducts = () => {
       const { data: productData, error: productError } = await supabase
         .from("products")
         .select(`*, categories(id, name, slug)`)
-        .eq("category_slug", slug)
+      .eq("category_id", categoryData.id)
         .eq("is_active", true);
 
       if (productError) throw productError;

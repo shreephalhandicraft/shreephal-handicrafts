@@ -93,9 +93,9 @@ const Shop = () => {
       const matchesSearch = product.title
         .toLowerCase()
         .includes(searchQuery.toLowerCase());
-      const matchesCategory =
-        selectedCategory === "all" ||
-        product.category_slug === selectedCategory;
+     const matchesCategory =
+  selectedCategory === "all" ||
+  product.categories?.slug === selectedCategory;
       const matchesPrice =
         product.price >= priceRange[0] && product.price <= priceRange[1];
 
