@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import ImageUpload from "@/components/ImageUpload.jsx";
+import ImageUploadDirect from "@/components/ImageUploadDirect.jsx";
 import { useToast } from "@/hooks/use-toast";
 
 // --- AddCategoryForm ---
@@ -91,11 +91,10 @@ export function AddCategoryForm({ onSubmit, onCancel }) {
               }}
             />
           )}
-          <ImageUpload
-            onUploadStart={handleUploadStart}
+          <ImageUploadDirect
             onUploadSuccess={onUploadSuccess}
             maxFiles={1}
-            accept="image/*"
+            folder="shreephal-handicrafts/categories"
           />
           {uploading && <p>Uploading image...</p>}
         </div>
@@ -208,11 +207,10 @@ export function EditCategoryForm({ category, onSubmit, onCancel }) {
           ) : (
             <p>No image uploaded yet</p>
           )}
-          <ImageUpload
-            onUploadStart={handleUploadStart}
+          <ImageUploadDirect
             onUploadSuccess={onUploadSuccess}
             maxFiles={1}
-            accept="image/*"
+            folder="shreephal-handicrafts/categories"
           />
           {uploading && <p>Uploading image...</p>}
         </div>
