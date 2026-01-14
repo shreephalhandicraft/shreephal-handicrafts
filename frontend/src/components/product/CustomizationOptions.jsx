@@ -13,6 +13,10 @@ const CustomizationOptions = ({
   const [uploading, setUploading] = useState(false);
   const { toast } = useToast();
 
+  // Cloudinary configuration
+  const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || 'dqs347ixj';
+  const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || 'shreephal_unsigned';
+
   const getCustomizationOptions = (type) => {
     if (!product?.customizable_fields) return [];
     const fields = product.customizable_fields;
@@ -36,12 +40,6 @@ const CustomizationOptions = ({
   ) {
     return null;
   }
-
-  const getApiUrl = (endpoint) => {
-    const backendUrl =
-      import.meta.env.VITE_BACKEND_URL || "http://localhost:3000";
-    return `${backendUrl}${endpoint}`;
-  };
 
   const validateFile = (file) => {
     const maxSize = 5 * 1024 * 1024; // 5MB
@@ -68,6 +66,30 @@ const CustomizationOptions = ({
     return true;
   };
 
+  /**
+   * Upload directly to Cloudinary using unsigned upload
+   */
+  const uploadToCloudinary = async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('upload_preset', uploadPreset);
+    formData.append('folder', `shreephal-handicrafts/customizations/product-${product.id}`);
+    
+    const cloudinaryUrl = `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`;
+    
+    const response = await fetch(cloudinaryUrl, {
+      method: 'POST',
+      body: formData
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error?.message || 'Upload failed');
+    }
+
+    return response.json();
+  };
+
   const handleImageUpload = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -79,38 +101,20 @@ const CustomizationOptions = ({
 
     setUploading(true);
     try {
-      const formData = new FormData();
-      formData.append("image", file);
-      formData.append("productId", product.id);
+      const result = await uploadToCloudinary(file);
+      
+      const imageData = {
+        url: result.secure_url,
+        publicId: result.public_id,
+        fileName: file.name,
+        cloudinaryPublicId: result.public_id,
+      };
 
-      const response = await fetch(
-        getApiUrl("/api/upload/customization-image"),
-        {
-          method: "POST",
-          body: formData,
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const result = await response.json();
-      if (result.success) {
-        const imageData = {
-          url: result.data.url,
-          publicId: result.data.cloudinaryPublicId,
-          fileName: file.name,
-        };
-
-        onCustomizationChange("uploadedImage", imageData);
-        toast({
-          title: "Success",
-          description: "Customization image uploaded successfully",
-        });
-      } else {
-        throw new Error(result.message || "Upload failed");
-      }
+      onCustomizationChange("uploadedImage", imageData);
+      toast({
+        title: "Success",
+        description: "Customization image uploaded successfully",
+      });
     } catch (error) {
       console.error("Upload error:", error);
       toast({
@@ -124,28 +128,15 @@ const CustomizationOptions = ({
     }
   };
 
-  const removeImage = async () => {
-    if (customization.uploadedImage?.publicId) {
-      try {
-        const response = await fetch(
-          getApiUrl(
-            `/api/upload/image/${customization.uploadedImage.publicId}`
-          ),
-          { method: "DELETE" }
-        );
-
-        if (response.ok) {
-          toast({
-            title: "Success",
-            description: "Image removed successfully",
-          });
-        }
-      } catch (error) {
-        console.error("Delete error:", error);
-      }
-    }
-
+  const removeImage = () => {
+    // Note: For security, Cloudinary deletion requires signed requests
+    // For now, just remove from UI. Image will remain in Cloudinary.
+    // Consider implementing backend deletion endpoint if cleanup is needed
     onCustomizationChange("uploadedImage", null);
+    toast({
+      title: "Success",
+      description: "Image removed from customization",
+    });
   };
 
   return (
@@ -231,7 +222,7 @@ const CustomizationOptions = ({
         </div>
       )}
 
-      {/* Image Upload */}
+      {/* Image Upload - Only show if hasImageUpload is true */}
       {hasImageUpload && (
         <div>
           <Label
@@ -262,8 +253,11 @@ const CustomizationOptions = ({
                 ) : (
                   <Upload className="h-4 w-4 mr-2" />
                 )}
-                {uploading ? "Uploading..." : "Choose Image File"}
+                {uploading ? "Uploading to Cloudinary..." : "Choose Image File"}
               </Button>
+              <p className="text-xs text-purple-500 mt-2">
+                ☁️ Direct upload to cloud storage
+              </p>
             </div>
           ) : (
             <div className="mt-3 space-y-3">
@@ -282,7 +276,7 @@ const CustomizationOptions = ({
                 </button>
               </div>
               <p className="text-xs text-purple-600">
-                Selected: {customization.uploadedImage.fileName}
+                ✅ Selected: {customization.uploadedImage.fileName}
               </p>
             </div>
           )}
