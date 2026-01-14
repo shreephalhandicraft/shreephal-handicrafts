@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import ImageUpload from "@/components/ImageUpload.jsx";
+import ImageUploadDirect from "@/components/ImageUploadDirect.jsx";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -300,9 +300,10 @@ export default function AddProductPage() {
       <div className="flex flex-col">
         <Label className="mb-1 font-medium text-gray-700">Product Image</Label>
         <div className="w-full max-w-xs">
-          <ImageUpload
+          <ImageUploadDirect
             onUploadSuccess={onUploadSuccess}
-            onUploadStart={handleUploadStart}
+            maxFiles={1}
+            folder="shreephal-handicrafts/products"
           />
           {uploading && (
             <p className="text-sm text-blue-600 mt-1 animate-pulse">
