@@ -35,7 +35,7 @@ import {
   Search,
   Package,
   Filter,
-  Grid3X3,
+  LayoutGrid,
   List,
   Star,
   IndianRupee,
@@ -360,7 +360,7 @@ export function ProductsPage() {
                   onClick={() => setViewMode("grid")}
                   className="rounded-r-none"
                 >
-                  <Grid3X3 className="h-4 w-4" />
+                  <LayoutGrid className="h-4 w-4" />
                 </Button>
                 <Button
                   variant={viewMode === "list" ? "default" : "ghost"}

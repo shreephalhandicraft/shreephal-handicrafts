@@ -1,0 +1,30 @@
+# Netlify Configuration for Shreephal Handicrafts
+
+[build]
+  base = "frontend/"
+  publish = "/dist"
+  command = "npm run build"
+
+[build.environment]
+  NODE_VERSION = "20"
+  NPM_VERSION = "10"
+
+# Redirect rules for SPA routing
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Domain migration redirects (ACTIVATE WHEN SWITCHING DOMAINS)
+# Uncomment the following redirect when migrating from .netlify.app to custom domain
+# [[redirects]]
+#   from = "https://shreefalhandicarfts.netlify.app/*"
+#   to = "https://shreephal-handicrafts.com/:splat"
+#   status = 301
+#   force = true
+
+# Build plugin for better performance
+[[plugins]]
+  package = "@netlify/plugin-lighthouse"
+
+# Headers are configured in public/_headers file

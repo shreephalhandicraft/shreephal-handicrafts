@@ -1,4 +1,4 @@
-import { Palette, Weight, Ruler, Shield, Sparkles } from "lucide-react";
+import { Palette, Scale, Ruler, Shield, Sparkles } from "lucide-react";
 
 // Helper function to format dimensions
 const formatDimensions = (dimensions) => {
@@ -34,7 +34,7 @@ const ProductSpecs = ({ product, selectedVariant }) => {
 
   if (selectedVariant?.weight_grams || product.weight_grams) {
     specs.push({
-      icon: <Weight className="h-4 w-4 text-gray-600" />,
+      icon: <Scale className="h-4 w-4 text-gray-600" />,
       label: "Weight",
       value: `${selectedVariant?.weight_grams || product.weight_grams}g`,
     });

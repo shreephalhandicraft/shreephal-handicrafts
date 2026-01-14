@@ -1,9 +1,10 @@
-// App.jsx (Modified: Removed PhoneVerificationRoute import and usage, removed VerifyPhone route and import)
+// App.jsx - Enhanced with SEO and Performance Optimizations
+import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { Routes, Route } from "react-router-dom";
 import { CartProvider } from "@/contexts/CartContext";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { FavouritesProvider } from "@/contexts/FavouritesContext";
@@ -14,27 +15,34 @@ import {
   GuestRoute,
 } from "@/contexts/RouteGuards";
 
-// Pages
-import Index from "./pages/Index";
-import Shop from "./pages/Shop";
-import Category from "./pages/CategoryProducts";
-import ProductDetail from "./pages/ProductDetail";
-import About from "./pages/About";
-import Contact from "./pages/Contact";
-import Cart from "./pages/Cart";
-import Checkout from "./pages/Checkout";
-import Login from "./pages/Login";
-import Register from "./pages/Register";
-import { AdminDashboard } from "./components/admin/AdminDashboard";
-import Favourites from "./pages/Favourites";
-import MyOrders from "./pages/MyOrders";
-import OrderDetail from "./pages/OrderDetail";
-import PersonalDetails from "./pages/PersonalDetails";
-import TermsConditions from "./pages/TermsConditions";
-import PrivacyPolicy from "./pages/PrivacyPolicy";
-import RefundPolicy from "./pages/RefundPolicy";
-import NotFound from "./pages/NotFound";
-import UnauthorizedPage from "./pages/UnauthorizedPage";
+// Lazy load pages for better performance
+const Index = lazy(() => import("./pages/Index"));
+const Shop = lazy(() => import("./pages/Shop"));
+const Category = lazy(() => import("./pages/CategoryProducts"));
+const ProductDetail = lazy(() => import("./pages/ProductDetail"));
+const About = lazy(() => import("./pages/About"));
+const Contact = lazy(() => import("./pages/Contact"));
+const Cart = lazy(() => import("./pages/Cart"));
+const Checkout = lazy(() => import("./pages/Checkout"));
+const Login = lazy(() => import("./pages/Login"));
+const Register = lazy(() => import("./pages/Register"));
+const Favourites = lazy(() => import("./pages/Favourites"));
+const MyOrders = lazy(() => import("./pages/MyOrders"));
+const OrderDetail = lazy(() => import("./pages/OrderDetail"));
+const PersonalDetails = lazy(() => import("./pages/PersonalDetails"));
+const TermsConditions = lazy(() => import("./pages/TermsConditions"));
+const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
+const RefundPolicy = lazy(() => import("./pages/RefundPolicy"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const UnauthorizedPage = lazy(() => import("./pages/UnauthorizedPage"));
+const AdminDashboard = lazy(() => import("./components/admin/AdminDashboard").then(module => ({ default: module.AdminDashboard })));
+
+// Loading fallback component
+const PageLoader = () => (
+  <div className="flex items-center justify-center min-h-screen">
+    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+  </div>
+);
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -58,7 +66,7 @@ const App = () => (
           <FavouritesProvider>
             <Toaster />
             <Sonner />
-            <BrowserRouter>
+            <Suspense fallback={<PageLoader />}>
               <Routes>
                 {/* Public Routes - Anyone can access */}
                 <Route
@@ -220,7 +228,7 @@ const App = () => (
                 <Route path="/unauthorized" element={<UnauthorizedPage />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
-            </BrowserRouter>
+            </Suspense>
           </FavouritesProvider>
         </CartProvider>
       </AuthProvider>

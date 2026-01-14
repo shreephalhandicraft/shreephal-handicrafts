@@ -1,0 +1,94 @@
+# Netlify Configuration for Shreephal Handicrafts
+# Optimized for performance, SEO, and security
+
+[build]
+  publish = "dist"
+  command = "npm run build"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# Image Optimization
+[[plugins]]
+  package = "@netlify/plugin-lighthouse"
+
+# Security Headers
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    X-XSS-Protection = "1; mode=block"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+    # Content Security Policy
+    Content-Security-Policy = """
+      default-src 'self'; 
+      script-src 'self' 'unsafe-inline' 'unsafe-eval' https://res.cloudinary.com; 
+      style-src 'self' 'unsafe-inline'; 
+      img-src 'self' data: https: blob:; 
+      font-src 'self' data:; 
+      connect-src 'self' https://*.supabase.co https://res.cloudinary.com; 
+      frame-ancestors 'none'; 
+      base-uri 'self'; 
+      form-action 'self'
+    """
+
+# Cache Control for Static Assets
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/*.js"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/*.css"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/*.woff2"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# HTML Caching (shorter duration)
+[[headers]]
+  for = "/*.html"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, must-revalidate"
+
+# SPA Redirect - Handle client-side routing
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+  force = false
+
+# Redirects for old URLs (if any)
+# Example:
+# [[redirects]]
+#   from = "/old-path"
+#   to = "/new-path"
+#   status = 301
+
+# Pretty URLs
+[[redirects]]
+  from = "/home"
+  to = "/"
+  status = 301
+
+# Sitemap redirect
+[[redirects]]
+  from = "/sitemap"
+  to = "/sitemap.xml"
+  status = 301
+
+# Robots redirect
+[[redirects]]
+  from = "/robots"
+  to = "/robots.txt"
+  status = 301
