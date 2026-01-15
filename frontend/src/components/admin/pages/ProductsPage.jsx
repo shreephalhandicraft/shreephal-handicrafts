@@ -10,7 +10,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -44,7 +43,6 @@ import {
   RefreshCw,
 } from "lucide-react";
 
-import { EditProductForm } from "../forms/ProductForm";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -55,8 +53,6 @@ export function ProductsPage() {
   const [selectedCategoryId, setSelectedCategoryId] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [viewMode, setViewMode] = useState("grid"); // grid or list
-  const [isFormOpen, setIsFormOpen] = useState(false);
-  const [editingProduct, setEditingProduct] = useState(null);
   const [deleteProduct, setDeleteProduct] = useState(null);
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
@@ -116,46 +112,6 @@ export function ProductsPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
-
-  // Helper to count featured excluding an optional product id
-  const getFeaturedCountExcluding = (excludeProductId = null) =>
-    products.filter((p) => p.featured && p.id !== excludeProductId).length;
-
-  // Handler to update product information after edit (called from EditProductForm)
-  const handleEdit = async (data) => {
-    if (!editingProduct) return;
-    // Check featured limit
-    const featuredCount = getFeaturedCountExcluding(editingProduct.id);
-    if (data.featured && !editingProduct.featured && featuredCount >= 4) {
-      toast({
-        title: "Featured Products Limit Reached",
-        description: "Only 4 products can be featured at a time.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const { error } = await supabase
-      .from("products")
-      .update(data)
-      .eq("id", editingProduct.id);
-
-    if (error) {
-      toast({
-        title: "Failed to update product",
-        description: error.message,
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // Re-fetch data to keep UI in sync (product + variants)
-    await fetchData();
-
-    setEditingProduct(null);
-    setIsFormOpen(false);
-    toast({ title: "Product updated successfully" });
-  };
 
   // Handler to delete product (and its variants)
   const handleDelete = async () => {
@@ -554,10 +510,9 @@ export function ProductsPage() {
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => {
-                                setEditingProduct(product);
-                                setIsFormOpen(true);
-                              }}
+                              onClick={() =>
+                                navigate(`/admin/products/edit/${product.id}`)
+                              }
                               className="hover:bg-blue-50 hover:border-blue-300"
                             >
                               <Edit className="h-4 w-4 mr-1" />
@@ -583,31 +538,6 @@ export function ProductsPage() {
           )}
         </CardContent>
       </Card>
-
-      {/* Edit Product Dialog */}
-      <Dialog
-        open={isFormOpen}
-        onOpenChange={(open) => {
-          if (!open) {
-            setIsFormOpen(false);
-            setEditingProduct(null);
-          }
-        }}
-      >
-        <DialogContent className="max-h-[80vh] overflow-y-auto p-6 max-w-2xl">
-          {editingProduct && (
-            <EditProductForm
-              product={editingProduct}
-              categories={categories}
-              onSubmit={handleEdit} // passes updated product to handleEdit (includes refetch)
-              onCancel={() => {
-                setIsFormOpen(false);
-                setEditingProduct(null);
-              }}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog
