@@ -1,7 +1,7 @@
 {
   "rewrites": [
     {
-      "source": "/((?!sitemap\\.xml|robots\\.txt|favicon\\.ico|apple-touch-icon\\.png|android-chrome-.*\\.png|.*\\.(png|jpg|jpeg|svg|webp|ico|xml|txt)).*)",
+      "source": "/(.*)",
       "destination": "/index.html"
     }
   ],
@@ -16,7 +16,7 @@
       ]
     },
     {
-      "source": "/(sitemap\\.xml|robots\\.txt)",
+      "source": "/(.*).xml",
       "headers": [
         {
           "key": "Content-Type",
@@ -29,7 +29,29 @@
       ]
     },
     {
-      "source": "/(favicon\\.ico|.*\\.png)",
+      "source": "/(.*).txt",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/plain; charset=utf-8"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=3600"
+        }
+      ]
+    },
+    {
+      "source": "/(.*).ico",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=86400"
+        }
+      ]
+    },
+    {
+      "source": "/(.*).png",
       "headers": [
         {
           "key": "Cache-Control",
