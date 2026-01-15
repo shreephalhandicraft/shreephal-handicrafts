@@ -11,6 +11,7 @@ import { OrdersPage } from "./pages/OrdersPage";
 import { CustomersPage } from "./pages/CustomersPage";
 import { MessagesPage } from "./pages/MessagesPage";
 import AddProductPage from "./pages/AddProductPage";
+import EditProductPage from "./pages/EditProductPage";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 
@@ -196,6 +197,10 @@ export function AdminDashboard() {
                   <Route
                     path="/products/add-product"
                     element={<AddProductPage />}
+                  />
+                  <Route
+                    path="/products/edit/:productId"
+                    element={<EditProductPage />}
                   />
                   <Route path="/products/*" element={<ProductsPage />} />
                   <Route path="/categories/*" element={<CategoriesPage />} />
