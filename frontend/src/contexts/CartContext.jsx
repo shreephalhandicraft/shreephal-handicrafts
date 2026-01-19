@@ -19,10 +19,90 @@ export const CartProvider = ({ children }) => {
   const [cartItems, setCartItems] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  // ✅ FIXED: Add item with proper customization handling
+  // ✅ NEW: Check stock availability for a variant
+  const checkStockAvailability = async (variantId, requestedQty) => {
+    try {
+      const { data: variant, error } = await supabase
+        .from('product_variants')
+        .select('stock_quantity, size_code, product_id, products(title)')
+        .eq('id', variantId)
+        .single();
+
+      if (error) {
+        console.error('Stock check error:', error);
+        return { available: false, stock: 0, error: 'Failed to check stock' };
+      }
+
+      if (!variant) {
+        return { available: false, stock: 0, error: 'Product variant not found' };
+      }
+
+      // Calculate existing quantity in cart for this variant
+      const existingQty = cartItems
+        .filter(item => item.variantId === variantId)
+        .reduce((sum, item) => sum + item.quantity, 0);
+
+      const totalRequested = existingQty + requestedQty;
+      const available = totalRequested <= variant.stock_quantity;
+
+      return {
+        available,
+        stock: variant.stock_quantity,
+        existingQty,
+        totalRequested,
+        productTitle: variant.products?.title || 'Product',
+        sizeCode: variant.size_code
+      };
+    } catch (error) {
+      console.error('Stock availability check failed:', error);
+      return { available: false, stock: 0, error: error.message };
+    }
+  };
+
+  // ✅ ENHANCED: Add item with stock validation
   const addItem = async (itemData) => {
     try {
       console.log("Adding item to cart:", itemData);
+
+      // ✅ VALIDATE STOCK BEFORE ADDING
+      if (itemData.variantId) {
+        const stockCheck = await checkStockAvailability(
+          itemData.variantId,
+          itemData.quantity || 1
+        );
+
+        if (!stockCheck.available) {
+          if (stockCheck.stock === 0) {
+            toast({
+              title: "Out of Stock",
+              description: `${stockCheck.productTitle} (${stockCheck.sizeCode}) is currently out of stock.`,
+              variant: "destructive",
+            });
+          } else if (stockCheck.existingQty > 0) {
+            toast({
+              title: "Insufficient Stock",
+              description: `Only ${stockCheck.stock} available. You already have ${stockCheck.existingQty} in cart.`,
+              variant: "destructive",
+            });
+          } else {
+            toast({
+              title: "Insufficient Stock",
+              description: `Only ${stockCheck.stock} available for ${stockCheck.productTitle} (${stockCheck.sizeCode}).`,
+              variant: "destructive",
+            });
+          }
+          return false;
+        }
+
+        // Show low stock warning
+        if (stockCheck.stock <= 5 && stockCheck.stock > 0) {
+          toast({
+            title: "Low Stock Warning",
+            description: `Only ${stockCheck.stock} left in stock!`,
+            variant: "warning",
+          });
+        }
+      }
 
       if (user) {
         // For authenticated users - we'll store basic info in DB and full data in localStorage
@@ -117,6 +197,8 @@ export const CartProvider = ({ children }) => {
           itemData.name || itemData.title
         } has been added to your cart.`,
       });
+      
+      return true;
     } catch (error) {
       console.error("Error adding to cart:", error);
       toast({
@@ -124,6 +206,7 @@ export const CartProvider = ({ children }) => {
         description: "Failed to add item to cart.",
         variant: "destructive",
       });
+      return false;
     }
   };
 
@@ -238,6 +321,23 @@ export const CartProvider = ({ children }) => {
     if (newQuantity < 1) {
       await removeFromCart(item);
       return;
+    }
+
+    // ✅ VALIDATE STOCK BEFORE UPDATING
+    if (item.variantId) {
+      const stockCheck = await checkStockAvailability(
+        item.variantId,
+        newQuantity - item.quantity // Only check the difference
+      );
+
+      if (!stockCheck.available) {
+        toast({
+          title: "Insufficient Stock",
+          description: `Only ${stockCheck.stock} available in stock.`,
+          variant: "destructive",
+        });
+        return;
+      }
     }
 
     try {
@@ -491,6 +591,7 @@ export const CartProvider = ({ children }) => {
     getCartForCheckout,
     fetchCartItems,
     syncCartToDatabase,
+    checkStockAvailability, // ✅ NEW: Export stock check function
   };
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
