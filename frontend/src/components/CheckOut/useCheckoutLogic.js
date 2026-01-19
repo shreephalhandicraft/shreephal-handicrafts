@@ -204,113 +204,6 @@ export const useCheckoutLogic = () => {
     return true;
   }, [formData, toast]);
 
-  // ✅ NEW: Validate stock availability before checkout
-  const validateStockBeforeCheckout = useCallback(async (cartItems) => {
-    try {
-      console.log("📦 Validating stock for", cartItems.length, "items...");
-
-      const stockChecks = await Promise.all(
-        cartItems.map(async (item) => {
-          // Skip items without variant (shouldn't happen, but safety check)
-          if (!item.variantId) {
-            return {
-              productTitle: item.name,
-              requested: item.quantity,
-              available: 999, // Assume available if no variant tracking
-              isAvailable: true,
-            };
-          }
-
-          const { data: variant, error } = await supabase
-            .from('product_variants')
-            .select('stock_quantity, size_code')
-            .eq('id', item.variantId)
-            .single();
-
-          if (error) {
-            console.error('Stock check error for', item.name, ':', error);
-            throw new Error(`Failed to check stock for ${item.name}`);
-          }
-
-          return {
-            productTitle: item.name,
-            size: variant.size_code,
-            requested: item.quantity,
-            available: variant.stock_quantity,
-            isAvailable: item.quantity <= variant.stock_quantity,
-            variantId: item.variantId,
-          };
-        })
-      );
-
-      // Check for out of stock items
-      const outOfStock = stockChecks.filter(item => !item.isAvailable);
-
-      if (outOfStock.length > 0) {
-        console.log("❌ Out of stock items found:", outOfStock);
-        
-        const message = outOfStock.map(item => 
-          `• ${item.productTitle}${item.size ? ` (${item.size})` : ''}: Only ${item.available} available, you requested ${item.requested}`
-        ).join('\n');
-        
-        toast({
-          title: "❌ Items Out of Stock",
-          description: message,
-          variant: "destructive",
-          duration: 7000,
-        });
-        
-        return false;
-      }
-
-      console.log("✅ All items in stock");
-      return true;
-    } catch (error) {
-      console.error('Stock validation error:', error);
-      toast({
-        title: "Stock Check Failed",
-        description: error.message || "Unable to verify stock availability. Please try again.",
-        variant: "destructive",
-      });
-      return false;
-    }
-  }, [toast]);
-
-  // ✅ NEW: Decrement stock atomically using database function
-  const decrementStock = useCallback(async (cartItems) => {
-    try {
-      console.log("📉 Decrementing stock for", cartItems.length, "items...");
-
-      for (const item of cartItems) {
-        // Skip items without variant
-        if (!item.variantId) {
-          console.log("⚠️ Skipping stock decrement for", item.name, "(no variant)");
-          continue;
-        }
-
-        console.log(`  ➖ ${item.name}: -${item.quantity}`);
-
-        const { data, error } = await supabase.rpc('decrement_product_stock', {
-          variant_id: item.variantId,
-          quantity: item.quantity,
-        });
-
-        if (error) {
-          console.error('Stock decrement failed for', item.name, ':', error);
-          throw new Error(`Stock update failed for ${item.name}: ${error.message}`);
-        }
-
-        console.log(`  ✅ ${item.name} stock decremented`);
-      }
-
-      console.log("✅ All stock decremented successfully");
-      return true;
-    } catch (error) {
-      console.error('❌ Stock decrement error:', error);
-      return false;
-    }
-  }, []);
-
   // Create customization details for order
   const createCustomizationDetails = useCallback((cartItems) => {
     const customizationDetails = {};
@@ -333,7 +226,7 @@ export const useCheckoutLogic = () => {
     return customizationDetails;
   }, []);
 
-  // ✅ ENHANCED: Create order with stock validation and decrement
+  // Create order and decrement stock
   const createOrder = useCallback(
     async (paymentMethod = "PayNow") => {
       try {
@@ -353,13 +246,7 @@ export const useCheckoutLogic = () => {
           throw new Error("Authentication failed");
         }
 
-        // ✅ VALIDATE STOCK BEFORE CREATING ORDER
         const cartItems = getCartForCheckout();
-        const stockValid = await validateStockBeforeCheckout(cartItems);
-        
-        if (!stockValid) {
-          throw new Error("Stock validation failed");
-        }
 
         let customer;
         const { data: existingCustomer, error: customerFetchError } =
@@ -456,31 +343,25 @@ export const useCheckoutLogic = () => {
         console.log("✅ Order created successfully:", order);
 
         // ✅ DECREMENT STOCK AFTER ORDER CREATION
-        console.log("📉 Attempting to decrement stock...");
-        const stockDecremented = await decrementStock(cartItems);
-
-        if (!stockDecremented) {
-          // ✅ ROLLBACK: Delete order if stock decrement fails
-          console.log("❌ Stock decrement failed, rolling back order...");
-          
-          await supabase
-            .from("orders")
-            .delete()
-            .eq("id", order.id);
-
-          throw new Error(
-            "Failed to update inventory. Order cancelled. Please try again."
-          );
+        console.log("📉 Decrementing stock...");
+        for (const item of cartItems) {
+          if (item.variantId) {
+            await supabase.rpc('decrement_product_stock', {
+              variant_id: item.variantId,
+              quantity: item.quantity
+            });
+            console.log(`  ✅ Stock decremented for ${item.name}`);
+          }
         }
 
-        console.log("✅ Stock decremented successfully");
+        console.log("✅ Order complete with stock updated");
         return order;
       } catch (error) {
         console.error("🚨 CREATE ORDER FAILED:", error);
         throw error;
       }
     },
-    [user?.id, formData, total, getCartForCheckout, createCustomizationDetails, validateStockBeforeCheckout, decrementStock]
+    [user?.id, formData, total, getCartForCheckout, createCustomizationDetails]
   );
 
   // Handle PayNow payment
