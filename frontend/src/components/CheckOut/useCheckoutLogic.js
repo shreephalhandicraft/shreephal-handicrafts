@@ -46,19 +46,11 @@ export const useCheckoutLogic = () => {
   }, []);
 
   const fetchUserProfile = useCallback(async () => {
-    if (!user?.id) {
-      console.log("❌ No user ID found");
-      return;
-    }
+    if (!user?.id) return;
 
     try {
       setLoading(true);
-      console.log("🔍 Fetching profile for user ID:", user.id);
-
       const { data: authUser } = await supabase.auth.getUser();
-      console.log("👤 Auth user:", authUser.user);
-
-      console.log("🔎 Querying customers table with user_id:", user.id);
 
       const { data: customer, error: customerError } = await supabase
         .from("customers")
@@ -66,13 +58,8 @@ export const useCheckoutLogic = () => {
         .eq("user_id", user.id)
         .single();
 
-      console.log("📊 Customer query result:", { customer, customerError });
-
       if (customerError) {
         if (customerError.code === "PGRST116") {
-          console.log(
-            "📝 No customer profile found (PGRST116), using auth data only"
-          );
           setFormData({
             firstName: "",
             lastName: "",
@@ -86,13 +73,11 @@ export const useCheckoutLogic = () => {
           setLoading(false);
           return;
         } else {
-          console.error("❌ Customer fetch error:", customerError);
           throw customerError;
         }
       }
 
       if (!customer) {
-        console.log("📝 Customer data is null/undefined");
         setFormData({
           firstName: "",
           lastName: "",
@@ -107,9 +92,6 @@ export const useCheckoutLogic = () => {
         return;
       }
 
-      console.log("📋 Customer data found:", customer);
-      console.log("📍 Raw address field:", customer.address);
-
       let address = {};
       if (customer?.address) {
         try {
@@ -117,13 +99,7 @@ export const useCheckoutLogic = () => {
             typeof customer.address === "string"
               ? JSON.parse(customer.address)
               : customer.address;
-          console.log("🏠 Parsed address:", address);
         } catch (parseError) {
-          console.error("❌ Address parsing error:", parseError);
-          console.log(
-            "🔍 Address value that failed to parse:",
-            customer.address
-          );
           address = {};
         }
       }
@@ -139,11 +115,9 @@ export const useCheckoutLogic = () => {
         zipCode: address.zipCode || "",
       };
 
-      console.log("📝 Mapped form data:", mappedFormData);
       setFormData(mappedFormData);
-      console.log("✅ Form populated with customer data");
     } catch (error) {
-      console.error("❌ Profile fetch error:", error);
+      console.error("Profile fetch error:", error);
       toast({
         title: "Error",
         description:
@@ -230,8 +204,7 @@ export const useCheckoutLogic = () => {
   const createOrder = useCallback(
     async (paymentMethod = "PayNow") => {
       try {
-        console.log("=== CREATING ORDER ===");
-        console.log("User ID:", user?.id);
+        console.log("\n=== CREATING ORDER ===");
 
         if (!user?.id) {
           throw new Error("User not authenticated");
@@ -247,6 +220,7 @@ export const useCheckoutLogic = () => {
         }
 
         const cartItems = getCartForCheckout();
+        console.log("\n📦 CART ITEMS:", JSON.stringify(cartItems, null, 2));
 
         let customer;
         const { data: existingCustomer, error: customerFetchError } =
@@ -327,8 +301,6 @@ export const useCheckoutLogic = () => {
           requires_customization: Object.keys(customizationDetails).length > 0,
         };
 
-        console.log("📦 Creating order with data:", orderData);
-
         const { data: order, error: orderError } = await supabase
           .from("orders")
           .insert([orderData])
@@ -336,28 +308,44 @@ export const useCheckoutLogic = () => {
           .single();
 
         if (orderError) {
-          console.error("💥 INSERT ERROR:", orderError);
+          console.error("Order creation error:", orderError);
           throw new Error(`Database error: ${orderError.message}`);
         }
 
-        console.log("✅ Order created successfully:", order);
+        console.log("✅ Order created:", order.id);
 
         // ✅ DECREMENT STOCK AFTER ORDER CREATION
-        console.log("📉 Decrementing stock...");
+        console.log("\n📉 DECREMENTING STOCK...");
+        let stockUpdateCount = 0;
+        
         for (const item of cartItems) {
-          if (item.variantId) {
-            await supabase.rpc('decrement_product_stock', {
-              variant_id: item.variantId,
-              quantity: item.quantity
-            });
-            console.log(`  ✅ Stock decremented for ${item.name}`);
+          console.log(`\n  Item: ${item.name}`);
+          console.log(`    - variantId: ${item.variantId || 'MISSING'}`);
+          console.log(`    - quantity: ${item.quantity}`);
+          
+          if (!item.variantId) {
+            console.log(`    ⚠️ SKIPPED: No variantId`);
+            continue;
           }
+
+          const { data, error } = await supabase.rpc('decrement_product_stock', {
+            variant_id: item.variantId,
+            quantity: item.quantity
+          });
+
+          if (error) {
+            console.error(`    ❌ ERROR:`, error);
+            throw new Error(`Stock update failed for ${item.name}: ${error.message}`);
+          }
+          
+          stockUpdateCount++;
+          console.log(`    ✅ Stock decremented`);
         }
 
-        console.log("✅ Order complete with stock updated");
+        console.log(`\n✅ Stock updated for ${stockUpdateCount}/${cartItems.length} items\n`);
         return order;
       } catch (error) {
-        console.error("🚨 CREATE ORDER FAILED:", error);
+        console.error("\n🚨 ORDER CREATION FAILED:", error);
         throw error;
       }
     },
@@ -389,7 +377,6 @@ export const useCheckoutLogic = () => {
       }));
 
       const order = await createOrder("PayNow");
-      console.log("📦 Keeping cart until payment confirmation...");
 
       const totalAmount = Math.round(total * 100);
 
@@ -462,9 +449,7 @@ export const useCheckoutLogic = () => {
     try {
       const order = await createOrder("COD");
 
-      console.log("🧹 Clearing cart after successful COD order...");
       await clearCart();
-      console.log("✅ Cart cleared successfully");
 
       toast({
         title: "Order Placed Successfully!",
@@ -501,11 +486,8 @@ export const useCheckoutLogic = () => {
   const handlePaymentSuccess = useCallback(
     async (orderId, transactionId = null) => {
       try {
-        console.log("🎉 Processing payment success for order:", orderId);
         setProcessingPayment(true);
         setPaymentProcessed(true);
-
-        // Clear URL parameters immediately
         clearUrlParams();
 
         const { data: order, error: fetchError } = await supabase
@@ -518,15 +500,11 @@ export const useCheckoutLogic = () => {
           throw new Error("Failed to fetch order details");
         }
 
-        console.log("📋 Order status:", order);
-
         if (
           order.payment_status === "completed" ||
           order.payment_status === "success"
         ) {
-          console.log("🧹 Clearing cart after successful payment...");
           await clearCart();
-          console.log("✅ Cart cleared successfully");
 
           if (transactionId) {
             await supabase
@@ -552,7 +530,7 @@ export const useCheckoutLogic = () => {
           });
         }
       } catch (error) {
-        console.error("❌ Payment verification failed:", error);
+        console.error("Payment verification failed:", error);
         toast({
           title: "Payment Verification Failed",
           description: error.message || "Please contact support.",
@@ -569,10 +547,7 @@ export const useCheckoutLogic = () => {
   const handlePaymentFailure = useCallback(
     async (orderId, message = null) => {
       try {
-        console.log("❌ Processing payment failure for order:", orderId);
         setPaymentProcessed(true);
-
-        // Clear URL parameters immediately to prevent re-processing
         clearUrlParams();
 
         await supabase
@@ -584,7 +559,6 @@ export const useCheckoutLogic = () => {
           })
           .eq("id", orderId);
 
-        // Show error toast only once
         toast({
           title: "Payment Failed",
           description:
@@ -593,12 +567,8 @@ export const useCheckoutLogic = () => {
           duration: 5000,
         });
 
-        console.log("🛒 Keeping cart for retry");
-
-        // Navigate back to checkout after a delay
         setTimeout(() => {
           setProcessingPayment(false);
-          // Optionally redirect to checkout page or stay on current page
         }, 1000);
       } catch (error) {
         console.error("Error handling payment failure:", error);
@@ -621,18 +591,12 @@ export const useCheckoutLogic = () => {
     const orderId = searchParams.get("orderId");
     const transactionId = searchParams.get("transactionId");
 
-    // Prevent duplicate processing
-    if (paymentProcessed) {
-      console.log("⚠️ Payment already processed, skipping...");
-      return;
-    }
+    if (paymentProcessed) return;
 
     if (paymentStatus && orderId) {
       if (paymentStatus === "success") {
-        console.log("🎉 Payment success detected, handling...");
         handlePaymentSuccess(orderId, transactionId);
       } else if (paymentStatus === "failure") {
-        console.log("❌ Payment failure detected");
         const failureMessage = searchParams.get("message");
         handlePaymentFailure(orderId, failureMessage);
       }
@@ -652,7 +616,6 @@ export const useCheckoutLogic = () => {
       !paymentProcessed &&
       items.length === 0
     ) {
-      console.log("Cart is empty, redirecting to cart page...");
       navigate("/cart");
     }
   }, [items.length, loading, navigate, processingPayment, paymentProcessed]);
