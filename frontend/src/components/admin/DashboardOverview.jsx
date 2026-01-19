@@ -22,6 +22,9 @@ import {
   XCircle,
   Banknote,
   CreditCard,
+  AlertTriangle,
+  Flame,
+  TrendingDown,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabaseClient";
@@ -65,10 +68,57 @@ const getStatusColor = (status) => {
   }
 };
 
+const getStockBadge = (stock) => {
+  if (stock === 0) {
+    return (
+      <Badge className="bg-red-100 text-red-800 border-red-300">
+        <AlertTriangle className="h-3 w-3 mr-1" />
+        Out of Stock
+      </Badge>
+    );
+  } else if (stock <= 2) {
+    return (
+      <Badge className="bg-red-100 text-red-800 border-red-300 animate-pulse">
+        <Flame className="h-3 w-3 mr-1" />
+        Critical: {stock}
+      </Badge>
+    );
+  } else if (stock <= 5) {
+    return (
+      <Badge className="bg-orange-100 text-orange-800 border-orange-300">
+        <TrendingDown className="h-3 w-3 mr-1" />
+        Low: {stock}
+      </Badge>
+    );
+  } else if (stock <= 10) {
+    return (
+      <Badge className="bg-yellow-100 text-yellow-800 border-yellow-300">
+        {stock} units
+      </Badge>
+    );
+  } else {
+    return (
+      <Badge className="bg-green-100 text-green-800 border-green-300">
+        {stock} in stock
+      </Badge>
+    );
+  }
+};
+
 export function DashboardOverview({ dashboardData }) {
   const [recentOrders, setRecentOrders] = useState([]);
   const [recentMessages, setRecentMessages] = useState([]);
   const [loading, setLoading] = useState(true);
+  
+  // ✅ NEW: Stock management state
+  const [lowStockProducts, setLowStockProducts] = useState([]);
+  const [loadingStock, setLoadingStock] = useState(true);
+  const [totalInventoryValue, setTotalInventoryValue] = useState(0);
+  const [stockStats, setStockStats] = useState({
+    critical: 0, // stock <= 2
+    low: 0,      // stock <= 5
+    healthy: 0,  // stock > 5
+  });
 
   // If dashboardData is provided, use it; otherwise fetch data directly
   const {
@@ -83,6 +133,60 @@ export function DashboardOverview({ dashboardData }) {
     loading: dashboardLoading = false,
     refreshData,
   } = dashboardData || {};
+
+  // ✅ NEW: Fetch low stock products
+  const fetchStockData = async () => {
+    try {
+      setLoadingStock(true);
+      
+      // Fetch all product variants with stock info
+      const { data: variants, error } = await supabase
+        .from('product_variants')
+        .select(`
+          id,
+          size_code,
+          stock_quantity,
+          price,
+          is_active,
+          product_id,
+          products!product_id (
+            id,
+            title,
+            image_url,
+            price
+          )
+        `)
+        .eq('is_active', true)
+        .lte('stock_quantity', 10) // Get products with stock <= 10
+        .order('stock_quantity', { ascending: true });
+
+      if (error) throw error;
+
+      // Calculate statistics
+      let critical = 0;
+      let low = 0;
+      let healthy = 0;
+      let totalValue = 0;
+
+      variants?.forEach(variant => {
+        const stock = variant.stock_quantity || 0;
+        const value = stock * (variant.price || variant.products?.price || 0);
+        totalValue += value;
+
+        if (stock === 0 || stock <= 2) critical++;
+        else if (stock <= 5) low++;
+        else healthy++;
+      });
+
+      setStockStats({ critical, low, healthy });
+      setLowStockProducts(variants || []);
+      setTotalInventoryValue(totalValue);
+    } catch (error) {
+      console.error('Error fetching stock data:', error);
+    } finally {
+      setLoadingStock(false);
+    }
+  };
 
   // Fetch recent orders and messages for display
   const fetchRecentData = async () => {
@@ -127,7 +231,16 @@ export function DashboardOverview({ dashboardData }) {
 
   useEffect(() => {
     fetchRecentData();
+    fetchStockData(); // ✅ NEW: Fetch stock data on mount
   }, []);
+
+  const formatPrice = (price) => {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      minimumFractionDigits: 0,
+    }).format(price || 0);
+  };
 
   // Calculate growth percentages (mock data - you can implement real calculations)
   const calculateGrowth = (current, type) => {
@@ -200,7 +313,10 @@ export function DashboardOverview({ dashboardData }) {
           </p>
         </div>
         <Button
-          onClick={refreshData}
+          onClick={() => {
+            refreshData?.();
+            fetchStockData();
+          }}
           variant="outline"
           className="gap-2 self-start sm:self-center"
           size="sm"
@@ -209,6 +325,39 @@ export function DashboardOverview({ dashboardData }) {
           <span className="hidden sm:inline">Refresh</span>
         </Button>
       </div>
+
+      {/* ✅ NEW: Low Stock Alert Banner */}
+      {!loadingStock && (stockStats.critical > 0 || stockStats.low > 0) && (
+        <Card className="bg-gradient-to-r from-red-50 to-orange-50 border-l-4 border-red-500 shadow-lg">
+          <CardContent className="p-4 sm:p-6">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="h-5 w-5 sm:h-6 sm:w-6 text-red-600 mt-0.5 flex-shrink-0" />
+              <div className="flex-1">
+                <h3 className="text-base sm:text-lg font-semibold text-red-900 mb-2">
+                  ⚠️ Inventory Alert: Low Stock Detected
+                </h3>
+                <p className="text-sm sm:text-base text-red-800 mb-3">
+                  {stockStats.critical > 0 && (
+                    <span className="font-medium">
+                      {stockStats.critical} product{stockStats.critical > 1 ? 's are' : ' is'} critically low (≤2 units)
+                    </span>
+                  )}
+                  {stockStats.critical > 0 && stockStats.low > 0 && <span> and </span>}
+                  {stockStats.low > 0 && (
+                    <span className="font-medium">
+                      {stockStats.low} product{stockStats.low > 1 ? 's are' : ' is'} running low (≤5 units)
+                    </span>
+                  )}
+                </p>
+                <Button size="sm" className="bg-red-600 hover:bg-red-700 text-xs sm:text-sm">
+                  <RefreshCw className="h-3 w-3 sm:h-4 sm:w-4 mr-2" />
+                  View Stock Details Below
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
@@ -245,6 +394,133 @@ export function DashboardOverview({ dashboardData }) {
           </Card>
         ))}
       </div>
+
+      {/* ✅ NEW: Stock Statistics Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
+        <Card className="bg-card border-border hover:shadow-lg transition-all">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-xs sm:text-sm font-medium">Critical Stock</CardTitle>
+            <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5 text-red-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl sm:text-3xl font-bold text-red-600">{stockStats.critical}</div>
+            <p className="text-xs text-muted-foreground">≤2 units remaining</p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card border-border hover:shadow-lg transition-all">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-xs sm:text-sm font-medium">Low Stock</CardTitle>
+            <TrendingDown className="h-4 w-4 sm:h-5 sm:w-5 text-orange-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl sm:text-3xl font-bold text-orange-600">{stockStats.low}</div>
+            <p className="text-xs text-muted-foreground">3-5 units remaining</p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card border-border hover:shadow-lg transition-all">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-xs sm:text-sm font-medium">Inventory Value</CardTitle>
+            <Package className="h-4 w-4 sm:h-5 sm:w-5 text-green-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl sm:text-3xl font-bold text-green-600">
+              {formatPrice(totalInventoryValue)}
+            </div>
+            <p className="text-xs text-muted-foreground">Total stock value</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ✅ NEW: Low Stock Products Table */}
+      {!loadingStock && lowStockProducts.length > 0 && (
+        <Card className="bg-card border-border">
+          <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-2 sm:space-y-0">
+            <div className="space-y-1">
+              <CardTitle className="text-card-foreground flex items-center gap-2 text-base sm:text-lg">
+                <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5 text-orange-500" />
+                Products Requiring Attention
+              </CardTitle>
+              <CardDescription className="text-xs sm:text-sm">
+                {lowStockProducts.length} product{lowStockProducts.length > 1 ? 's' : ''} with low stock
+              </CardDescription>
+            </div>
+            <Button
+              onClick={fetchStockData}
+              variant="outline"
+              size="sm"
+              className="self-start sm:self-center"
+            >
+              <RefreshCw className="h-3 w-3 sm:h-4 sm:w-4 mr-2" />
+              Refresh
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[600px]">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left py-3 px-2 sm:px-4 text-xs sm:text-sm font-semibold">Product</th>
+                    <th className="text-left py-3 px-2 sm:px-4 text-xs sm:text-sm font-semibold">Variant</th>
+                    <th className="text-left py-3 px-2 sm:px-4 text-xs sm:text-sm font-semibold">Stock Status</th>
+                    <th className="text-left py-3 px-2 sm:px-4 text-xs sm:text-sm font-semibold">Price</th>
+                    <th className="text-left py-3 px-2 sm:px-4 text-xs sm:text-sm font-semibold">Value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lowStockProducts.map((variant) => {
+                    const stock = variant.stock_quantity || 0;
+                    const price = variant.price || variant.products?.price || 0;
+                    const value = stock * price;
+                    
+                    return (
+                      <tr 
+                        key={variant.id} 
+                        className={`border-b hover:bg-muted/50 transition-colors ${
+                          stock <= 2 ? 'bg-red-50 dark:bg-red-950/10' : 
+                          stock <= 5 ? 'bg-orange-50 dark:bg-orange-950/10' : ''
+                        }`}
+                      >
+                        <td className="py-3 px-2 sm:px-4">
+                          <div className="flex items-center space-x-2 sm:space-x-3">
+                            {variant.products?.image_url ? (
+                              <img 
+                                src={variant.products.image_url} 
+                                alt={variant.products.title}
+                                className="w-8 h-8 sm:w-10 sm:h-10 rounded object-cover flex-shrink-0"
+                              />
+                            ) : (
+                              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded bg-muted flex items-center justify-center flex-shrink-0">
+                                <Package className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground" />
+                              </div>
+                            )}
+                            <span className="font-medium text-xs sm:text-sm truncate">
+                              {variant.products?.title || 'Unknown Product'}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-2 sm:px-4">
+                          <Badge variant="outline" className="text-xs">{variant.size_code || 'Default'}</Badge>
+                        </td>
+                        <td className="py-3 px-2 sm:px-4">
+                          {getStockBadge(stock)}
+                        </td>
+                        <td className="py-3 px-2 sm:px-4 text-xs sm:text-sm font-medium">
+                          {formatPrice(price)}
+                        </td>
+                        <td className="py-3 px-2 sm:px-4 text-xs sm:text-sm font-medium">
+                          {formatPrice(value)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Payment Methods Overview */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
