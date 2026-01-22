@@ -48,8 +48,6 @@ export const Header = () => {
 
       setAdminLoading(true);
       try {
-        console.log("Checking admin status for:", user.email);
-
         const { data: adminData, error } = await supabase
           .from("admin_users")
           .select("role")
@@ -57,10 +55,8 @@ export const Header = () => {
           .maybeSingle();
 
         if (adminData && !error) {
-          console.log("Admin data found:", adminData);
           setIsAdmin(true);
         } else {
-          console.log("No admin data found or error:", error);
           setIsAdmin(false);
         }
       } catch (error) {
@@ -69,7 +65,6 @@ export const Header = () => {
       } finally {
         setAdminLoading(false);
       }
-      // console.log("Admin status checked:", adminData);
     };
 
     checkAdminStatus();
@@ -111,13 +106,6 @@ export const Header = () => {
       return (words[0][0] + words[1][0]).toUpperCase();
     }
   };
-
-  // Debug logging (remove in production)
-  if (user) {
-    console.log("User object:", user);
-    console.log("Is admin?", isAdmin);
-    console.log("Admin loading?", adminLoading);
-  }
 
   return (
     <header className="bg-white shadow-sm sticky top-0 z-50">
@@ -225,7 +213,6 @@ export const Header = () => {
                         <p className="text-xs leading-none text-muted-foreground truncate">
                           {user.email}
                         </p>
-                        {/* Debug info - remove in production */}
                         {isAdmin && (
                           <p className="text-xs text-red-600 font-semibold">
                             ADMIN USER
@@ -394,7 +381,6 @@ export const Header = () => {
                         <p className="text-xs sm:text-sm text-gray-600 truncate">
                           {user.email}
                         </p>
-                        {/* Debug info - remove in production */}
                         {isAdmin && (
                           <p className="text-xs text-red-600 font-bold">
                             ADMIN
