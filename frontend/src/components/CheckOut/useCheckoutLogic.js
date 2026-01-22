@@ -200,11 +200,11 @@ export const useCheckoutLogic = () => {
     return customizationDetails;
   }, []);
 
-  // ✅ FIXED: Create order and decrement stock properly
+  // ✅ ISSUE #5: Create order with DUAL-WRITE to both JSONB and order_items table
   const createOrder = useCallback(
     async (paymentMethod = "PayNow") => {
       try {
-        console.log("\n=== CREATING ORDER ===");
+        console.log("\n=== CREATING ORDER (DUAL-WRITE MODE) ===");
 
         if (!user?.id) {
           throw new Error("User not authenticated");
@@ -271,9 +271,29 @@ export const useCheckoutLogic = () => {
         const totalPaise = Math.round(total * 100);
         const customizationDetails = createCustomizationDetails(cartItems);
 
+        // ✅ STEP 1: Fetch catalog numbers for products (for order_items table)
+        console.log("\n📋 Fetching catalog numbers...");
+        const productIds = cartItems.map(item => item.productId);
+        const { data: productsData, error: productsError } = await supabase
+          .from('products')
+          .select('id, catalog_number')
+          .in('id', productIds);
+
+        if (productsError) {
+          console.warn('⚠️ Could not fetch catalog numbers:', productsError);
+        }
+
+        const catalogNumberMap = {};
+        if (productsData) {
+          productsData.forEach(p => {
+            catalogNumberMap[p.id] = p.catalog_number;
+          });
+        }
+
         const orderData = {
           user_id: authUser.id,
           customer_id: customer.id,
+          // ⚠️ DUAL-WRITE: Keep JSONB for backwards compatibility (will deprecate later)
           items: cartItems.map((item) => ({
             id: item.id,
             productId: item.productId,
@@ -323,7 +343,43 @@ export const useCheckoutLogic = () => {
 
         console.log("✅ Order created:", order.id);
 
-        // ✅ FIXED: DECREMENT STOCK WITH PROPER ERROR HANDLING
+        // ✅ STEP 2: INSERT INTO order_items TABLE (NEW NORMALIZED APPROACH)
+        console.log("\n📝 Inserting into order_items table...");
+        
+        const orderItemsData = cartItems.map(item => ({
+          order_id: order.id,
+          product_id: item.productId,
+          variant_id: item.variantId,
+          catalog_number: catalogNumberMap[item.productId] || null,
+          quantity: item.quantity,
+          unit_price: Math.round(item.price * 100), // Convert to paise
+          total_price: Math.round(item.price * item.quantity * 100), // Convert to paise
+          customization_data: item.customization && Object.keys(item.customization).length > 0 
+            ? item.customization 
+            : null
+        }));
+
+        console.log("  Order items to insert:", JSON.stringify(orderItemsData, null, 2));
+
+        const { error: itemsError } = await supabase
+          .from('order_items')
+          .insert(orderItemsData);
+
+        if (itemsError) {
+          console.error("❌ Failed to insert order_items:", itemsError);
+          
+          // ✅ CRITICAL: Rollback order if items insertion fails
+          console.log("  🔄 Rolling back order...");
+          await supabase.from('orders').delete().eq('id', order.id);
+          
+          throw new Error(
+            `Failed to create order items: ${itemsError.message}. Order cancelled.`
+          );
+        }
+
+        console.log("✅ Order items inserted successfully");
+
+        // ✅ STEP 3: DECREMENT STOCK WITH PROPER ERROR HANDLING
         console.log("\n📉 DECREMENTING STOCK...");
         const stockUpdates = [];
         
@@ -340,7 +396,7 @@ export const useCheckoutLogic = () => {
           try {
             // ✅ Call RPC with correct parameter names matching SQL function
             const { data: result, error } = await supabase.rpc('decrement_product_stock', {
-              variant_id: item.variantId,  // ✅ Matches SQL parameter name
+              variant_id: item.variantId,
               quantity: item.quantity
             });
 
@@ -352,7 +408,6 @@ export const useCheckoutLogic = () => {
             // ✅ Parse JSON response from function
             const stockResult = typeof result === 'string' ? JSON.parse(result) : result;
             
-            // Check if the function returned an error in the JSON response
             if (stockResult && !stockResult.success) {
               console.error(`    ❌ Stock Error:`, stockResult.error);
               throw new Error(
@@ -370,8 +425,9 @@ export const useCheckoutLogic = () => {
           } catch (error) {
             console.error(`    ❌ Failed to decrement stock:`, error);
             
-            // ✅ CRITICAL: Rollback order on stock failure
-            console.log(`    🔄 Rolling back order ${order.id}...`);
+            // ✅ CRITICAL: Rollback BOTH order and order_items on stock failure
+            console.log(`    🔄 Rolling back order and items...`);
+            await supabase.from('order_items').delete().eq('order_id', order.id);
             await supabase.from('orders').delete().eq('id', order.id);
             
             throw new Error(
@@ -380,7 +436,9 @@ export const useCheckoutLogic = () => {
           }
         }
 
-        console.log(`\n✅ Stock updated for ${stockUpdates.length}/${cartItems.length} items\n`);
+        console.log(`\n✅ Stock updated for ${stockUpdates.length}/${cartItems.length} items`);
+        console.log("\n🎉 ORDER CREATION COMPLETE (DUAL-WRITE)\n");
+        
         return order;
       } catch (error) {
         console.error("\n🚨 ORDER CREATION FAILED:", error);
