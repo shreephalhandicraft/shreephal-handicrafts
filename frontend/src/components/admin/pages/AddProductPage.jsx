@@ -100,14 +100,14 @@ export default function AddProductPage() {
       });
       return;
     }
-    if (!price || Number(price) < 0) {
-      toast({
-        title: "Validation Error",
-        description: "Price must be a positive number.",
-        variant: "destructive",
-      });
-      return;
-    }
+    
+    // ✅ REMOVED: Price validation (price is now auto-computed from variants)
+    // Old code:
+    // if (!price || Number(price) < 0) {
+    //   toast({ title: "Validation Error", description: "Price must be a positive number.", variant: "destructive" });
+    //   return;
+    // }
+    
     if (!categoryId) {
       toast({
         title: "Validation Error",
@@ -154,19 +154,19 @@ export default function AddProductPage() {
       return;
     }
 
-    // Insert main product
+    // ✅ FIXED: Don't send price - it will be auto-computed by trigger from variants
     const newProduct = {
       title: title.trim(),
       description: description.trim(),
-      price: parseFloat(price),
+      // ✅ Price removed - database trigger will calculate from variants
       category_id: categoryId,
       image_url: imageUrl,
       in_stock: inStock,
       customizable_fields: customizableFields,
       featured,
       catalog_number: catalogNumber.trim(),
-      gst_5pct, // Add this line
-      gst_18pct, // Add this line
+      gst_5pct,
+      gst_18pct,
       created_at: new Date().toISOString(),
     };
 
@@ -185,15 +185,16 @@ export default function AddProductPage() {
       return;
     }
 
-    // Insert variants (sizes) to product_variants table
+    // ✅ FIXED: Insert variants using size_display instead of size_code
     const variantsToInsert = variants.map((v) => ({
       product_id: prodData.id,
-      size_code: v.size,
+      size_display: v.size,  // ✅ FIXED: Was size_code
       price: parseFloat(v.price),
       stock_quantity: Number(v.stock_quantity),
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }));
+    
     const { error: variantErr } = await supabase
       .from("product_variants")
       .insert(variantsToInsert);
@@ -252,26 +253,8 @@ export default function AddProductPage() {
         />
       </div>
 
-      {/* Base Price */}
-      <div className="flex flex-col">
-        <Label htmlFor="price" className="mb-1 font-medium text-gray-700">
-          Base Price (₹) <span className="text-red-500">*</span>
-        </Label>
-        <Input
-          id="price"
-          type="number"
-          min="0"
-          step="0.01"
-          placeholder="Enter base price"
-          value={price}
-          onChange={(e) => setPrice(e.target.value)}
-          required
-          className="placeholder-gray-400"
-        />
-        <p className="text-xs text-gray-500 mt-1">
-          This is the default price if no variants.
-        </p>
-      </div>
+      {/* Base Price - ✅ REMOVED (auto-computed) */}
+      {/* Price field completely removed from UI as it's auto-computed */}
 
       {/* Category select */}
       <div className="flex flex-col">
@@ -323,8 +306,11 @@ export default function AddProductPage() {
       {/* Sizes & Variants */}
       <fieldset className="border border-gray-300 rounded-md p-4">
         <legend className="text-lg font-semibold text-gray-700 mb-4">
-          Sizes & Variants (max 3)
+          Sizes & Variants (max 3) <span className="text-red-500">*</span>
         </legend>
+        <p className="text-xs text-gray-600 mb-4">
+          ℹ️ Product price will be automatically set to the <strong>lowest variant price</strong>.
+        </p>
         {variants.map((variant, idx) => (
           <div
             key={idx}
@@ -339,7 +325,7 @@ export default function AddProductPage() {
               </Label>
               <Input
                 id={`size-${idx}`}
-                placeholder="e.g. 6, 6.5, 7"
+                placeholder="e.g. 6 INCH, 8 INCH"
                 value={variant.size}
                 onChange={(e) =>
                   handleVariantChange(idx, "size", e.target.value)
@@ -493,6 +479,7 @@ export default function AddProductPage() {
           </Label>
         </div>
       </fieldset>
+      
       <fieldset className="border border-gray-300 rounded-md p-4 space-y-4">
         <legend className="text-lg font-semibold text-gray-700 mb-4">
           GST Tax Rate
