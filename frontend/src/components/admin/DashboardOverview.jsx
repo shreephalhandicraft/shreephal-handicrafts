@@ -110,7 +110,7 @@ export function DashboardOverview({ dashboardData }) {
   const [recentMessages, setRecentMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   
-  // ✅ NEW: Stock management state
+  // ✅ Stock management state
   const [lowStockProducts, setLowStockProducts] = useState([]);
   const [loadingStock, setLoadingStock] = useState(true);
   const [totalInventoryValue, setTotalInventoryValue] = useState(0);
@@ -134,20 +134,19 @@ export function DashboardOverview({ dashboardData }) {
     refreshData,
   } = dashboardData || {};
 
-  // ✅ NEW: Fetch low stock products
+  // ✅ FIXED: Fetch low stock products with correct schema
   const fetchStockData = async () => {
     try {
       setLoadingStock(true);
       
-      // Fetch all product variants with stock info
+      // Fetch all product variants with stock info (FIXED: size_code → size_display)
       const { data: variants, error } = await supabase
         .from('product_variants')
         .select(`
           id,
-          size_code,
+          size_display,
           stock_quantity,
           price,
-          is_active,
           product_id,
           products!product_id (
             id,
@@ -156,7 +155,6 @@ export function DashboardOverview({ dashboardData }) {
             price
           )
         `)
-        .eq('is_active', true)
         .lte('stock_quantity', 10) // Get products with stock <= 10
         .order('stock_quantity', { ascending: true });
 
@@ -231,7 +229,7 @@ export function DashboardOverview({ dashboardData }) {
 
   useEffect(() => {
     fetchRecentData();
-    fetchStockData(); // ✅ NEW: Fetch stock data on mount
+    fetchStockData();
   }, []);
 
   const formatPrice = (price) => {
@@ -326,7 +324,7 @@ export function DashboardOverview({ dashboardData }) {
         </Button>
       </div>
 
-      {/* ✅ NEW: Low Stock Alert Banner */}
+      {/* ✅ Low Stock Alert Banner */}
       {!loadingStock && (stockStats.critical > 0 || stockStats.low > 0) && (
         <Card className="bg-gradient-to-r from-red-50 to-orange-50 border-l-4 border-red-500 shadow-lg">
           <CardContent className="p-4 sm:p-6">
@@ -395,7 +393,7 @@ export function DashboardOverview({ dashboardData }) {
         ))}
       </div>
 
-      {/* ✅ NEW: Stock Statistics Cards */}
+      {/* ✅ Stock Statistics Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
         <Card className="bg-card border-border hover:shadow-lg transition-all">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -433,7 +431,7 @@ export function DashboardOverview({ dashboardData }) {
         </Card>
       </div>
 
-      {/* ✅ NEW: Low Stock Products Table */}
+      {/* ✅ Low Stock Products Table */}
       {!loadingStock && lowStockProducts.length > 0 && (
         <Card className="bg-card border-border">
           <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-2 sm:space-y-0">
@@ -501,7 +499,7 @@ export function DashboardOverview({ dashboardData }) {
                           </div>
                         </td>
                         <td className="py-3 px-2 sm:px-4">
-                          <Badge variant="outline" className="text-xs">{variant.size_code || 'Default'}</Badge>
+                          <Badge variant="outline" className="text-xs">{variant.size_display || 'Default'}</Badge>
                         </td>
                         <td className="py-3 px-2 sm:px-4">
                           {getStockBadge(stock)}
