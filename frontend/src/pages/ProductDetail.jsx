@@ -168,7 +168,11 @@ const ProductDetail = () => {
       price: getCurrentPrice(),
       image: product.image_url,
       quantity: quantity,
-      variant: selectedVariant ? { size: selectedVariant.size_code, weight: selectedVariant.weight_grams } : null,
+      // ✅ FIXED: Changed size_code to size_display
+      variant: selectedVariant ? { 
+        size: selectedVariant.size_display, 
+        weight: selectedVariant.weight_grams 
+      } : null,
       customization: productCustomization,
     };
   };
