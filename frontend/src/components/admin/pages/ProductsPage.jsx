@@ -79,12 +79,12 @@ export function ProductsPage() {
 
       setProducts(prods || []);
 
-      // Fetch variants with new schema fields
+      // Fetch variants with correct schema fields (no size_code!)
       const productIds = prods?.map((p) => p.id) || [];
       if (productIds.length > 0) {
         const { data: vars, error: varErr } = await supabase
           .from("product_variants")
-          .select("id, product_id, sku, size_display, size_code, size_numeric, size_unit, price_tier, price, stock_quantity")
+          .select("id, product_id, sku, size_display, size_numeric, size_unit, price_tier, price, stock_quantity")
           .in("product_id", productIds);
         if (varErr) throw varErr;
 
@@ -485,7 +485,7 @@ export function ProductsPage() {
                                     className="bg-gray-100 px-3 py-1 rounded-full border border-gray-300 text-xs"
                                   >
                                     <span className="font-medium">
-                                      {variant.size_display || variant.size_code}
+                                      {variant.size_display}
                                     </span>
                                     {variant.price && (
                                       <span className="ml-1 text-gray-600">
