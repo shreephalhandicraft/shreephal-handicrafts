@@ -222,12 +222,12 @@ export const useCheckoutLogic = () => {
         const cartItems = getCartForCheckout();
         console.log("\n📦 CART ITEMS:", JSON.stringify(cartItems, null, 2));
 
-        // ✅ VALIDATE ALL ITEMS HAVE variant_id
+        // ✅ CRITICAL: VALIDATE ALL ITEMS HAVE variant_id BEFORE PROCEEDING
         const itemsWithoutVariant = cartItems.filter(item => !item.variantId);
         if (itemsWithoutVariant.length > 0) {
           console.error("❌ Items missing variantId:", itemsWithoutVariant);
           throw new Error(
-            `Some items are missing size selection. Please remove and re-add: ${itemsWithoutVariant.map(i => i.name).join(", ")}`
+            `Some items are missing size selection. Please remove and re-add these items: ${itemsWithoutVariant.map(i => i.name).join(", ")}`
           );
         }
 
@@ -323,67 +323,64 @@ export const useCheckoutLogic = () => {
 
         console.log("✅ Order created:", order.id);
 
-        // ✅ FIXED: DECREMENT STOCK ONLY FOR ITEMS WITH variant_id
+        // ✅ FIXED: DECREMENT STOCK WITH PROPER ERROR HANDLING
         console.log("\n📉 DECREMENTING STOCK...");
-        let stockUpdateCount = 0;
-        const stockErrors = [];
+        const stockUpdates = [];
         
         for (const item of cartItems) {
-          console.log(`\n  Item: ${item.name}`);
-          console.log(`    - productId: ${item.productId}`);
+          console.log(`\n  Processing: ${item.name}`);
           console.log(`    - variantId: ${item.variantId}`);
           console.log(`    - quantity: ${item.quantity}`);
           
           if (!item.variantId) {
-            console.log(`    ⚠️ SKIPPED: No variantId (should not happen after validation)`);
-            stockErrors.push(`${item.name}: Missing variant ID`);
-            continue;
+            console.error(`    ❌ CRITICAL: Missing variantId for ${item.name}`);
+            throw new Error(`Product "${item.name}" is missing variant information. Please remove and re-add to cart.`);
           }
 
-          // Check if decrement_product_stock RPC function exists, otherwise use direct update
           try {
-            // Try using RPC function first (if it exists in your database)
-            const { data, error } = await supabase.rpc('decrement_product_stock', {
-              variant_id: item.variantId,
+            // ✅ Call RPC with correct parameter names matching SQL function
+            const { data: result, error } = await supabase.rpc('decrement_product_stock', {
+              variant_id: item.variantId,  // ✅ Matches SQL parameter name
               quantity: item.quantity
             });
 
             if (error) {
-              // If RPC doesn't exist, fallback to direct update
-              if (error.code === '42883') {  // Function doesn't exist
-                console.log(`    🔄 RPC not found, using direct update`);
-                
-                const { error: updateError } = await supabase
-                  .from('product_variants')
-                  .update({
-                    stock_quantity: supabase.raw(`stock_quantity - ${item.quantity}`)
-                  })
-                  .eq('id', item.variantId)
-                  .gt('stock_quantity', item.quantity - 1);  // Prevent negative stock
-
-                if (updateError) {
-                  throw updateError;
-                }
-              } else {
-                throw error;
-              }
+              console.error(`    ❌ RPC Error:`, error);
+              throw new Error(`Stock update failed for ${item.name}: ${error.message}`);
             }
+
+            // ✅ Parse JSON response from function
+            const stockResult = typeof result === 'string' ? JSON.parse(result) : result;
             
-            stockUpdateCount++;
-            console.log(`    ✅ Stock decremented`);
+            // Check if the function returned an error in the JSON response
+            if (stockResult && !stockResult.success) {
+              console.error(`    ❌ Stock Error:`, stockResult.error);
+              throw new Error(
+                `${item.name}: ${stockResult.error}${stockResult.available ? ` (Available: ${stockResult.available})` : ''}`
+              );
+            }
+
+            console.log(`    ✅ Stock decremented: ${stockResult.previous_stock} → ${stockResult.new_stock}`);
+            stockUpdates.push({
+              item: item.name,
+              success: true,
+              result: stockResult
+            });
+
           } catch (error) {
-            console.error(`    ❌ ERROR:`, error);
-            stockErrors.push(`${item.name}: ${error.message}`);
+            console.error(`    ❌ Failed to decrement stock:`, error);
+            
+            // ✅ CRITICAL: Rollback order on stock failure
+            console.log(`    🔄 Rolling back order ${order.id}...`);
+            await supabase.from('orders').delete().eq('id', order.id);
+            
+            throw new Error(
+              `Stock reservation failed for "${item.name}". ${error.message}. Order cancelled.`
+            );
           }
         }
 
-        if (stockErrors.length > 0) {
-          console.error("\n⚠️ Stock update errors:", stockErrors);
-          // Don't throw error, log it and continue (order is already created)
-          // Admin can manually adjust stock
-        }
-
-        console.log(`\n✅ Stock updated for ${stockUpdateCount}/${cartItems.length} items\n`);
+        console.log(`\n✅ Stock updated for ${stockUpdates.length}/${cartItems.length} items\n`);
         return order;
       } catch (error) {
         console.error("\n🚨 ORDER CREATION FAILED:", error);
