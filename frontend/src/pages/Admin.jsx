@@ -27,12 +27,13 @@ const Admin = () => {
       try {
         setLoadingStock(true);
         
+        // ✅ FIXED: Changed size_code to size_display
         // Fetch all product variants with stock info
         const { data: variants, error } = await supabase
           .from('product_variants')
           .select(`
             id,
-            size_code,
+            size_display,
             stock_quantity,
             price,
             is_active,
@@ -304,7 +305,8 @@ const Admin = () => {
                             </div>
                           </td>
                           <td className="py-3 px-4">
-                            <Badge variant="outline">{variant.size_code || 'Default'}</Badge>
+                            {/* ✅ FIXED: Changed size_code to size_display */}
+                            <Badge variant="outline">{variant.size_display || 'Default'}</Badge>
                           </td>
                           <td className="py-3 px-4">
                             {getStockBadge(stock)}
