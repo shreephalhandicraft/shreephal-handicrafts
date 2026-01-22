@@ -61,14 +61,15 @@ const ProductVariants = ({ variants, selectedVariant, onVariantSelect }) => {
                         isSelected ? "text-blue-900" : "text-gray-900"
                       }`}
                     >
+                      {/* ✅ FIXED: Changed size_code to size_display */}
                       {variant.size_label ||
-                        variant.size_code ||
+                        variant.size_display ||
                         "Standard Size"}
                     </span>
-                    {variant.size_code &&
-                      variant.size_label !== variant.size_code && (
+                    {variant.size_display &&
+                      variant.size_label !== variant.size_display && (
                         <Badge variant="outline" className="text-xs">
-                          {variant.size_code}
+                          {variant.size_display}
                         </Badge>
                       )}
                     {isSelected && (
