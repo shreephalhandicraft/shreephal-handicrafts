@@ -177,6 +177,41 @@ export const useCheckoutLogic = () => {
 
     return true;
   }, [formData, toast]);
+  
+  // ✅ FIX BUG #3: Validate cart items at checkout entry
+  const validateCartItems = useCallback(() => {
+    const cartItems = getCartForCheckout();
+    
+    if (cartItems.length === 0) {
+      toast({
+        title: "Cart Empty",
+        description: "Your cart is empty. Please add items before checkout.",
+        variant: "destructive",
+      });
+      return false;
+    }
+    
+    // ✅ CRITICAL: Check ALL items have variantId
+    const itemsWithoutVariant = cartItems.filter(item => !item.variantId);
+    
+    if (itemsWithoutVariant.length > 0) {
+      const itemNames = itemsWithoutVariant.map(i => i.name || 'Unknown').join(', ');
+      
+      console.error('❌ Cart validation failed - Missing variantId:', itemsWithoutVariant);
+      
+      toast({
+        title: "Cart Validation Failed",
+        description: `Some items are missing size selection: ${itemNames}. Please remove and re-add these items with proper size selection.`,
+        variant: "destructive",
+        duration: 8000, // Longer duration for important error
+      });
+      
+      return false;
+    }
+    
+    console.log('✅ Cart validation passed - All items have variantId');
+    return true;
+  }, [getCartForCheckout, toast]);
 
   // Create customization details for order (LEGACY JSONB format)
   const createCustomizationDetails = useCallback((cartItems) => {
@@ -264,7 +299,7 @@ export const useCheckoutLogic = () => {
         const cartItems = getCartForCheckout();
         console.log("\n📦 CART ITEMS:", JSON.stringify(cartItems, null, 2));
 
-        // ✅ VALIDATE ALL ITEMS HAVE variant_id
+        // ✅ FIX BUG #3: VALIDATE ALL ITEMS HAVE variant_id
         const itemsWithoutVariant = cartItems.filter(item => !item.variantId);
         if (itemsWithoutVariant.length > 0) {
           console.error("❌ Items missing variantId:", itemsWithoutVariant);
@@ -272,6 +307,8 @@ export const useCheckoutLogic = () => {
             `Some items are missing size selection. Please remove and re-add these items: ${itemsWithoutVariant.map(i => i.name).join(", ")}`
           );
         }
+        
+        console.log("✅ All cart items have variantId - validation passed");
 
         let customer;
         const { data: existingCustomer, error: customerFetchError } =
@@ -606,12 +643,9 @@ export const useCheckoutLogic = () => {
   // Handle PayNow payment
   const handlePayNow = useCallback(async () => {
     if (!validateForm()) return;
-    if (items.length === 0) {
-      toast({
-        title: "Cart Empty",
-        description: "Your cart is empty. Please add items before checkout.",
-        variant: "destructive",
-      });
+    
+    // ✅ FIX BUG #3: Validate cart items before payment
+    if (!validateCartItems()) {
       return;
     }
 
@@ -681,17 +715,14 @@ export const useCheckoutLogic = () => {
       });
       setProcessingPayment(false);
     }
-  }, [validateForm, items, total, formData, createOrder, toast]);
+  }, [validateForm, validateCartItems, items, total, formData, createOrder, toast]);
 
   // Handle Cash on Delivery
   const handleCODPayment = useCallback(async () => {
     if (!validateForm()) return;
-    if (items.length === 0) {
-      toast({
-        title: "Cart Empty",
-        description: "Your cart is empty. Please add items before checkout.",
-        variant: "destructive",
-      });
+    
+    // ✅ FIX BUG #3: Validate cart items before COD order
+    if (!validateCartItems()) {
       return;
     }
 
@@ -721,7 +752,7 @@ export const useCheckoutLogic = () => {
     } finally {
       setProcessingPayment(false);
     }
-  }, [validateForm, items, createOrder, clearCart, toast, navigate]);
+  }, [validateForm, validateCartItems, createOrder, clearCart, toast, navigate]);
 
   // Clear URL parameters helper
   const clearUrlParams = useCallback(() => {
