@@ -14,6 +14,7 @@ import {
   AdminRoute,
   GuestRoute,
 } from "@/contexts/RouteGuards";
+import OfflineDetector from "@/components/OfflineDetector";
 
 // Lazy load pages for better performance
 const Index = lazy(() => import("./pages/Index"));
@@ -64,6 +65,9 @@ const App = () => (
       <AuthProvider>
         <CartProvider>
           <FavouritesProvider>
+            {/* ✅ INTEGRATED: Offline detection for better UX */}
+            <OfflineDetector />
+            
             <Toaster />
             <Sonner />
             <Suspense fallback={<PageLoader />}>
