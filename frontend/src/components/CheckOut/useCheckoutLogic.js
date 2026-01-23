@@ -20,7 +20,7 @@ export const useCheckoutLogic = () => {
   // State
   const [loading, setLoading] = useState(true);
   const [processingPayment, setProcessingPayment] = useState(false);
-  const [paymentProcessed, setPaymentProcessed] = useState(false); // Add this to prevent duplicate processing
+  const [paymentProcessed, setPaymentProcessed] = useState(false);
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -32,7 +32,7 @@ export const useCheckoutLogic = () => {
     zipCode: "",
   });
 
-  // Computed values
+  // Computed values (used for display only, not for order creation)
   const subtotal = getTotalPrice();
   const tax = subtotal * 0.08;
   const total = subtotal + tax;
@@ -44,6 +44,141 @@ export const useCheckoutLogic = () => {
       [e.target.name]: e.target.value,
     }));
   }, []);
+
+  // 🔒 SERVER-SIDE PRICE VALIDATION FUNCTION
+  const validatePricesFromDatabase = useCallback(async (cartItems) => {
+    console.log("🔒 Starting server-side price validation...");
+    
+    // Extract variant IDs from cart
+    const variantIds = cartItems
+      .map(item => item.variantId)
+      .filter(Boolean);
+
+    if (variantIds.length === 0) {
+      throw new Error("No valid product variants found in cart");
+    }
+
+    console.log("🔍 Validating prices for variants:", variantIds);
+
+    // Fetch real prices from database
+    const { data: dbVariants, error: priceError } = await supabase
+      .from('product_variants')
+      .select('id, price, stock_quantity, product_id')
+      .in('id', variantIds);
+
+    if (priceError) {
+      console.error("❌ Price fetch error:", priceError);
+      throw new Error("Failed to validate product prices. Please try again.");
+    }
+
+    if (!dbVariants || dbVariants.length === 0) {
+      throw new Error("No products found in database. Please refresh your cart.");
+    }
+
+    console.log("📊 Database prices fetched:", dbVariants);
+
+    // Validate each cart item
+    let serverCalculatedSubtotal = 0;
+    const validatedItems = [];
+    const priceChanges = [];
+    const stockIssues = [];
+
+    for (const item of cartItems) {
+      const dbVariant = dbVariants.find(v => v.id === item.variantId);
+      
+      if (!dbVariant) {
+        throw new Error(`Product "${item.name}" is no longer available. Please remove it from your cart.`);
+      }
+      
+      // Price validation (allow 1 paisa tolerance for floating point rounding)
+      const priceDifference = Math.abs(item.price - dbVariant.price);
+      if (priceDifference > 0.01) {
+        console.warn(`⚠️ Price mismatch detected for "${item.name}"`);
+        console.warn(`   Cart price: ₹${item.price}`);
+        console.warn(`   Database price: ₹${dbVariant.price}`);
+        
+        priceChanges.push({
+          name: item.name,
+          cartPrice: item.price,
+          actualPrice: dbVariant.price,
+        });
+      }
+      
+      // Stock validation
+      if (dbVariant.stock_quantity < item.quantity) {
+        console.warn(`⚠️ Insufficient stock for "${item.name}"`);
+        console.warn(`   Requested: ${item.quantity}`);
+        console.warn(`   Available: ${dbVariant.stock_quantity}`);
+        
+        stockIssues.push({
+          name: item.name,
+          requested: item.quantity,
+          available: dbVariant.stock_quantity,
+        });
+      }
+      
+      // Use database price (the source of truth)
+      const validatedPrice = dbVariant.price;
+      serverCalculatedSubtotal += validatedPrice * item.quantity;
+      
+      validatedItems.push({
+        ...item,
+        price: validatedPrice, // Override with DB price
+      });
+    }
+
+    // Report issues if found
+    if (priceChanges.length > 0) {
+      const changedProducts = priceChanges.map(p => 
+        `${p.name}: ₹${p.cartPrice} → ₹${p.actualPrice}`
+      ).join(', ');
+      
+      throw new Error(
+        `Price changed for: ${changedProducts}. Please refresh your cart and try again.`
+      );
+    }
+
+    if (stockIssues.length > 0) {
+      const outOfStock = stockIssues.map(s => 
+        `${s.name}: Only ${s.available} available (you requested ${s.requested})`
+      ).join(', ');
+      
+      throw new Error(
+        `Insufficient stock: ${outOfStock}. Please update quantities and try again.`
+      );
+    }
+
+    // Calculate tax and total with server prices
+    const serverTax = serverCalculatedSubtotal * 0.08;
+    const serverTotal = serverCalculatedSubtotal + serverTax;
+    const serverTotalPaise = Math.round(serverTotal * 100);
+
+    console.log("✅ Price validation successful!");
+    console.log("📊 Server calculations:", {
+      subtotal: serverCalculatedSubtotal.toFixed(2),
+      tax: serverTax.toFixed(2),
+      total: serverTotal.toFixed(2),
+      totalPaise: serverTotalPaise,
+    });
+
+    // Warn if client and server totals differ significantly (more than ₹1 difference)
+    const totalDifference = Math.abs(serverTotal - total);
+    if (totalDifference > 1) {
+      console.warn("⚠️ Client/Server total mismatch detected!");
+      console.warn(`   Client total: ₹${total.toFixed(2)}`);
+      console.warn(`   Server total: ₹${serverTotal.toFixed(2)}`);
+      console.warn(`   Difference: ₹${totalDifference.toFixed(2)}`);
+      console.warn("   Using server-calculated total for security.");
+    }
+
+    return {
+      validatedItems,
+      serverSubtotal: serverCalculatedSubtotal,
+      serverTax,
+      serverTotal,
+      serverTotalPaise,
+    };
+  }, [total]);
 
   const fetchUserProfile = useCallback(async () => {
     if (!user?.id) {
@@ -226,11 +361,11 @@ export const useCheckoutLogic = () => {
     return customizationDetails;
   }, []);
 
-  // Create order in database
+  // Create order in database with server-side price validation
   const createOrder = useCallback(
     async (paymentMethod = "PayNow") => {
       try {
-        console.log("=== CREATING ORDER ===");
+        console.log("=== CREATING ORDER WITH PRICE VALIDATION ===");
         console.log("User ID:", user?.id);
 
         if (!user?.id) {
@@ -246,6 +381,7 @@ export const useCheckoutLogic = () => {
           throw new Error("Authentication failed");
         }
 
+        // Get or create customer
         let customer;
         const { data: existingCustomer, error: customerFetchError } =
           await supabase
@@ -283,19 +419,38 @@ export const useCheckoutLogic = () => {
           customer = newCustomer;
         }
 
-        const totalPaise = Math.round(total * 100);
+        // Get cart items
         const cartItems = getCartForCheckout();
-        const customizationDetails = createCustomizationDetails(cartItems);
+        
+        if (cartItems.length === 0) {
+          throw new Error("Cart is empty");
+        }
 
+        // 🔒 VALIDATE PRICES FROM DATABASE
+        console.log("🔒 Validating prices with database...");
+        const { 
+          validatedItems, 
+          serverSubtotal,
+          serverTax,
+          serverTotal, 
+          serverTotalPaise 
+        } = await validatePricesFromDatabase(cartItems);
+        
+        console.log("✅ Price validation passed!");
+
+        // Create customization details
+        const customizationDetails = createCustomizationDetails(validatedItems);
+
+        // Build order data with VALIDATED prices
         const orderData = {
           user_id: authUser.id,
           customer_id: customer.id,
-          items: cartItems.map((item) => ({
+          items: validatedItems.map((item) => ({
             id: item.id,
             productId: item.productId,
             variantId: item.variantId,
             name: item.name,
-            price: item.price,
+            price: item.price, // ✅ This is now the validated database price
             quantity: item.quantity,
             image: item.image || "",
             variant: item.variant,
@@ -314,8 +469,8 @@ export const useCheckoutLogic = () => {
             method: "standard",
             estimatedDays: "3-5",
           },
-          total_price: totalPaise,
-          amount: total,
+          total_price: serverTotalPaise, // ✅ Server-calculated total in paise
+          amount: serverTotal, // ✅ Server-calculated total in rupees
           status: "pending",
           payment_status: "pending",
           payment_method: paymentMethod || "PayNow",
@@ -326,7 +481,10 @@ export const useCheckoutLogic = () => {
           requires_customization: Object.keys(customizationDetails).length > 0,
         };
 
-        console.log("📦 Creating order with data:", orderData);
+        console.log("📦 Creating order with validated data:", {
+          ...orderData,
+          items: `${orderData.items.length} items`,
+        });
 
         const { data, error } = await supabase
           .from("orders")
@@ -339,14 +497,16 @@ export const useCheckoutLogic = () => {
           throw new Error(`Database error: ${error.message}`);
         }
 
-        console.log("✅ Order created successfully:", data);
+        console.log("✅ Order created successfully with ID:", data.id);
+        console.log("💰 Order total (validated):", serverTotal);
+        
         return data;
       } catch (error) {
         console.error("🚨 CREATE ORDER FAILED:", error);
         throw error;
       }
     },
-    [user?.id, formData, total, getCartForCheckout, createCustomizationDetails]
+    [user?.id, formData, getCartForCheckout, validatePricesFromDatabase, createCustomizationDetails]
   );
 
   // Handle PayNow payment
@@ -373,10 +533,12 @@ export const useCheckoutLogic = () => {
         customization: item.customization || {},
       }));
 
+      // Create order with validated prices
       const order = await createOrder("PayNow");
       console.log("📦 Keeping cart until payment confirmation...");
 
-      const totalAmount = Math.round(total * 100);
+      // Use the validated amount from the order
+      const totalAmount = order.total_price; // Already in paise from server validation
 
       const requiredElements = [
         "pp-order-id",
@@ -428,7 +590,7 @@ export const useCheckoutLogic = () => {
       });
       setProcessingPayment(false);
     }
-  }, [validateForm, items, total, formData, createOrder, toast]);
+  }, [validateForm, items, formData, createOrder, toast]);
 
   // Handle Cash on Delivery
   const handleCODPayment = useCallback(async () => {
@@ -445,6 +607,7 @@ export const useCheckoutLogic = () => {
     setProcessingPayment(true);
 
     try {
+      // Create order with validated prices
       const order = await createOrder("COD");
 
       console.log("🧹 Clearing cart after successful COD order...");
@@ -583,7 +746,6 @@ export const useCheckoutLogic = () => {
         // Navigate back to checkout after a delay
         setTimeout(() => {
           setProcessingPayment(false);
-          // Optionally redirect to checkout page or stay on current page
         }, 1000);
       } catch (error) {
         console.error("Error handling payment failure:", error);
