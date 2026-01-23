@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -94,7 +94,7 @@ const CheckoutForm = ({ onDataLoaded, onValidationChange }) => {
   };
 
   // Validate all fields
-  const validateForm = (data = formData) => {
+  const validateForm = useCallback((data = formData) => {
     const newErrors = {};
     Object.keys(data).forEach((field) => {
       const error = validateField(field, data[field]);
@@ -103,18 +103,19 @@ const CheckoutForm = ({ onDataLoaded, onValidationChange }) => {
       }
     });
     return newErrors;
-  };
+  }, [formData]);
 
-  // Check if form is valid
-  const isFormValid = () => {
+  // Check if form is valid - memoized to prevent infinite loops
+  const isFormValid = useCallback(() => {
     const currentErrors = validateForm();
     return (
       Object.keys(currentErrors).length === 0 &&
       Object.values(formData).every((value) => value.trim().length > 0)
     );
-  };
+  }, [formData, validateForm]);
 
   // Notify parent about validation changes
+  // CRITICAL FIX: Removed onValidationChange from dependencies to prevent infinite loop
   useEffect(() => {
     if (onValidationChange) {
       const valid = isFormValid();
@@ -125,7 +126,8 @@ const CheckoutForm = ({ onDataLoaded, onValidationChange }) => {
         formData: formData,
       });
     }
-  }, [formData, onValidationChange]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData, isFormValid, validateForm]);
 
   useEffect(() => {
     console.log("User in useEffect:", user);
