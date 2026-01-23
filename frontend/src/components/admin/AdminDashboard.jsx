@@ -12,6 +12,7 @@ import { CustomersPage } from "./pages/CustomersPage";
 import { MessagesPage } from "./pages/MessagesPage";
 import AddProductPage from "./pages/AddProductPage";
 import EditProductPage from "./pages/EditProductPage";
+import CustomizationReview from "@/pages/admin/CustomizationReview";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 
@@ -212,6 +213,10 @@ export function AdminDashboard() {
                   <Route
                     path="/messages/*"
                     element={<MessagesPage dashboardData={dashboardContext} />}
+                  />
+                  <Route
+                    path="/customizations"
+                    element={<CustomizationReview />}
                   />
                 </Routes>
               </div>
