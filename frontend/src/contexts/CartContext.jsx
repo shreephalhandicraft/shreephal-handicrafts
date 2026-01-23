@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState, useEffect, useRef } from "react";
 import { useAuth } from "./AuthContext";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
@@ -18,6 +18,9 @@ export const CartProvider = ({ children }) => {
   const { toast } = useToast();
   const [cartItems, setCartItems] = useState([]);
   const [loading, setLoading] = useState(false);
+  
+  // ✅ FIX BUG #4: Prevent race condition with sync lock
+  const syncLockRef = useRef(false);
 
   // ✅ FIXED: Check stock availability with variant_id
   const checkStockAvailability = async (variantId, requestedQty) => {
@@ -479,38 +482,53 @@ export const CartProvider = ({ children }) => {
     }
   };
 
-  // ✅ Clear cart
+  // ✅ FIX BUG #8: Clear cart with error detection
   const clearCart = async () => {
     try {
       console.log("🧹 Clearing cart...");
 
       if (user) {
-        // Clear cart from database
+        // ✅ FIX BUG #8: Throw error if database clear fails
         const { error } = await supabase
           .from("cart_items")
           .delete()
           .eq("user_id", user.id);
 
         if (error) {
-          console.error("Database clear error:", error);
+          console.error("❌ Database clear failed:", error);
+          throw new Error(`Failed to clear cart from database: ${error.message}`);
         }
 
         // Clear localStorage details
         const localCartKey = `user_${user.id}_cart_details`;
         localStorage.removeItem(localCartKey);
+        
+        console.log("✅ Database cart cleared successfully");
       } else {
-        // Clear from localStorage
+        // Clear guest cart from localStorage
         localStorage.removeItem("cart_items");
+        console.log("✅ Guest cart cleared successfully");
       }
 
-      // Always clear context state
+      // Clear UI state
       setCartItems([]);
-
-      console.log("✅ Cart cleared successfully");
+      
+      console.log("✅ Cart cleared completely");
     } catch (error) {
-      console.error("Failed to clear cart:", error);
-      // Still clear the UI state even if database fails
+      console.error("❌ Failed to clear cart:", error);
+      
+      // ✅ FIX BUG #8: Show user error, but still clear UI to prevent confusion
+      toast({
+        title: "Warning",
+        description: "Cart cleared from view, but database sync failed. Items may reappear on refresh.",
+        variant: "destructive",
+      });
+      
+      // Still clear UI to prevent worse UX
       setCartItems([]);
+      
+      // Re-throw so caller knows operation partially failed
+      throw error;
     }
   };
 
@@ -555,19 +573,33 @@ export const CartProvider = ({ children }) => {
     fetchCartItems();
   }, [user]);
 
-  // Sync localStorage cart to database when user logs in
+  // ✅ FIX BUG #4: Sync cart with lock to prevent race conditions
   useEffect(() => {
-    if (user) {
+    if (user && !syncLockRef.current) {
       syncCartToDatabase();
     }
   }, [user]);
 
   const syncCartToDatabase = async () => {
+    // ✅ FIX BUG #4: Check lock before proceeding
+    if (syncLockRef.current) {
+      console.log("⚠️ Cart sync already in progress, skipping...");
+      return;
+    }
+
     if (!user) return;
 
     try {
+      // ✅ FIX BUG #4: Set lock
+      syncLockRef.current = true;
+      
       const storedCart = JSON.parse(localStorage.getItem("cart_items") || "[]");
-      if (storedCart.length === 0) return;
+      if (storedCart.length === 0) {
+        syncLockRef.current = false;
+        return;
+      }
+
+      console.log(`🔄 Syncing ${storedCart.length} guest cart items to user account...`);
 
       // Move guest cart to user-specific localStorage
       const localCartKey = `user_${user.id}_cart_details`;
@@ -590,21 +622,35 @@ export const CartProvider = ({ children }) => {
       }
 
       localStorage.setItem(localCartKey, JSON.stringify(mergedCart));
+      
+      // ✅ FIX BUG #4: Clear guest cart BEFORE async operations
       localStorage.removeItem("cart_items");
 
-      // Sync basic data to database
+      // ✅ FIX BUG #4: Sync to database sequentially (not in parallel)
+      let syncedCount = 0;
       for (const item of mergedCart) {
-        await addItem(item);
+        const success = await addItem(item);
+        if (success) syncedCount++;
       }
 
       if (storedCart.length > 0) {
         toast({
           title: "Cart Synced",
-          description: `${storedCart.length} item(s) synced to your account.`,
+          description: `${syncedCount} item(s) synced to your account.`,
         });
       }
+      
+      console.log(`✅ Cart sync complete: ${syncedCount}/${mergedCart.length} items synced`);
     } catch (error) {
-      console.error("Error syncing cart:", error);
+      console.error("❌ Error syncing cart:", error);
+      toast({
+        title: "Sync Failed",
+        description: "Some cart items may not have synced. Please check your cart.",
+        variant: "destructive",
+      });
+    } finally {
+      // ✅ FIX BUG #4: Always release lock
+      syncLockRef.current = false;
     }
   };
 
