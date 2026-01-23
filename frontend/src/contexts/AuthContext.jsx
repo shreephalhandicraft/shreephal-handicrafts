@@ -7,8 +7,9 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // On component mount, fetch session
   useEffect(() => {
+    let loadingTimeout;
+
     const getSession = async () => {
       try {
         const {
@@ -32,12 +33,15 @@ export const AuthProvider = ({ children }) => {
 
     getSession();
 
-    // Listen to auth changes (login, logout)
-    const { data: listener } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setUser(session?.user ?? null);
+    // Failsafe: Ensure loading never hangs indefinitely
+    loadingTimeout = setTimeout(() => {
+      if (loading) {
+        console.warn("Auth loading timeout reached - forcing completion");
+        setLoading(false);
       }
-    );
+    }, 10000);
+
+    // Single auth state listener with proper cleanup
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
@@ -46,7 +50,10 @@ export const AuthProvider = ({ children }) => {
       setLoading(false);
     });
 
-    return () => listener.subscription.unsubscribe();
+    return () => {
+      clearTimeout(loadingTimeout);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const login = async (email, password) => {
