@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabaseClient';
 
 /**
  * ✅ FIX ARCH #3: Business Logic Extraction
+ * ✅ FIX CRITICAL BUG #2: Stock Race Condition (Using DB RPC)
  * 
  * Pure business logic functions for order management.
  * No React dependencies, fully testable in isolation.
@@ -10,7 +11,7 @@ import { supabase } from '@/lib/supabaseClient';
 /**
  * Calculate order totals
  * @param {Array} cartItems - Cart items with price and quantity
- * @returns {Object} { subtotal, tax, total }
+ * @returns {Object} { subtotal, shipping, tax, total }
  */
 export const calculateOrderTotals = (cartItems) => {
   const subtotal = cartItems.reduce((sum, item) => {
@@ -18,10 +19,12 @@ export const calculateOrderTotals = (cartItems) => {
     return sum + (itemPrice * item.quantity);
   }, 0);
 
+  // Free shipping over ₹500
+  const shipping = subtotal >= 500 ? 0 : 50;
   const tax = 0; // GST already included in priceWithGst
-  const total = subtotal + tax;
+  const total = subtotal + shipping + tax;
 
-  return { subtotal, tax, total };
+  return { subtotal, shipping, tax, total };
 };
 
 /**
@@ -33,7 +36,10 @@ export const validateCartItems = (cartItems) => {
   const errors = [];
 
   if (!cartItems || cartItems.length === 0) {
-    errors.push({ code: 'CART_EMPTY', message: 'Cart is empty' });
+    errors.push({ 
+      code: 'CART_EMPTY', 
+      message: 'Your cart is empty. Add items to continue.' 
+    });
     return { valid: false, errors };
   }
 
@@ -41,22 +47,22 @@ export const validateCartItems = (cartItems) => {
     if (!item.variantId) {
       errors.push({
         code: 'MISSING_VARIANT',
-        message: `Item ${index + 1}: Missing variant ID`,
-        item,
+        message: `"${item.name || 'Item ' + (index + 1)}" is missing size/variant selection. Please select a variant.`,
+        item: item.name || `Item ${index + 1}`,
       });
     }
     if (!item.price || item.price <= 0) {
       errors.push({
         code: 'INVALID_PRICE',
-        message: `Item ${index + 1}: Invalid price`,
-        item,
+        message: `"${item.name || 'Item ' + (index + 1)}" has invalid price. Please contact support.`,
+        item: item.name || `Item ${index + 1}`,
       });
     }
     if (!item.quantity || item.quantity <= 0) {
       errors.push({
         code: 'INVALID_QUANTITY',
-        message: `Item ${index + 1}: Invalid quantity`,
-        item,
+        message: `"${item.name || 'Item ' + (index + 1)}" has invalid quantity. Please update quantity.`,
+        item: item.name || `Item ${index + 1}`,
       });
     }
   });
@@ -82,8 +88,8 @@ export const checkStockAvailability = async (cartItems) => {
     if (error || !variant) {
       issues.push({
         code: 'VARIANT_NOT_FOUND',
-        message: `Product variant not found: ${item.name}`,
-        item,
+        message: `"${item.name}" is no longer available. Please remove it from cart.`,
+        item: item.name,
       });
       continue;
     }
@@ -91,8 +97,8 @@ export const checkStockAvailability = async (cartItems) => {
     if (!variant.is_active) {
       issues.push({
         code: 'VARIANT_INACTIVE',
-        message: `Product is no longer available: ${item.name}`,
-        item,
+        message: `"${item.name}" is currently unavailable. Please remove it from cart.`,
+        item: item.name,
       });
       continue;
     }
@@ -100,8 +106,8 @@ export const checkStockAvailability = async (cartItems) => {
     if (variant.stock_quantity < item.quantity) {
       issues.push({
         code: 'INSUFFICIENT_STOCK',
-        message: `Only ${variant.stock_quantity} available for: ${item.name}`,
-        item,
+        message: `Only ${variant.stock_quantity} unit${variant.stock_quantity !== 1 ? 's' : ''} of "${item.name}" available. You requested ${item.quantity}.`,
+        item: item.name,
         available: variant.stock_quantity,
         requested: item.quantity,
       });
@@ -115,15 +121,16 @@ export const checkStockAvailability = async (cartItems) => {
  * Create order record
  * @param {Object} orderData - Order information
  * @param {string} userId - User ID
- * @param {number} totalAmount - Total order amount
+ * @param {Object} totals - Order totals { subtotal, shipping, total }
  * @returns {Promise<Object>} Created order
  */
-export const createOrder = async (orderData, userId, totalAmount) => {
+export const createOrder = async (orderData, userId, totals) => {
   const { data: order, error } = await supabase
     .from('orders')
     .insert({
       user_id: userId,
-      total_amount: totalAmount,
+      total_amount: totals.total,
+      shipping_amount: totals.shipping,
       payment_method: orderData.paymentMethod,
       payment_status: orderData.paymentMethod === 'cod' ? 'pending' : 'pending',
       order_status: 'pending',
@@ -165,66 +172,56 @@ export const createOrderItems = async (orderId, cartItems) => {
 };
 
 /**
- * Decrement stock for order items with rollback on failure
+ * ✅ FIX CRITICAL BUG #2: Stock Race Condition
+ * 
+ * OLD APPROACH (Race Condition):
+ * 1. Read stock
+ * 2. Calculate new stock
+ * 3. Update stock
+ * Problem: 2 users can read same stock simultaneously
+ * 
+ * NEW APPROACH (Atomic):
+ * Use database RPC function that handles locking internally
+ * 
+ * Decrement stock for order items (Race-condition safe)
  * @param {Array} cartItems - Items to decrement stock for
  * @returns {Promise<void>}
  */
 export const decrementStock = async (cartItems) => {
-  const updatedVariants = [];
+  const failures = [];
 
-  try {
-    for (const item of cartItems) {
-      // Get current stock
-      const { data: variant, error: fetchError } = await supabase
-        .from('product_variants')
-        .select('stock_quantity')
-        .eq('id', item.variantId)
-        .single();
+  for (const item of cartItems) {
+    try {
+      // ✅ Use database RPC function (atomic operation)
+      const { data, error } = await supabase.rpc('decrement_variant_stock', {
+        p_variant_id: item.variantId,
+        p_quantity: item.quantity
+      });
 
-      if (fetchError) throw fetchError;
-
-      const newStock = variant.stock_quantity - item.quantity;
-
-      if (newStock < 0) {
-        throw new Error(`Insufficient stock for variant ${item.variantId}`);
+      // Check if function returned false (insufficient stock)
+      if (error || data === false) {
+        failures.push({
+          variantId: item.variantId,
+          name: item.name,
+          error: error?.message || 'Insufficient stock'
+        });
       }
-
-      // Update stock
-      const { error: updateError } = await supabase
-        .from('product_variants')
-        .update({ stock_quantity: newStock })
-        .eq('id', item.variantId);
-
-      if (updateError) throw updateError;
-
-      // Track for rollback
-      updatedVariants.push({
+    } catch (error) {
+      failures.push({
         variantId: item.variantId,
-        previousStock: variant.stock_quantity,
-        newStock,
+        name: item.name,
+        error: error.message
       });
     }
-  } catch (error) {
-    // Rollback stock changes
-    console.error('❌ Stock decrement failed, rolling back...', error);
-    await rollbackStockChanges(updatedVariants);
-    throw error;
   }
-};
 
-/**
- * Rollback stock changes on error
- * @param {Array} updatedVariants - Variants to rollback
- * @returns {Promise<void>}
- */
-const rollbackStockChanges = async (updatedVariants) => {
-  for (const variant of updatedVariants) {
-    await supabase
-      .from('product_variants')
-      .update({ stock_quantity: variant.previousStock })
-      .eq('id', variant.variantId);
+  // If any failures, throw error
+  if (failures.length > 0) {
+    const errorMsg = failures
+      .map(f => `${f.name}: ${f.error}`)
+      .join(', ');
+    throw new Error(`Stock update failed: ${errorMsg}`);
   }
-  console.log('✅ Stock rollback completed');
 };
 
 /**
@@ -238,7 +235,10 @@ export const processOrder = async (orderData, cartItems, userId) => {
   // 1. Validate cart
   const validation = validateCartItems(cartItems);
   if (!validation.valid) {
-    throw new Error(validation.errors[0].message);
+    const error = new Error(validation.errors[0].message);
+    error.code = validation.errors[0].code;
+    error.item = validation.errors[0].item;
+    throw error;
   }
 
   // 2. Check stock availability
@@ -247,22 +247,30 @@ export const processOrder = async (orderData, cartItems, userId) => {
     const issue = stockCheck.issues[0];
     const error = new Error(issue.message);
     error.code = issue.code;
+    error.item = issue.item;
     throw error;
   }
 
   // 3. Calculate totals
-  const { total } = calculateOrderTotals(cartItems);
+  const totals = calculateOrderTotals(cartItems);
 
   // 4. Create order
-  const order = await createOrder(orderData, userId, total);
+  const order = await createOrder(orderData, userId, totals);
 
-  // 5. Create order items
-  const orderItems = await createOrderItems(order.id, cartItems);
+  try {
+    // 5. Create order items
+    const orderItems = await createOrderItems(order.id, cartItems);
 
-  // 6. Decrement stock
-  await decrementStock(cartItems);
+    // 6. Decrement stock (atomic, race-condition safe)
+    await decrementStock(cartItems);
 
-  return { order, orderItems };
+    return { order, orderItems };
+  } catch (error) {
+    // Rollback: Delete order if items/stock failed
+    console.error('❌ Order processing failed, rolling back order...', error);
+    await supabase.from('orders').delete().eq('id', order.id);
+    throw error;
+  }
 };
 
 /**
