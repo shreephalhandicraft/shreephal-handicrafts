@@ -178,7 +178,7 @@ export const useCheckoutLogic = () => {
     return true;
   }, [formData, toast]);
 
-  // Create customization details for order
+  // Create customization details for order (LEGACY JSONB format)
   const createCustomizationDetails = useCallback((cartItems) => {
     const customizationDetails = {};
 
@@ -200,11 +200,53 @@ export const useCheckoutLogic = () => {
     return customizationDetails;
   }, []);
 
-  // ✅ ISSUE #5: Create order with DUAL-WRITE to both JSONB and order_items table
+  // ✅ ISSUE #7: Upload customization image to Cloudinary
+  const uploadCustomizationImage = useCallback(async (file, itemName) => {
+    try {
+      console.log(`  📤 Uploading customization image for: ${itemName}`);
+      
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('upload_preset', import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || 'shrifal_handicrafts');
+      formData.append('folder', 'shrifal-handicrafts/customizations');
+      
+      const cloudinaryResponse = await fetch(
+        `https://api.cloudinary.com/v1_1/${import.meta.env.VITE_CLOUDINARY_CLOUD_NAME}/image/upload`,
+        {
+          method: 'POST',
+          body: formData
+        }
+      );
+      
+      if (!cloudinaryResponse.ok) {
+        const errorData = await cloudinaryResponse.json();
+        throw new Error(errorData.error?.message || 'Cloudinary upload failed');
+      }
+      
+      const cloudinaryData = await cloudinaryResponse.json();
+      
+      console.log(`  ✅ Image uploaded: ${cloudinaryData.secure_url}`);
+      
+      return {
+        url: cloudinaryData.secure_url,
+        public_id: cloudinaryData.public_id,
+        format: cloudinaryData.format,
+        width: cloudinaryData.width,
+        height: cloudinaryData.height,
+        bytes: cloudinaryData.bytes
+      };
+      
+    } catch (error) {
+      console.error(`  ❌ Cloudinary upload failed for ${itemName}:`, error);
+      throw new Error(`Failed to upload customization image for ${itemName}: ${error.message}`);
+    }
+  }, []);
+
+  // ✅ ISSUE #5 & #7: Create order with order_items table + Cloudinary uploads
   const createOrder = useCallback(
     async (paymentMethod = "PayNow") => {
       try {
-        console.log("\n=== CREATING ORDER (DUAL-WRITE MODE) ===");
+        console.log("\n=== CREATING ORDER WITH CUSTOMIZATION UPLOADS ===");
 
         if (!user?.id) {
           throw new Error("User not authenticated");
@@ -222,7 +264,7 @@ export const useCheckoutLogic = () => {
         const cartItems = getCartForCheckout();
         console.log("\n📦 CART ITEMS:", JSON.stringify(cartItems, null, 2));
 
-        // ✅ CRITICAL: VALIDATE ALL ITEMS HAVE variant_id BEFORE PROCEEDING
+        // ✅ VALIDATE ALL ITEMS HAVE variant_id
         const itemsWithoutVariant = cartItems.filter(item => !item.variantId);
         if (itemsWithoutVariant.length > 0) {
           console.error("❌ Items missing variantId:", itemsWithoutVariant);
@@ -271,7 +313,7 @@ export const useCheckoutLogic = () => {
         const totalPaise = Math.round(total * 100);
         const customizationDetails = createCustomizationDetails(cartItems);
 
-        // ✅ STEP 1: Fetch catalog numbers for products (for order_items table)
+        // ✅ Fetch catalog numbers
         console.log("\n📋 Fetching catalog numbers...");
         const productIds = cartItems.map(item => item.productId);
         const { data: productsData, error: productsError } = await supabase
@@ -293,7 +335,7 @@ export const useCheckoutLogic = () => {
         const orderData = {
           user_id: authUser.id,
           customer_id: customer.id,
-          // ⚠️ DUAL-WRITE: Keep JSONB for backwards compatibility (will deprecate later)
+          // ⚠️ LEGACY: Keep JSONB for backwards compatibility
           items: cartItems.map((item) => ({
             id: item.id,
             productId: item.productId,
@@ -343,43 +385,158 @@ export const useCheckoutLogic = () => {
 
         console.log("✅ Order created:", order.id);
 
-        // ✅ STEP 2: INSERT INTO order_items TABLE (NEW NORMALIZED APPROACH)
+        // ✅ ISSUE #7: UPLOAD CUSTOMIZATION IMAGES BEFORE INSERTING order_items
+        console.log("\n📤 UPLOADING CUSTOMIZATION IMAGES...");
+        const processedCartItems = [];
+        
+        for (const item of cartItems) {
+          let customizationData = item.customization && Object.keys(item.customization).length > 0 
+            ? { ...item.customization } 
+            : null;
+          
+          // If item has customization with uploaded image File object
+          if (customizationData?.uploadedImage && customizationData.uploadedImage instanceof File) {
+            try {
+              const uploadResult = await uploadCustomizationImage(
+                customizationData.uploadedImage, 
+                item.name
+              );
+              
+              // Replace File object with Cloudinary URL
+              customizationData = {
+                ...customizationData,
+                uploadedImageUrl: uploadResult.url,
+                cloudinaryPublicId: uploadResult.public_id,
+                uploadedImage: null  // Remove File object (can't be stored in DB)
+              };
+              
+            } catch (error) {
+              console.error('Upload failed:', error);
+              
+              // Rollback order on upload failure
+              await supabase.from('orders').delete().eq('id', order.id);
+              
+              toast({
+                title: 'Upload Failed',
+                description: `Failed to upload customization for ${item.name}. Order cancelled.`,
+                variant: 'destructive'
+              });
+              throw error;
+            }
+          }
+          
+          // Clean customization data (remove empty fields)
+          if (customizationData) {
+            const cleanedCustomization = {};
+            for (const [key, value] of Object.entries(customizationData)) {
+              if (value !== null && value !== undefined && value !== '' && value !== false) {
+                cleanedCustomization[key] = value;
+              }
+            }
+            customizationData = Object.keys(cleanedCustomization).length > 0 
+              ? cleanedCustomization 
+              : null;
+          }
+          
+          processedCartItems.push({
+            ...item,
+            processedCustomization: customizationData
+          });
+        }
+
+        // ✅ STEP 2: INSERT INTO order_items TABLE
         console.log("\n📝 Inserting into order_items table...");
         
-        const orderItemsData = cartItems.map(item => ({
+        const orderItemsData = processedCartItems.map(item => ({
           order_id: order.id,
           product_id: item.productId,
           variant_id: item.variantId,
           catalog_number: catalogNumberMap[item.productId] || null,
           quantity: item.quantity,
           unit_price: Math.round(item.price * 100), // Convert to paise
-          total_price: Math.round(item.price * item.quantity * 100), // Convert to paise
-          customization_data: item.customization && Object.keys(item.customization).length > 0 
-            ? item.customization 
-            : null
+          total_price: Math.round(item.price * item.quantity * 100),
+          customization_data: item.processedCustomization
         }));
 
         console.log("  Order items to insert:", JSON.stringify(orderItemsData, null, 2));
 
-        const { error: itemsError } = await supabase
+        const { data: insertedItems, error: itemsError } = await supabase
           .from('order_items')
-          .insert(orderItemsData);
+          .insert(orderItemsData)
+          .select('*');
 
         if (itemsError) {
           console.error("❌ Failed to insert order_items:", itemsError);
-          
-          // ✅ CRITICAL: Rollback order if items insertion fails
-          console.log("  🔄 Rolling back order...");
           await supabase.from('orders').delete().eq('id', order.id);
-          
           throw new Error(
             `Failed to create order items: ${itemsError.message}. Order cancelled.`
           );
         }
 
-        console.log("✅ Order items inserted successfully");
+        console.log("✅ Order items inserted:", insertedItems.length);
 
-        // ✅ STEP 3: DECREMENT STOCK WITH PROPER ERROR HANDLING
+        // ✅ ISSUE #7: AUTO-CREATE CUSTOMIZATION REQUESTS
+        console.log("\n🎨 CREATING CUSTOMIZATION REQUESTS...");
+        const customizationRequests = [];
+
+        for (let i = 0; i < insertedItems.length; i++) {
+          const orderItem = insertedItems[i];
+          const customData = orderItem.customization_data;
+          
+          if (customData && Object.keys(customData).length > 0) {
+            // Determine customization type
+            const hasImage = customData.uploadedImageUrl || customData.uploadedImage;
+            const hasText = customData.text || customData.customText;
+            const hasColor = customData.color || customData.customColor;
+            
+            let customizationType = '';
+            if (hasImage && hasText) customizationType = 'image_and_text';
+            else if (hasImage) customizationType = 'image';
+            else if (hasText) customizationType = 'text';
+            else if (hasColor) customizationType = 'text'; // Treat color as text customization
+            else continue; // Skip if no actual customization
+            
+            const designFiles = hasImage ? {
+              files: [{
+                url: customData.uploadedImageUrl,
+                cloudinary_id: customData.cloudinaryPublicId,
+                type: 'customer_upload'
+              }]
+            } : null;
+            
+            customizationRequests.push({
+              order_id: order.id,
+              order_item_id: orderItem.id,
+              customization_type: customizationType,
+              customer_requirements: customData,
+              design_files: designFiles,
+              status: 'pending',
+              admin_notes: null
+            });
+            
+            console.log(`  ✅ Queued request for item ${orderItem.id} (${customizationType})`);
+          }
+        }
+
+        // Insert customization requests if any
+        if (customizationRequests.length > 0) {
+          const { data: createdRequests, error: reqError } = await supabase
+            .from('customization_requests')
+            .insert(customizationRequests)
+            .select('*');
+          
+          if (reqError) {
+            console.error('❌ Failed to create customization requests:', reqError);
+            // Don't throw - order is already created, just log the error
+            console.warn('  ⚠️ Order will proceed without customization request tracking');
+          } else {
+            console.log(`  ✅ Created ${createdRequests.length} customization requests`);
+          }
+        } else {
+          console.log('  ℹ️ No customization requests needed');
+        }
+
+        // ✅ STEP 3: DECREMENT STOCK
         console.log("\n📉 DECREMENTING STOCK...");
         const stockUpdates = [];
         
@@ -390,11 +547,10 @@ export const useCheckoutLogic = () => {
           
           if (!item.variantId) {
             console.error(`    ❌ CRITICAL: Missing variantId for ${item.name}`);
-            throw new Error(`Product "${item.name}" is missing variant information. Please remove and re-add to cart.`);
+            throw new Error(`Product "${item.name}" is missing variant information.`);
           }
 
           try {
-            // ✅ Call RPC with correct parameter names matching SQL function
             const { data: result, error } = await supabase.rpc('decrement_product_stock', {
               variant_id: item.variantId,
               quantity: item.quantity
@@ -405,7 +561,6 @@ export const useCheckoutLogic = () => {
               throw new Error(`Stock update failed for ${item.name}: ${error.message}`);
             }
 
-            // ✅ Parse JSON response from function
             const stockResult = typeof result === 'string' ? JSON.parse(result) : result;
             
             if (stockResult && !stockResult.success) {
@@ -425,8 +580,8 @@ export const useCheckoutLogic = () => {
           } catch (error) {
             console.error(`    ❌ Failed to decrement stock:`, error);
             
-            // ✅ CRITICAL: Rollback BOTH order and order_items on stock failure
-            console.log(`    🔄 Rolling back order and items...`);
+            // Rollback order, items, and customization requests
+            await supabase.from('customization_requests').delete().eq('order_id', order.id);
             await supabase.from('order_items').delete().eq('order_id', order.id);
             await supabase.from('orders').delete().eq('id', order.id);
             
@@ -437,7 +592,7 @@ export const useCheckoutLogic = () => {
         }
 
         console.log(`\n✅ Stock updated for ${stockUpdates.length}/${cartItems.length} items`);
-        console.log("\n🎉 ORDER CREATION COMPLETE (DUAL-WRITE)\n");
+        console.log("\n🎉 ORDER CREATION COMPLETE WITH CUSTOMIZATIONS\n");
         
         return order;
       } catch (error) {
@@ -445,7 +600,7 @@ export const useCheckoutLogic = () => {
         throw error;
       }
     },
-    [user?.id, formData, total, getCartForCheckout, createCustomizationDetails]
+    [user?.id, formData, total, getCartForCheckout, createCustomizationDetails, uploadCustomizationImage, toast]
   );
 
   // Handle PayNow payment
