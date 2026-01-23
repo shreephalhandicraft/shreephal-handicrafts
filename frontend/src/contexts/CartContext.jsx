@@ -532,21 +532,27 @@ export const CartProvider = ({ children }) => {
     }
   };
 
-  // Calculate totals
-  const getBasePrice = () =>
-    cartItems.reduce((total, item) => total + item.price * item.quantity, 0);
+  // ✅ FIX: Calculate totals with fallback for guest cart items
+  const getBasePrice = () => {
+    return cartItems.reduce((total, item) => {
+      const itemPrice = item.price || 0;
+      return total + itemPrice * item.quantity;
+    }, 0);
+  };
 
-  const getTotalGST = () =>
-    cartItems.reduce(
-      (total, item) => total + item.gstAmount * item.quantity,
-      0
-    );
+  const getTotalGST = () => {
+    return cartItems.reduce((total, item) => {
+      const gstAmount = item.gstAmount || 0;
+      return total + gstAmount * item.quantity;
+    }, 0);
+  };
 
+  // ✅ FIX: Fallback to item.price if priceWithGst is missing (guest cart)
   const getTotalPrice = () => {
-    return cartItems.reduce(
-      (total, item) => total + item.priceWithGst * item.quantity,
-      0
-    );
+    return cartItems.reduce((total, item) => {
+      const itemPrice = item.priceWithGst || item.price || 0;
+      return total + itemPrice * item.quantity;
+    }, 0);
   };
 
   const getTotalItems = () => {
