@@ -9,6 +9,7 @@ import {
   MessageSquare,
   ChevronDown,
   ChevronRight,
+  Palette,
 } from "lucide-react";
 
 import {
@@ -44,6 +45,11 @@ const menuItems = [
     title: "Orders",
     url: "/admin/orders",
     icon: ShoppingCart,
+  },
+  {
+    title: "Customizations",
+    url: "/admin/customizations",
+    icon: Palette,
   },
   {
     title: "Customers",
