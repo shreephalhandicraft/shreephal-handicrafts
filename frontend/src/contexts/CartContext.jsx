@@ -21,6 +21,51 @@ export const CartProvider = ({ children }) => {
   
   // ✅ FIX BUG #4: Prevent race condition with sync lock
   const syncLockRef = useRef(false);
+  
+  // ✅ FIX MEDIUM BUG #2: Track if legacy cleanup has run
+  const legacyCleanupDoneRef = useRef(false);
+
+  // ✅ FIX MEDIUM BUG #2: Clean legacy cart items without valid price
+  const cleanLegacyCart = () => {
+    if (legacyCleanupDoneRef.current) return; // Only run once
+    
+    try {
+      const storedCart = JSON.parse(localStorage.getItem("cart_items") || "[]");
+      
+      if (storedCart.length === 0) {
+        legacyCleanupDoneRef.current = true;
+        return;
+      }
+      
+      // Filter out items without valid price
+      const validCart = storedCart.filter(item => {
+        const hasValidPrice = (item.price && item.price > 0) || 
+                             (item.priceWithGst && item.priceWithGst > 0);
+        const hasVariantId = !!item.variantId;
+        
+        return hasValidPrice && hasVariantId;
+      });
+      
+      const removedCount = storedCart.length - validCart.length;
+      
+      if (removedCount > 0) {
+        localStorage.setItem("cart_items", JSON.stringify(validCart));
+        
+        console.log(`✅ Cleaned ${removedCount} invalid cart items from localStorage`);
+        
+        toast({
+          title: "Cart Updated",
+          description: `Removed ${removedCount} invalid item(s) from your cart.`,
+          variant: "default",
+        });
+      }
+      
+      legacyCleanupDoneRef.current = true;
+    } catch (error) {
+      console.error("❌ Error cleaning legacy cart:", error);
+      // Don't throw - this is a cleanup operation that shouldn't break the app
+    }
+  };
 
   // ✅ FIXED: Check stock availability with variant_id
   const checkStockAvailability = async (variantId, requestedQty) => {
@@ -574,17 +619,22 @@ export const CartProvider = ({ children }) => {
     }));
   };
 
-  // Initialize cart on mount
+  // ✅ FIX PERF #2: Initialize cart on mount (only when user ID changes)
   useEffect(() => {
     fetchCartItems();
-  }, [user]);
+  }, [user?.id]); // ✅ Changed from [user] to [user?.id] to prevent unnecessary re-fetches
+
+  // ✅ FIX MEDIUM BUG #2: Run legacy cleanup on mount
+  useEffect(() => {
+    cleanLegacyCart();
+  }, []); // Run once on mount
 
   // ✅ FIX BUG #4: Sync cart with lock to prevent race conditions
   useEffect(() => {
     if (user && !syncLockRef.current) {
       syncCartToDatabase();
     }
-  }, [user]);
+  }, [user?.id]); // ✅ Changed from [user] to [user?.id]
 
   const syncCartToDatabase = async () => {
     // ✅ FIX BUG #4: Check lock before proceeding
