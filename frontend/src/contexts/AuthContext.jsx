@@ -6,6 +6,11 @@ const AuthContext = createContext(undefined);
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  
+  // ✅ FIX MEDIUM BUG #3: Add admin status caching
+  const [adminStatus, setAdminStatus] = useState(null); // null | 'admin' | 'superadmin' | false
+  const [adminChecked, setAdminChecked] = useState(false);
+  const [adminLoading, setAdminLoading] = useState(false);
 
   useEffect(() => {
     let loadingTimeout;
@@ -48,6 +53,12 @@ export const AuthProvider = ({ children }) => {
       console.log("Auth state changed:", event, session);
       setUser(session?.user ?? null);
       setLoading(false);
+      
+      // ✅ Reset admin status when user changes
+      if (event === 'SIGNED_OUT') {
+        setAdminStatus(null);
+        setAdminChecked(false);
+      }
     });
 
     return () => {
@@ -55,6 +66,46 @@ export const AuthProvider = ({ children }) => {
       subscription.unsubscribe();
     };
   }, []);
+
+  // ✅ FIX MEDIUM BUG #3: Cache admin role check
+  useEffect(() => {
+    const checkAdminStatus = async () => {
+      if (!user || adminChecked) return;
+      
+      setAdminLoading(true);
+      
+      try {
+        console.log("🔐 Checking admin status for:", user.email);
+        
+        const { data, error } = await supabase
+          .from("admin_users")
+          .select("id, role")
+          .eq("email", user.email)
+          .single();
+        
+        if (error && error.code !== 'PGRST116') {
+          console.error("Admin check error:", error);
+          setAdminStatus(false);
+        } else if (data) {
+          console.log("✅ Admin status confirmed:", data.role);
+          setAdminStatus(data.role);
+        } else {
+          console.log("❌ Not an admin user");
+          setAdminStatus(false);
+        }
+        
+        setAdminChecked(true);
+      } catch (error) {
+        console.error("Admin status check failed:", error);
+        setAdminStatus(false);
+        setAdminChecked(true);
+      } finally {
+        setAdminLoading(false);
+      }
+    };
+    
+    checkAdminStatus();
+  }, [user?.id, adminChecked]); // Only check when user ID changes
 
   const login = async (email, password) => {
     try {
@@ -72,6 +123,11 @@ export const AuthProvider = ({ children }) => {
 
       console.log("Login successful:", data);
       setUser(data.user);
+      
+      // ✅ Reset admin check so it runs for new user
+      setAdminChecked(false);
+      setAdminStatus(null);
+      
       return { user: data.user };
     } catch (err) {
       console.error("Login exception:", err);
@@ -144,6 +200,10 @@ export const AuthProvider = ({ children }) => {
         console.error("Logout error:", error);
       }
       setUser(null);
+      
+      // ✅ Clear admin status on logout
+      setAdminStatus(null);
+      setAdminChecked(false);
     } catch (err) {
       console.error("Logout exception:", err);
     }
@@ -158,6 +218,10 @@ export const AuthProvider = ({ children }) => {
         logout,
         loading,
         isAuthenticated: !!user,
+        // ✅ Export admin status for AdminRoute
+        isAdmin: adminStatus && adminStatus !== false,
+        adminRole: adminStatus,
+        adminLoading,
       }}
     >
       {!loading && children}
