@@ -247,72 +247,80 @@ export default function OrderDetail() {
     fetchOrder();
   }, [orderId, user]);
 
-  // ✅ ISSUE #5: Use order_details_full view for comprehensive order + items data
+  // ✅ FIX: Corrected column mapping for order_details_full view
   const fetchOrder = async () => {
     try {
       setLoading(true);
 
-      console.log("\n=== FETCHING ORDER DETAILS (NEW VIEW) ===");
+      console.log("\n=== FETCHING ORDER DETAILS (FIXED MAPPING) ===");
       console.log("Order ID:", orderId);
       console.log("User ID:", user.id);
 
-      // ✅ Query the comprehensive view with all order and item details
+      // Query the comprehensive view with all order and item details
       const { data, error } = await supabase
         .from("order_details_full")
         .select("*")
-        .eq("order_id", orderId)
-        .eq("user_id", user.id);
+        .eq("orderid", orderId)  // ✅ Changed from order_id
+        .eq("userid", user.id);  // ✅ Changed from user_id
 
       console.log("Order details from view:", { data, error });
 
       if (error) throw error;
 
       if (data && data.length > 0) {
-        // ✅ First row contains order info (all rows have same order info)
+        // ✅ FIXED: Map to correct column names from order_details_full view
         const orderData = {
-          id: data[0].order_id,
-          user_id: data[0].user_id,
-          status: data[0].status,
-          payment_status: data[0].payment_status,
-          payment_method: data[0].payment_method,
-          amount: data[0].total_price,
-          shipping_cost: data[0].shipping_cost,
-          created_at: data[0].created_at,
-          updated_at: data[0].updated_at,
-          shipping_info: data[0].shipping_info,
-          delivery_info: data[0].delivery_info,
-          order_notes: data[0].order_notes,
-          customization_details: data[0].customization_details,
-          requires_customization: data[0].requires_customization,
-          estimated_delivery_days: data[0].estimated_delivery_days,
-          upi_reference: data[0].upi_reference,
-          transaction_id: data[0].transaction_id,
-          production_status: data[0].production_status,
+          id: data[0].orderid,  // ✅ Fixed
+          user_id: data[0].userid,  // ✅ Fixed
+          status: data[0].orderstatus,  // ✅ Fixed (was: data[0].status)
+          payment_status: data[0].paymentstatus,  // ✅ Fixed
+          payment_method: data[0].paymentmethod,  // ✅ Fixed
+          // ✅ Use 'amount' field (numeric) which exists in view
+          amount: data[0].amount ? Number(data[0].amount) : (data[0].ordertotal || 0),
+          // ✅ Fields not in view - set to null/default
+          shipping_cost: null,  // Not in order_details_full view
+          created_at: data[0].orderdate,  // ✅ Fixed (was: created_at)
+          updated_at: data[0].updatedat,  // ✅ Fixed
+          shipping_info: data[0].shippinginfo,  // ✅ Fixed
+          delivery_info: data[0].deliveryinfo,  // ✅ Fixed
+          order_notes: data[0].ordernotes,  // ✅ Fixed
+          customization_details: null,  // Not directly in view
+          requires_customization: data[0].customizationdata ? true : false,  // ✅ Inferred from items
+          estimated_delivery_days: null,  // Not in view
+          upi_reference: null,  // Not in view
+          transaction_id: data[0].transactionid,  // ✅ Fixed
+          production_status: null,  // Not in view
         };
 
-        // ✅ Extract items from view rows (each row is an order item)
+        // ✅ FIXED: Extract items from view rows with correct column names
         const orderItems = data.map((row) => ({
-          id: row.product_id,
-          product_id: row.product_id,
-          quantity: row.quantity,
-          price: row.unit_price * row.quantity, // Total price for this item
-          unit_price: row.unit_price,
+          id: row.productid,  // ✅ Fixed
+          product_id: row.productid,  // ✅ Fixed
+          quantity: row.quantity,  // ✅ Already correct!
+          price: row.itemtotal || 0,  // ✅ Fixed (was: row.unit_price * row.quantity)
+          unit_price: row.unitprice || 0,  // ✅ Fixed (was: row.unit_price)
           // Product details from view
-          name: row.product_name,
-          title: row.product_name,
-          image: row.product_image,
-          catalog_number: row.catalog_number,
-          material_type: row.material_type,
-          weight_grams: row.weight_grams,
+          name: row.productname,  // ✅ Fixed
+          title: row.productname,  // ✅ Fixed
+          image: row.productimage,  // ✅ Fixed
+          catalog_number: row.catalognumber,  // ✅ Fixed
+          material_type: null,  // Not in view
+          weight_grams: null,  // Not in view
           // Store item metadata
-          item_id: row.item_id,
-          item_created_at: row.item_created_at,
+          item_id: row.itemid,  // ✅ Fixed
+          item_created_at: null,  // Not in view
+          customization: row.customizationdata,  // ✅ Fixed
+          variant: {
+            sizeDisplay: row.sizedisplay,  // ✅ Fixed
+            sizeNumeric: row.sizenumeric,  // ✅ Fixed
+            sizeUnit: row.sizeunit,  // ✅ Fixed
+          },
         }));
 
         setOrder(orderData);
         setItems(orderItems);
 
-        console.log("✅ Order loaded:", orderData);
+        console.log("✅ Order loaded (FIXED):", orderData);
         console.log("✅ Items loaded:", orderItems.length, "items");
       } else {
         console.warn("⚠️ No order data found");
@@ -478,17 +486,375 @@ export default function OrderDetail() {
       <div className="min-h-screen bg-gray-50/50">
         <div className="container mx-auto px-3 sm:px-4 lg:px-6 py-6 sm:py-8 lg:py-12">
           <div className="max-w-6xl mx-auto">
-            {/* Header - truncated for space, full version in actual file */}
+            {/* Header */}
             <Card className="border-2 border-primary/10 bg-gradient-to-r from-primary/5 to-primary/10 mb-6 sm:mb-8">
               <CardContent className="p-4 sm:p-6">
-                {/* Navigation and header content... */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                  <Link to="/my-orders">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="hover:bg-primary/10"
+                    >
+                      <ArrowLeft className="h-4 w-4 mr-2" />
+                      Back to Orders
+                    </Button>
+                  </Link>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRefresh}
+                    disabled={refreshing}
+                    className="border-primary/20 hover:bg-primary/5"
+                  >
+                    <RefreshCw
+                      className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`}
+                    />
+                    {refreshing ? "Refreshing..." : "Refresh"}
+                  </Button>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900">
+                      Order #{order.id.slice(0, 8).toUpperCase()}
+                    </h1>
+                    <p className="text-sm sm:text-base text-gray-600 mt-1">
+                      Placed on {orderCreated}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                    <Badge
+                      className={`${getStatusColor(order.status)} text-xs sm:text-sm px-2 sm:px-3 py-1`}
+                    >
+                      <div className="flex items-center gap-1 sm:gap-2">
+                        {getStatusIcon(order.status)}
+                        <span className="capitalize">
+                          {order.status || "Pending"}
+                        </span>
+                      </div>
+                    </Badge>
+
+                    {order.payment_status && (
+                      <Badge
+                        className={`${getPaymentStatusColor(order.payment_status)} text-xs sm:text-sm px-2 sm:px-3 py-1`}
+                      >
+                        Payment: {order.payment_status}
+                      </Badge>
+                    )}
+
+                    {order.payment_method && (
+                      <Badge
+                        variant="outline"
+                        className="text-xs sm:text-sm px-2 sm:px-3 py-1"
+                      >
+                        <CreditCard className="h-3 w-3 mr-1" />
+                        {order.payment_method}
+                      </Badge>
+                    )}
+
+                    {order.requires_customization && (
+                      <Badge
+                        variant="outline"
+                        className="text-xs sm:text-sm px-2 sm:px-3 py-1 bg-orange-50 text-orange-700 border-orange-200"
+                      >
+                        <Wrench className="h-3 w-3 mr-1" />
+                        Customized
+                      </Badge>
+                    )}
+                  </div>
+                </div>
               </CardContent>
             </Card>
 
-            {/* Payment Banner... */}
+            {/* Payment Pending Alert */}
+            {order.payment_status === "pending" && (
+              <Card className="border-2 border-orange-200 bg-gradient-to-r from-orange-50 to-yellow-50 mb-6 sm:mb-8">
+                <CardContent className="p-4 sm:p-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-start gap-3">
+                      <AlertCircle className="h-5 w-5 sm:h-6 sm:w-6 text-orange-600 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <h3 className="font-semibold text-orange-900 text-base sm:text-lg">
+                          Payment Pending
+                        </h3>
+                        <p className="text-sm sm:text-base text-orange-700 mt-1">
+                          Complete your payment to confirm this order. Your items
+                          are reserved but the order won't be processed until
+                          payment is received.
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      size="lg"
+                      onClick={handlePayNow}
+                      disabled={processingPayment}
+                      className="bg-orange-600 hover:bg-orange-700 text-white whitespace-nowrap"
+                    >
+                      {processingPayment ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Processing...
+                        </>
+                      ) : (
+                        <>
+                          <CreditCard className="h-4 w-4 mr-2" />
+                          Pay ₹{Number(order.amount).toFixed(2)?.toLocaleString()}
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 sm:gap-8">
-              {/* Order Items and full order UI - see full file... */}
+              {/* Left Column - Order Items */}
+              <div className="xl:col-span-2 space-y-6 sm:space-y-8">
+                <Card className="border border-gray-200">
+                  <CardHeader className="border-b border-gray-200 bg-gray-50/50">
+                    <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
+                      <Package className="h-5 w-5 text-primary" />
+                      Order Items ({items.length})
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-4 sm:p-6">
+                    <div className="space-y-4 sm:space-y-6">
+                      {items.map((item, index) => (
+                        <div key={item.item_id || index}>
+                          <div className="flex gap-3 sm:gap-4">
+                            {item.image ? (
+                              <img
+                                src={item.image}
+                                alt={item.name}
+                                className="h-16 w-16 sm:h-20 sm:w-20 object-cover rounded-lg border border-gray-200 flex-shrink-0"
+                                onError={(e) => {
+                                  e.target.style.display = "none";
+                                  e.target.nextSibling.style.display = "flex";
+                                }}
+                              />
+                            ) : null}
+                            <ProductFallbackIcon
+                              className="h-16 w-16 sm:h-20 sm:w-20 flex-shrink-0"
+                              style={{
+                                display: item.image ? "none" : "flex",
+                              }}
+                            />
+
+                            <div className="flex-1 min-w-0">
+                              <h4 className="font-semibold text-sm sm:text-base text-gray-900 mb-1">
+                                {item.name || item.title || "Product"}
+                              </h4>
+
+                              <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm text-gray-600 mb-2">
+                                {item.catalog_number && (
+                                  <span>SKU: {item.catalog_number}</span>
+                                )}
+                                {item.variant?.sizeDisplay && (
+                                  <>
+                                    <span>•</span>
+                                    <span>Size: {item.variant.sizeDisplay}</span>
+                                  </>
+                                )}
+                                <span>•</span>
+                                <span>Qty: {item.quantity}</span>
+                              </div>
+
+                              <div className="flex items-baseline gap-2">
+                                <span className="text-base sm:text-lg font-bold text-gray-900">
+                                  ₹{(Number(item.price) || 0).toFixed(2)?.toLocaleString()}
+                                </span>
+                                {item.quantity > 1 && (
+                                  <span className="text-xs sm:text-sm text-gray-500">
+                                    (₹{(Number(item.unit_price) || 0).toFixed(2)} each)
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Customization details */}
+                          {item.customization &&
+                            Object.keys(item.customization).length > 0 && (
+                              <div className="mt-3">
+                                {renderCustomizationDetails(
+                                  item,
+                                  { [item.product_id]: { customizations: item.customization } }
+                                )}
+                              </div>
+                            )}
+
+                          {index < items.length - 1 && (
+                            <Separator className="mt-4 sm:mt-6" />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Order Notes */}
+                {order.order_notes && (
+                  <Card className="border border-blue-200 bg-blue-50/50">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-base sm:text-lg text-blue-900">
+                        <AlertCircle className="h-5 w-5" />
+                        Order Notes
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-sm sm:text-base text-blue-800">
+                        {order.order_notes}
+                      </p>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+
+              {/* Right Column - Order Summary & Details */}
+              <div className="space-y-6 sm:space-y-8">
+                {/* Order Summary */}
+                <Card className="border border-gray-200 sticky top-8">
+                  <CardHeader className="border-b border-gray-200 bg-gray-50/50">
+                    <CardTitle className="text-lg sm:text-xl">Order Summary</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-4 sm:p-6">
+                    <div className="space-y-3 sm:space-y-4">
+                      <div className="flex justify-between text-sm sm:text-base">
+                        <span className="text-gray-600">Subtotal</span>
+                        <span className="font-semibold">
+                          ₹{(Number(order.amount) || 0).toFixed(2)?.toLocaleString()}
+                        </span>
+                      </div>
+
+                      {order.shipping_cost && Number(order.shipping_cost) > 0 && (
+                        <div className="flex justify-between text-sm sm:text-base">
+                          <span className="text-gray-600">Shipping</span>
+                          <span className="font-semibold">
+                            ₹{Number(order.shipping_cost).toFixed(2)?.toLocaleString()}
+                          </span>
+                        </div>
+                      )}
+
+                      <Separator />
+
+                      <div className="flex justify-between text-base sm:text-lg font-bold">
+                        <span>Total</span>
+                        <span className="text-primary">
+                          ₹{(Number(order.amount) || 0).toFixed(2)?.toLocaleString()}
+                        </span>
+                      </div>
+
+                      {order.payment_status === "pending" && (
+                        <Button
+                          onClick={handlePayNow}
+                          disabled={processingPayment}
+                          className="w-full mt-4"
+                          size="lg"
+                        >
+                          {processingPayment ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Processing...
+                            </>
+                          ) : (
+                            <>
+                              <CreditCard className="h-4 w-4 mr-2" />
+                              Pay Now
+                            </>
+                          )}
+                        </Button>
+                      )}
+
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => setShowInvoice(true)}
+                        disabled={order.payment_status === "pending"}
+                      >
+                        <FileText className="h-4 w-4 mr-2" />
+                        View Invoice
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Shipping Information */}
+                <Card className="border border-gray-200">
+                  <CardHeader className="border-b border-gray-200 bg-gray-50/50">
+                    <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
+                      <Truck className="h-5 w-5 text-primary" />
+                      Shipping Details
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-4 sm:p-6">
+                    <div className="space-y-3 sm:space-y-4 text-sm sm:text-base">
+                      {(shipping.firstName || shipping.lastName) && (
+                        <div className="flex items-start gap-3">
+                          <User className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400 flex-shrink-0 mt-0.5" />
+                          <div>
+                            <p className="text-xs sm:text-sm text-gray-500">Name</p>
+                            <p className="font-medium text-gray-900">
+                              {shipping.firstName} {shipping.lastName}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {shipping.phone && (
+                        <div className="flex items-start gap-3">
+                          <Phone className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400 flex-shrink-0 mt-0.5" />
+                          <div>
+                            <p className="text-xs sm:text-sm text-gray-500">Phone</p>
+                            <p className="font-medium text-gray-900">
+                              {shipping.phone}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {(shipping.address ||
+                        shipping.city ||
+                        shipping.state ||
+                        shipping.zipCode) && (
+                        <div className="flex items-start gap-3">
+                          <MapPin className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400 flex-shrink-0 mt-0.5" />
+                          <div>
+                            <p className="text-xs sm:text-sm text-gray-500">Address</p>
+                            <div className="font-medium text-gray-900">
+                              {shipping.address && <p>{shipping.address}</p>}
+                              {(shipping.city || shipping.state || shipping.zipCode) && (
+                                <p>
+                                  {[shipping.city, shipping.state, shipping.zipCode]
+                                    .filter(Boolean)
+                                    .join(", ")}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {delivery.method && (
+                        <div className="pt-3 sm:pt-4 border-t border-gray-200">
+                          <p className="text-xs sm:text-sm text-gray-500 mb-1">
+                            Delivery Method
+                          </p>
+                          <p className="font-medium text-gray-900 capitalize">
+                            {delivery.method.replace("_", " ")}
+                          </p>
+                          {delivery.estimatedDays && (
+                            <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                              Estimated: {delivery.estimatedDays} days
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
             </div>
           </div>
         </div>
