@@ -30,6 +30,7 @@ const PersonalDetails = lazy(() => import("./pages/PersonalDetails"));
 const TermsConditions = lazy(() => import("./pages/TermsConditions"));
 const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
 const RefundPolicy = lazy(() => import("./pages/RefundPolicy"));
+const TrophyShopJabalpur = lazy(() => import("./pages/TrophyShopJabalpur"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const UnauthorizedPage = lazy(() => import("./pages/UnauthorizedPage"));
 const AdminDashboard = lazy(() => import("./components/admin/AdminDashboard").then(module => ({ default: module.AdminDashboard })));
@@ -137,6 +138,16 @@ const App = () => (
           element={
             <GuestRoute>
               <Cart />
+            </GuestRoute>
+          }
+        />
+        
+        {/* 🎯 SEO: Trophy Shop Jabalpur Landing Page */}
+        <Route
+          path="/trophy-shop-jabalpur"
+          element={
+            <GuestRoute>
+              <TrophyShopJabalpur />
             </GuestRoute>
           }
         />
