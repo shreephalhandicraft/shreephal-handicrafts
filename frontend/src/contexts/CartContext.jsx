@@ -22,48 +22,93 @@ export const CartProvider = ({ children }) => {
   // ✅ FIX BUG #4: Prevent race condition with sync lock
   const syncLockRef = useRef(false);
   
-  // ✅ FIX MEDIUM BUG #2: Track if legacy cleanup has run
-  const legacyCleanupDoneRef = useRef(false);
+  // ✅ FIX CRITICAL BUG #1: Track cleanup per session (not just once)
+  const sessionCleanupRef = useRef(new Set());
 
-  // ✅ FIX MEDIUM BUG #2: Clean legacy cart items without valid price
-  const cleanLegacyCart = () => {
-    if (legacyCleanupDoneRef.current) return; // Only run once
+  // ✅ FIX CRITICAL BUG #1: Enhanced legacy cart validation
+  const validateAndCleanCart = (cartArray, source = 'unknown') => {
+    if (!Array.isArray(cartArray) || cartArray.length === 0) {
+      return { validItems: [], removedCount: 0, removedItems: [] };
+    }
     
-    try {
-      const storedCart = JSON.parse(localStorage.getItem("cart_items") || "[]");
+    const validItems = [];
+    const removedItems = [];
+    
+    cartArray.forEach(item => {
+      // ✅ CRITICAL: All cart items MUST have variantId
+      const hasVariantId = !!item.variantId;
+      const hasValidPrice = (item.price && item.price > 0) || 
+                           (item.priceWithGst && item.priceWithGst > 0);
       
-      if (storedCart.length === 0) {
-        legacyCleanupDoneRef.current = true;
-        return;
-      }
-      
-      // Filter out items without valid price
-      const validCart = storedCart.filter(item => {
-        const hasValidPrice = (item.price && item.price > 0) || 
-                             (item.priceWithGst && item.priceWithGst > 0);
-        const hasVariantId = !!item.variantId;
-        
-        return hasValidPrice && hasVariantId;
-      });
-      
-      const removedCount = storedCart.length - validCart.length;
-      
-      if (removedCount > 0) {
-        localStorage.setItem("cart_items", JSON.stringify(validCart));
-        
-        console.log(`✅ Cleaned ${removedCount} invalid cart items from localStorage`);
-        
-        toast({
-          title: "Cart Updated",
-          description: `Removed ${removedCount} invalid item(s) from your cart.`,
-          variant: "default",
+      if (hasVariantId && hasValidPrice) {
+        validItems.push(item);
+      } else {
+        console.warn(`❌ Removing invalid cart item from ${source}:`, {
+          name: item.name || 'Unknown',
+          hasVariantId,
+          hasValidPrice,
+          item: item
+        });
+        removedItems.push({
+          name: item.name || 'Unknown Product',
+          reason: !hasVariantId ? 'Missing size selection' : 'Invalid price'
         });
       }
+    });
+    
+    return {
+      validItems,
+      removedCount: removedItems.length,
+      removedItems
+    };
+  };
+
+  // ✅ FIX CRITICAL BUG #1: Clean legacy cart with session tracking
+  const cleanLegacyCart = () => {
+    const storageKey = user ? `user_${user.id}_cart_details` : 'cart_items';
+    
+    // Skip if already cleaned this session
+    if (sessionCleanupRef.current.has(storageKey)) {
+      return { cleaned: false, removedCount: 0 };
+    }
+    
+    try {
+      const storedCart = JSON.parse(localStorage.getItem(storageKey) || "[]");
       
-      legacyCleanupDoneRef.current = true;
+      if (storedCart.length === 0) {
+        sessionCleanupRef.current.add(storageKey);
+        return { cleaned: false, removedCount: 0 };
+      }
+      
+      const { validItems, removedCount, removedItems } = validateAndCleanCart(
+        storedCart, 
+        `localStorage:${storageKey}`
+      );
+      
+      if (removedCount > 0) {
+        localStorage.setItem(storageKey, JSON.stringify(validItems));
+        
+        console.log(`✅ Cleaned ${removedCount} invalid items from ${storageKey}`);
+        
+        // Show user-friendly notification
+        const itemList = removedItems.map(i => i.name).join(', ');
+        toast({
+          title: "Cart Updated",
+          description: `Removed ${removedCount} invalid item(s): ${itemList}. Please re-add with proper size selection.`,
+          variant: "default",
+          duration: 8000,
+        });
+        
+        sessionCleanupRef.current.add(storageKey);
+        return { cleaned: true, removedCount };
+      }
+      
+      sessionCleanupRef.current.add(storageKey);
+      return { cleaned: false, removedCount: 0 };
+      
     } catch (error) {
-      console.error("❌ Error cleaning legacy cart:", error);
-      // Don't throw - this is a cleanup operation that shouldn't break the app
+      console.error("❌ Error cleaning cart:", error);
+      return { cleaned: false, removedCount: 0, error };
     }
   };
 
@@ -122,12 +167,15 @@ export const CartProvider = ({ children }) => {
         price: itemData.price
       });
 
-      // ✅ CRITICAL: Validate variantId is present
+      // ✅ CRITICAL BUG #1: STRICT variantId validation
       if (!itemData.variantId) {
+        console.error('❌ Attempted to add item without variantId:', itemData);
+        
         toast({
-          title: "Missing Size",
-          description: "Please select a size before adding to cart.",
+          title: "Missing Size Selection",
+          description: "Please select a size before adding to cart. This is required for checkout.",
           variant: "destructive",
+          duration: 6000,
         });
         return false;
       }
@@ -168,8 +216,8 @@ export const CartProvider = ({ children }) => {
           .select("id, quantity")
           .eq("user_id", user.id)
           .eq("product_id", itemData.productId || itemData.id)
-          .eq("variant_id", itemData.variantId)  // ✅ NOW INCLUDES variant_id
-          .maybeSingle();  // Use maybeSingle instead of single to avoid error
+          .eq("variant_id", itemData.variantId)
+          .maybeSingle();
 
         if (fetchError && fetchError.code !== "PGRST116") {
           console.error("Cart fetch error:", fetchError);
@@ -194,7 +242,7 @@ export const CartProvider = ({ children }) => {
             .insert({
               user_id: user.id,
               product_id: itemData.productId || itemData.id,
-              variant_id: itemData.variantId,  // ✅ NOW SAVES variant_id
+              variant_id: itemData.variantId,
               quantity: itemData.quantity || 1,
             });
 
@@ -281,7 +329,7 @@ export const CartProvider = ({ children }) => {
     return `${baseKey}-${customizationKey}`;
   };
 
-  // ✅ FIXED: Fetch cart items with variant_id
+  // ✅ FIX CRITICAL BUG #1: Enhanced fetchCartItems with validation
   const fetchCartItems = async () => {
     setLoading(true);
 
@@ -331,8 +379,34 @@ export const CartProvider = ({ children }) => {
           localStorage.getItem(localCartKey) || "[]"
         );
 
+        // ✅ CRITICAL BUG #1: Filter out items without variant_id from database
+        const invalidDbItems = cartData?.filter(item => !item.variant_id) || [];
+        
+        if (invalidDbItems.length > 0) {
+          console.error('❌ Found items in database without variant_id:', invalidDbItems);
+          
+          // Delete invalid items from database
+          for (const invalidItem of invalidDbItems) {
+            await supabase
+              .from('cart_items')
+              .delete()
+              .eq('id', invalidItem.id);
+            
+            console.log(`  ✅ Deleted invalid cart item: ${invalidItem.id}`);
+          }
+          
+          toast({
+            title: "Cart Cleaned",
+            description: `Removed ${invalidDbItems.length} invalid item(s) from your cart. Please re-add with proper size selection.`,
+            variant: "default",
+            duration: 8000,
+          });
+        }
+
+        const validCartData = cartData?.filter(item => item.variant_id) || [];
+
         const transformedItems =
-          cartData?.map((item) => {
+          validCartData?.map((item) => {
             // Find matching detailed item
             const detailedItem = localCartDetails.find(
               (local) => 
@@ -355,7 +429,7 @@ export const CartProvider = ({ children }) => {
             return {
               id: item.product_id,
               productId: item.product_id,
-              variantId: item.variant_id,  // ✅ NOW INCLUDES variantId
+              variantId: item.variant_id,
               name: item.products?.title,
               price: basePrice,
               gstRate,
@@ -377,11 +451,21 @@ export const CartProvider = ({ children }) => {
 
         setCartItems(transformedItems);
       } else {
-        // Guest user - get from localStorage
+        // ✅ CRITICAL BUG #1: Validate guest cart from localStorage
         const storedCart = JSON.parse(
           localStorage.getItem("cart_items") || "[]"
         );
-        setCartItems(storedCart);
+        
+        const { validItems, removedCount } = validateAndCleanCart(
+          storedCart,
+          'guest_cart'
+        );
+        
+        if (removedCount > 0) {
+          localStorage.setItem("cart_items", JSON.stringify(validItems));
+        }
+        
+        setCartItems(validItems);
       }
     } catch (error) {
       console.error("Error fetching cart items:", error);
@@ -406,7 +490,7 @@ export const CartProvider = ({ children }) => {
     if (item.variantId) {
       const stockCheck = await checkStockAvailability(
         item.variantId,
-        newQuantity - item.quantity // Only check the difference
+        newQuantity - item.quantity
       );
 
       if (!stockCheck.available) {
@@ -592,7 +676,6 @@ export const CartProvider = ({ children }) => {
     }, 0);
   };
 
-  // ✅ FIX: Fallback to item.price if priceWithGst is missing (guest cart)
   const getTotalPrice = () => {
     return cartItems.reduce((total, item) => {
       const itemPrice = item.priceWithGst || item.price || 0;
@@ -609,7 +692,7 @@ export const CartProvider = ({ children }) => {
     return cartItems.map((item) => ({
       id: item.id,
       productId: item.productId || item.id,
-      variantId: item.variantId,  // ✅ NOW INCLUDES variantId
+      variantId: item.variantId,
       name: item.name,
       price: item.price,
       quantity: item.quantity,
@@ -622,19 +705,19 @@ export const CartProvider = ({ children }) => {
   // ✅ FIX PERF #2: Initialize cart on mount (only when user ID changes)
   useEffect(() => {
     fetchCartItems();
-  }, [user?.id]); // ✅ Changed from [user] to [user?.id] to prevent unnecessary re-fetches
+  }, [user?.id]);
 
-  // ✅ FIX MEDIUM BUG #2: Run legacy cleanup on mount
+  // ✅ FIX CRITICAL BUG #1: Run validation on every cart load
   useEffect(() => {
     cleanLegacyCart();
-  }, []); // Run once on mount
+  }, [cartItems.length, user?.id]);
 
   // ✅ FIX BUG #4: Sync cart with lock to prevent race conditions
   useEffect(() => {
     if (user && !syncLockRef.current) {
       syncCartToDatabase();
     }
-  }, [user?.id]); // ✅ Changed from [user] to [user?.id]
+  }, [user?.id]);
 
   const syncCartToDatabase = async () => {
     // ✅ FIX BUG #4: Check lock before proceeding
@@ -657,6 +740,13 @@ export const CartProvider = ({ children }) => {
 
       console.log(`🔄 Syncing ${storedCart.length} guest cart items to user account...`);
 
+      // ✅ CRITICAL BUG #1: Validate before syncing
+      const { validItems, removedCount } = validateAndCleanCart(storedCart, 'guest_to_user_sync');
+      
+      if (removedCount > 0) {
+        console.warn(`⚠️ Skipped ${removedCount} invalid items during sync`);
+      }
+
       // Move guest cart to user-specific localStorage
       const localCartKey = `user_${user.id}_cart_details`;
       const existingUserCart = JSON.parse(
@@ -665,7 +755,7 @@ export const CartProvider = ({ children }) => {
 
       const mergedCart = [...existingUserCart];
 
-      for (const guestItem of storedCart) {
+      for (const guestItem of validItems) {
         const existingIndex = mergedCart.findIndex(
           (item) => generateItemKey(item) === generateItemKey(guestItem)
         );
@@ -682,17 +772,17 @@ export const CartProvider = ({ children }) => {
       // ✅ FIX BUG #4: Clear guest cart BEFORE async operations
       localStorage.removeItem("cart_items");
 
-      // ✅ FIX BUG #4: Sync to database sequentially (not in parallel)
+      // ✅ FIX BUG #4: Sync to database sequentially
       let syncedCount = 0;
       for (const item of mergedCart) {
         const success = await addItem(item);
         if (success) syncedCount++;
       }
 
-      if (storedCart.length > 0) {
+      if (validItems.length > 0) {
         toast({
           title: "Cart Synced",
-          description: `${syncedCount} item(s) synced to your account.`,
+          description: `${syncedCount} item(s) synced to your account${removedCount > 0 ? `. ${removedCount} invalid item(s) were removed.` : '.'}`,
         });
       }
       
