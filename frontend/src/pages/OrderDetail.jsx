@@ -247,7 +247,7 @@ export default function OrderDetail() {
     fetchOrder();
   }, [orderId, user]);
 
-  // ✅ FIX: Corrected column mapping for order_details_full view
+  // ✅ FIX: Corrected WHERE clause column names (added underscores)
   const fetchOrder = async () => {
     try {
       setLoading(true);
@@ -260,8 +260,8 @@ export default function OrderDetail() {
       const { data, error } = await supabase
         .from("order_details_full")
         .select("*")
-        .eq("orderid", orderId)  // ✅ Changed from order_id
-        .eq("userid", user.id);  // ✅ Changed from user_id
+        .eq("order_id", orderId)  // ✅ FIXED: Added underscore (was: orderid)
+        .eq("user_id", user.id);  // ✅ FIXED: Added underscore (was: userid)
 
       console.log("Order details from view:", { data, error });
 
@@ -270,50 +270,50 @@ export default function OrderDetail() {
       if (data && data.length > 0) {
         // ✅ FIXED: Map to correct column names from order_details_full view
         const orderData = {
-          id: data[0].orderid,  // ✅ Fixed
-          user_id: data[0].userid,  // ✅ Fixed
-          status: data[0].orderstatus,  // ✅ Fixed (was: data[0].status)
-          payment_status: data[0].paymentstatus,  // ✅ Fixed
-          payment_method: data[0].paymentmethod,  // ✅ Fixed
+          id: data[0].order_id,  // ✅ Fixed
+          user_id: data[0].user_id,  // ✅ Fixed
+          status: data[0].order_status,  // ✅ Fixed
+          payment_status: data[0].payment_status,  // ✅ Fixed
+          payment_method: data[0].payment_method,  // ✅ Fixed
           // ✅ Use 'amount' field (numeric) which exists in view
-          amount: data[0].amount ? Number(data[0].amount) : (data[0].ordertotal || 0),
+          amount: data[0].amount ? Number(data[0].amount) : (data[0].order_total || 0),
           // ✅ Fields not in view - set to null/default
           shipping_cost: null,  // Not in order_details_full view
-          created_at: data[0].orderdate,  // ✅ Fixed (was: created_at)
-          updated_at: data[0].updatedat,  // ✅ Fixed
-          shipping_info: data[0].shippinginfo,  // ✅ Fixed
-          delivery_info: data[0].deliveryinfo,  // ✅ Fixed
-          order_notes: data[0].ordernotes,  // ✅ Fixed
+          created_at: data[0].order_date,  // ✅ Fixed
+          updated_at: data[0].updated_at,  // ✅ Fixed
+          shipping_info: data[0].shipping_info,  // ✅ Fixed
+          delivery_info: data[0].delivery_info,  // ✅ Fixed
+          order_notes: data[0].order_notes,  // ✅ Fixed
           customization_details: null,  // Not directly in view
-          requires_customization: data[0].customizationdata ? true : false,  // ✅ Inferred from items
+          requires_customization: data[0].customization_data ? true : false,  // ✅ Inferred from items
           estimated_delivery_days: null,  // Not in view
           upi_reference: null,  // Not in view
-          transaction_id: data[0].transactionid,  // ✅ Fixed
+          transaction_id: data[0].transaction_id,  // ✅ Fixed
           production_status: null,  // Not in view
         };
 
         // ✅ FIXED: Extract items from view rows with correct column names
         const orderItems = data.map((row) => ({
-          id: row.productid,  // ✅ Fixed
-          product_id: row.productid,  // ✅ Fixed
+          id: row.product_id,  // ✅ Fixed
+          product_id: row.product_id,  // ✅ Fixed
           quantity: row.quantity,  // ✅ Already correct!
-          price: row.itemtotal || 0,  // ✅ Fixed (was: row.unit_price * row.quantity)
-          unit_price: row.unitprice || 0,  // ✅ Fixed (was: row.unit_price)
+          price: row.item_total || 0,  // ✅ Fixed
+          unit_price: row.unit_price || 0,  // ✅ Fixed
           // Product details from view
-          name: row.productname,  // ✅ Fixed
-          title: row.productname,  // ✅ Fixed
-          image: row.productimage,  // ✅ Fixed
-          catalog_number: row.catalognumber,  // ✅ Fixed
+          name: row.product_name,  // ✅ Fixed
+          title: row.product_name,  // ✅ Fixed
+          image: row.product_image,  // ✅ Fixed
+          catalog_number: row.catalog_number,  // ✅ Fixed
           material_type: null,  // Not in view
           weight_grams: null,  // Not in view
           // Store item metadata
-          item_id: row.itemid,  // ✅ Fixed
+          item_id: row.item_id,  // ✅ Fixed
           item_created_at: null,  // Not in view
-          customization: row.customizationdata,  // ✅ Fixed
+          customization: row.customization_data,  // ✅ Fixed
           variant: {
-            sizeDisplay: row.sizedisplay,  // ✅ Fixed
-            sizeNumeric: row.sizenumeric,  // ✅ Fixed
-            sizeUnit: row.sizeunit,  // ✅ Fixed
+            sizeDisplay: row.size_display,  // ✅ Fixed
+            sizeNumeric: row.size_numeric,  // ✅ Fixed
+            sizeUnit: row.size_unit,  // ✅ Fixed
           },
         }));
 
