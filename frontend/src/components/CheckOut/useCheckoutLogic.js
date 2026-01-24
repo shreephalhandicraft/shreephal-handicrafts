@@ -10,6 +10,185 @@ const PHONEPE_PAY_URL = import.meta.env.VITE_BACKEND_URL
   ? `${import.meta.env.VITE_BACKEND_URL}/pay`
   : "http://localhost:3000/pay";
 
+// ✨ UX #2 FIX: Payment error message mapping
+const PAYMENT_ERROR_MESSAGES = {
+  // Insufficient funds
+  INSUFFICIENT_FUNDS: {
+    title: "Insufficient Balance",
+    description: "Your account doesn't have enough balance to complete this payment. Please add funds to your account or try another payment method.",
+    action: "Try another payment method or add funds to your account."
+  },
+  INSUFFICIENT_BALANCE: {
+    title: "Insufficient Balance",
+    description: "Your account doesn't have enough balance to complete this payment. Please add funds to your account or try another payment method.",
+    action: "Try another payment method or add funds to your account."
+  },
+  
+  // Payment declined
+  PAYMENT_DECLINED: {
+    title: "Payment Declined",
+    description: "Your payment was declined by your bank. This could be due to daily transaction limits, security restrictions, or insufficient funds.",
+    action: "Contact your bank for details or try another payment method."
+  },
+  TRANSACTION_DECLINED: {
+    title: "Payment Declined",
+    description: "Your payment was declined by your bank. This could be due to daily transaction limits, security restrictions, or insufficient funds.",
+    action: "Contact your bank for details or try another payment method."
+  },
+  DECLINED: {
+    title: "Payment Declined",
+    description: "Your payment was declined by your bank. This could be due to daily transaction limits, security restrictions, or insufficient funds.",
+    action: "Contact your bank for details or try another payment method."
+  },
+  
+  // User cancelled
+  USER_CANCELLED: {
+    title: "Payment Cancelled",
+    description: "You cancelled the payment. Your cart has been saved and you can retry anytime.",
+    action: "You can proceed to checkout again when ready."
+  },
+  CANCELLED: {
+    title: "Payment Cancelled",
+    description: "You cancelled the payment. Your cart has been saved and you can retry anytime.",
+    action: "You can proceed to checkout again when ready."
+  },
+  USER_CANCELED: { // Alternative spelling
+    title: "Payment Cancelled",
+    description: "You cancelled the payment. Your cart has been saved and you can retry anytime.",
+    action: "You can proceed to checkout again when ready."
+  },
+  
+  // Timeout errors
+  TRANSACTION_TIMEOUT: {
+    title: "Payment Timed Out",
+    description: "Your payment request timed out. This could be due to network issues or bank server delays. Your money has NOT been deducted.",
+    action: "Please check your bank statement and retry. If money was deducted, contact support."
+  },
+  TIMEOUT: {
+    title: "Payment Timed Out",
+    description: "Your payment request timed out. This could be due to network issues or bank server delays. Your money has NOT been deducted.",
+    action: "Please check your bank statement and retry. If money was deducted, contact support."
+  },
+  GATEWAY_TIMEOUT: {
+    title: "Payment Gateway Timeout",
+    description: "Payment gateway did not respond in time. Your money has NOT been deducted.",
+    action: "Please retry your payment. If issue persists, try again in a few minutes."
+  },
+  
+  // Invalid card/details
+  INVALID_CARD: {
+    title: "Invalid Card Details",
+    description: "The card details you entered are invalid. Please check your card number, expiry date, and CVV.",
+    action: "Verify your card details and try again."
+  },
+  INVALID_CARD_NUMBER: {
+    title: "Invalid Card Number",
+    description: "The card number you entered is invalid. Please check and enter the correct card number.",
+    action: "Verify your card number and try again."
+  },
+  INVALID_CVV: {
+    title: "Invalid CVV",
+    description: "The CVV/CVC number you entered is invalid. Please check the 3-4 digit code on the back of your card.",
+    action: "Enter the correct CVV and try again."
+  },
+  CARD_EXPIRED: {
+    title: "Card Expired",
+    description: "Your card has expired. Please use a different card to complete your payment.",
+    action: "Use a different card with a valid expiry date."
+  },
+  
+  // Bank errors
+  BANK_ERROR: {
+    title: "Bank System Error",
+    description: "Your bank's system encountered an error while processing your payment. This is not an issue with our system.",
+    action: "Please wait a few minutes and retry, or contact your bank."
+  },
+  ISSUER_DOWN: {
+    title: "Bank Server Unavailable",
+    description: "Your bank's server is currently unavailable. This is a temporary issue.",
+    action: "Please try again in a few minutes or use a different bank/card."
+  },
+  BANK_UNAVAILABLE: {
+    title: "Bank Unavailable",
+    description: "Your bank's payment service is currently unavailable. This is a temporary issue.",
+    action: "Please try again later or use a different payment method."
+  },
+  
+  // Generic payment error
+  PAYMENT_ERROR: {
+    title: "Payment Error",
+    description: "An error occurred while processing your payment. Your money has NOT been deducted.",
+    action: "Please try again. If the issue persists, try a different payment method."
+  },
+  PAYMENT_FAILED: {
+    title: "Payment Failed",
+    description: "Your payment could not be completed. Your money has NOT been deducted.",
+    action: "Please try again or use a different payment method."
+  },
+  
+  // Network errors
+  NETWORK_ERROR: {
+    title: "Network Error",
+    description: "A network error occurred during payment. Your money has NOT been deducted.",
+    action: "Please check your internet connection and try again."
+  },
+  CONNECTION_ERROR: {
+    title: "Connection Error",
+    description: "Unable to connect to payment gateway. Please check your internet connection.",
+    action: "Retry with a stable internet connection."
+  },
+  
+  // UPI specific errors
+  UPI_PIN_INCORRECT: {
+    title: "Incorrect UPI PIN",
+    description: "The UPI PIN you entered is incorrect. Please try again with the correct PIN.",
+    action: "Enter the correct UPI PIN. Be careful, multiple wrong attempts may lock your account."
+  },
+  UPI_COLLECT_REQUEST_REJECTED: {
+    title: "UPI Request Rejected",
+    description: "Your UPI collect request was rejected or expired.",
+    action: "Please retry the payment and approve the request within the time limit."
+  },
+  VPA_NOT_FOUND: {
+    title: "Invalid UPI ID",
+    description: "The UPI ID you entered was not found. Please check and enter a valid UPI ID.",
+    action: "Verify your UPI ID (e.g., name@bank) and try again."
+  }
+};
+
+// ✨ UX #2 FIX: Parse payment error and return user-friendly message
+const parsePaymentError = (errorMessage) => {
+  if (!errorMessage) {
+    return {
+      title: "Payment Failed",
+      description: "Your payment was not processed. Please try again.",
+      action: "If the issue persists, try a different payment method or contact support."
+    };
+  }
+  
+  // Convert to uppercase for case-insensitive matching
+  const upperMessage = errorMessage.toUpperCase();
+  
+  // Try exact match first
+  if (PAYMENT_ERROR_MESSAGES[upperMessage]) {
+    return PAYMENT_ERROR_MESSAGES[upperMessage];
+  }
+  
+  // Try partial match (if error message contains key)
+  for (const [key, value] of Object.entries(PAYMENT_ERROR_MESSAGES)) {
+    if (upperMessage.includes(key)) {
+      return value;
+    }
+  }
+  
+  // Fallback: Return generic message but include original error for context
+  return {
+    title: "Payment Failed",
+    description: `Your payment could not be completed: ${errorMessage}. Your money has NOT been deducted.`,
+    action: "Please try again or use a different payment method. If you need help, contact support with this error message."
+  };
+};
+
 export const useCheckoutLogic = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -235,34 +414,29 @@ export const useCheckoutLogic = () => {
     return customizationDetails;
   }, []);
 
-  // ✨ RISKY #2 FIX: Helper to delay execution (for retry backoff)
   const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-  // ✨ RISKY #2 FIX: Check if error is retryable
   const isRetryableError = (error, statusCode) => {
-    // Don't retry on client errors (bad request, file too large, etc)
     if (statusCode && statusCode >= 400 && statusCode < 500) {
       return false;
     }
     
-    // Retry on network errors, timeouts, server errors
     const retryableMessages = [
       'network',
       'timeout',
       'ECONNREFUSED',
       'ETIMEDOUT',
       'ENOTFOUND',
-      '5', // 5xx server errors
+      '5',
     ];
     
     const errorMessage = error.message?.toLowerCase() || '';
     return retryableMessages.some(msg => errorMessage.includes(msg));
   };
 
-  // ✨ RISKY #2 FIX: Upload with retry logic
   const uploadCustomizationImage = useCallback(async (file, itemName) => {
     const maxRetries = 3;
-    const baseDelay = 1000; // 1 second
+    const baseDelay = 1000;
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
@@ -287,15 +461,13 @@ export const useCheckoutLogic = () => {
           const errorData = await cloudinaryResponse.json();
           const errorMessage = errorData.error?.message || 'Cloudinary upload failed';
           
-          // Check if error is retryable
           if (attempt < maxRetries && isRetryableError(new Error(errorMessage), statusCode)) {
-            const delayMs = baseDelay * Math.pow(2, attempt - 1); // Exponential backoff: 1s, 2s, 4s
+            const delayMs = baseDelay * Math.pow(2, attempt - 1);
             console.warn(`  ⚠️ Upload failed (${errorMessage}), retrying in ${delayMs}ms...`);
             await delay(delayMs);
-            continue; // Retry
+            continue;
           }
           
-          // Permanent error or max retries reached
           throw new Error(errorMessage);
         }
         
@@ -313,21 +485,18 @@ export const useCheckoutLogic = () => {
         };
         
       } catch (error) {
-        // Check if we should retry
         if (attempt < maxRetries && isRetryableError(error, null)) {
           const delayMs = baseDelay * Math.pow(2, attempt - 1);
           console.warn(`  ⚠️ Upload error (${error.message}), retrying in ${delayMs}ms...`);
           await delay(delayMs);
-          continue; // Retry
+          continue;
         }
         
-        // Final attempt failed or permanent error
         console.error(`  ❌ Cloudinary upload failed after ${attempt} attempt(s) for ${itemName}:`, error);
         throw new Error(`Failed to upload customization image for ${itemName}: ${error.message}`);
       }
     }
     
-    // Should never reach here, but just in case
     throw new Error(`Failed to upload customization image for ${itemName} after ${maxRetries} attempts`);
   }, []);
 
@@ -482,7 +651,6 @@ export const useCheckoutLogic = () => {
           
           if (customizationData?.uploadedImage && customizationData.uploadedImage instanceof File) {
             try {
-              // ✨ RISKY #2 FIX: Now has retry logic!
               const uploadResult = await uploadCustomizationImage(
                 customizationData.uploadedImage, 
                 item.name
@@ -904,11 +1072,22 @@ export const useCheckoutLogic = () => {
     [clearCart, toast, navigate, clearUrlParams]
   );
 
+  // ✨ UX #2 FIX: Enhanced payment failure handler with user-friendly messages
   const handlePaymentFailure = useCallback(
     async (orderId, message = null) => {
       try {
         setPaymentProcessed(true);
         clearUrlParams();
+
+        // ✨ Parse error message for user-friendly display
+        const parsedError = parsePaymentError(message);
+        
+        // Log technical details for debugging
+        console.error('🚨 Payment failed:', {
+          orderId,
+          rawMessage: message,
+          parsedError
+        });
 
         await supabase
           .from("orders")
@@ -919,12 +1098,21 @@ export const useCheckoutLogic = () => {
           })
           .eq("id", orderId);
 
+        // ✨ Show user-friendly message with specific guidance
         toast({
-          title: "Payment Failed",
-          description:
-            message || "Your payment was not processed. Please try again.",
+          title: parsedError.title,
+          description: (
+            <div className="space-y-2">
+              <p>{parsedError.description}</p>
+              {parsedError.action && (
+                <p className="text-sm font-medium mt-2">
+                  👉 {parsedError.action}
+                </p>
+              )}
+            </div>
+          ),
           variant: "destructive",
-          duration: 5000,
+          duration: 8000, // Longer duration for important error details
         });
 
         setTimeout(() => {
