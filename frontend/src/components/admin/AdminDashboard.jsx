@@ -18,6 +18,13 @@ import { useToast } from "@/hooks/use-toast";
 
 export function AdminDashboard() {
   const [darkMode, setDarkMode] = useState(false);
+  
+  // ✅ FIX BUG #3: Track realtime connection status
+  const [realtimeStatus, setRealtimeStatus] = useState({
+    orders: 'connecting',
+    messages: 'connecting',
+  });
+  
   const [dashboardData, setDashboardData] = useState({
     totalOrders: 0,
     recentOrders: 0,
@@ -49,8 +56,6 @@ export function AdminDashboard() {
     try {
       setDashboardData((prev) => ({ ...prev, loading: true }));
 
-      // ✅ FIX BUG #1: Use order_details_full view for accurate order totals
-      // This gives us order_total (computed from order_items)
       const { data: orderRows, error: ordersError } = await supabase
         .from("order_details_full")
         .select("*")
@@ -58,7 +63,6 @@ export function AdminDashboard() {
 
       if (ordersError) throw ordersError;
 
-      // ✅ Group by order_id since view returns one row per order item
       const ordersMap = {};
       (orderRows || []).forEach((row) => {
         if (!ordersMap[row.order_id]) {
@@ -67,7 +71,7 @@ export function AdminDashboard() {
             order_status: row.order_status,
             payment_status: row.payment_status,
             payment_method: row.payment_method,
-            order_total: row.order_total, // ✅ Computed from order_items
+            order_total: row.order_total,
             order_date: row.order_date,
           };
         }
@@ -75,7 +79,6 @@ export function AdminDashboard() {
 
       const orders = Object.values(ordersMap);
 
-      // Fetch Messages Data
       const { data: messages, error: messagesError } = await supabase
         .from("messages")
         .select("*")
@@ -83,7 +86,6 @@ export function AdminDashboard() {
 
       if (messagesError) throw messagesError;
 
-      // Calculate dashboard metrics
       const now = new Date();
       const last30Days = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
@@ -99,7 +101,6 @@ export function AdminDashboard() {
         (message) => !message.is_read
       ).length;
 
-      // ✅ FIX BUG #1: Use order_total (computed) instead of amount (may be NULL)
       const totalRevenue = orders
         .filter((order) => order.payment_status === "completed")
         .reduce((sum, order) => sum + (parseFloat(order.order_total) || 0), 0);
@@ -134,12 +135,13 @@ export function AdminDashboard() {
     }
   };
 
-  // Set up real-time subscriptions
+  // ✅ FIX BUG #3: Enhanced realtime subscriptions with error handling
   useEffect(() => {
-    // Initial data fetch
     fetchDashboardData();
 
-    // ✅ Subscribe to orders table changes (view updates automatically)
+    console.log("🔄 Setting up realtime subscriptions...");
+
+    // Subscribe to orders table changes with proper error handling
     const ordersSubscription = supabase
       .channel("orders-channel")
       .on(
@@ -150,13 +152,45 @@ export function AdminDashboard() {
           table: "orders",
         },
         (payload) => {
-          console.log("Orders change received:", payload);
-          fetchDashboardData(); // Refetch data when orders change
+          console.log("✅ Orders change received:", payload.eventType, payload.new?.id);
+          fetchDashboardData();
         }
       )
-      .subscribe();
+      .subscribe((status, err) => {
+        // ✅ Handle subscription status changes
+        console.log("📡 Orders subscription status:", status);
+        
+        if (status === 'SUBSCRIBED') {
+          setRealtimeStatus(prev => ({ ...prev, orders: 'connected' }));
+          toast({
+            title: "Live Updates Active",
+            description: "Orders will update in real-time",
+            duration: 3000,
+          });
+        } else if (status === 'CHANNEL_ERROR') {
+          setRealtimeStatus(prev => ({ ...prev, orders: 'error' }));
+          console.error("❌ Orders subscription error:", err);
+          toast({
+            title: "Live Updates Unavailable",
+            description: "Orders won't update automatically. Please refresh manually.",
+            variant: "destructive",
+            duration: 5000,
+          });
+        } else if (status === 'TIMED_OUT') {
+          setRealtimeStatus(prev => ({ ...prev, orders: 'error' }));
+          console.warn("⏱️ Orders subscription timed out");
+          toast({
+            title: "Connection Timeout",
+            description: "Realtime updates may be delayed",
+            variant: "destructive",
+          });
+        } else if (status === 'CLOSED') {
+          setRealtimeStatus(prev => ({ ...prev, orders: 'disconnected' }));
+          console.log("🔌 Orders subscription closed");
+        }
+      });
 
-    // Subscribe to messages table changes
+    // Subscribe to messages table changes with proper error handling
     const messagesSubscription = supabase
       .channel("messages-channel")
       .on(
@@ -167,14 +201,28 @@ export function AdminDashboard() {
           table: "messages",
         },
         (payload) => {
-          console.log("Messages change received:", payload);
-          fetchDashboardData(); // Refetch data when messages change
+          console.log("✅ Messages change received:", payload.eventType, payload.new?.id);
+          fetchDashboardData();
         }
       )
-      .subscribe();
+      .subscribe((status, err) => {
+        console.log("📡 Messages subscription status:", status);
+        
+        if (status === 'SUBSCRIBED') {
+          setRealtimeStatus(prev => ({ ...prev, messages: 'connected' }));
+        } else if (status === 'CHANNEL_ERROR') {
+          setRealtimeStatus(prev => ({ ...prev, messages: 'error' }));
+          console.error("❌ Messages subscription error:", err);
+        } else if (status === 'TIMED_OUT') {
+          setRealtimeStatus(prev => ({ ...prev, messages: 'error' }));
+        } else if (status === 'CLOSED') {
+          setRealtimeStatus(prev => ({ ...prev, messages: 'disconnected' }));
+        }
+      });
 
     // Cleanup subscriptions on unmount
     return () => {
+      console.log("🧹 Cleaning up subscriptions...");
       supabase.removeChannel(ordersSubscription);
       supabase.removeChannel(messagesSubscription);
     };
@@ -184,6 +232,8 @@ export function AdminDashboard() {
   const dashboardContext = {
     ...dashboardData,
     refreshData: fetchDashboardData,
+    // ✅ Pass realtime status to components
+    realtimeStatus,
   };
 
   return (
@@ -197,6 +247,7 @@ export function AdminDashboard() {
               darkMode={darkMode}
               toggleDarkMode={toggleDarkMode}
               dashboardData={dashboardData}
+              realtimeStatus={realtimeStatus} // ✅ Pass status to header
             />
 
             <main className="flex-1 overflow-x-hidden overflow-y-auto bg-surface-light">
