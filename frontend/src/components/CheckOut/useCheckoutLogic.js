@@ -763,7 +763,22 @@ export const useCheckoutLogic = () => {
     try {
       const order = await createOrder("COD");
 
-      await clearCart();
+      // ✅ CRITICAL BUG #3 FIX: Check if cart clear succeeded
+      const cartCleared = await clearCart();
+      
+      if (!cartCleared) {
+        // Cart clear failed but order was created successfully
+        toast({
+          title: "Order Placed with Warning",
+          description: `Order #${order.id.slice(0, 8)} created but cart clear failed. Please refresh and manually clear your cart to avoid duplicate orders.`,
+          variant: "default",
+          duration: 10000,
+        });
+        
+        // Still navigate to order page (order succeeded)
+        navigate(`/order/${order.id}`);
+        return;
+      }
 
       toast({
         title: "Order Placed Successfully!",
@@ -818,7 +833,18 @@ export const useCheckoutLogic = () => {
           order.payment_status === "completed" ||
           order.payment_status === "success"
         ) {
-          await clearCart();
+          // ✅ CRITICAL BUG #3 FIX: Check if cart clear succeeded
+          const cartCleared = await clearCart();
+          
+          if (!cartCleared) {
+            // Cart clear failed - show warning but still proceed
+            toast({
+              title: "Payment Successful - Cart Warning",
+              description: "Payment completed but cart clear failed. Please manually clear your cart to avoid duplicate orders.",
+              variant: "default",
+              duration: 10000,
+            });
+          }
 
           if (transactionId) {
             await supabase
