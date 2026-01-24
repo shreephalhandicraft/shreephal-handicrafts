@@ -193,7 +193,7 @@ const ProductDetail = () => {
     if (!getCurrentStock() || getStockQuantity() < quantity) {
       toast({
         title: "Out of Stock",
-        description: `Only ${getStockQuantity()} items available in stock.",
+        description: `Only ${getStockQuantity()} items available in stock.`,
         variant: "destructive",
       });
       return false;
@@ -210,10 +210,12 @@ const ProductDetail = () => {
     }
     
     const productCustomization = customizations[product.id] || {};
+    const cartItemId = product.id + "-" + selectedVariant.id;
+    
     return {
-      id: `${product.id}-${selectedVariant.id}`,
+      id: cartItemId,
       productId: product.id,
-      variantId: selectedVariant.id,  // ✅ GUARANTEED to exist
+      variantId: selectedVariant.id,
       name: product.title,
       price: getCurrentPrice(),
       image: product.image_url,
