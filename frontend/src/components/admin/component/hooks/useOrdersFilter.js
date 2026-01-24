@@ -239,7 +239,7 @@ export function useOrders() {
       
       toast({
         title: "Order Deleted",
-        description: `Order ${deletedOrder?.id?.slice(0, 8)} has been removed.",
+        description: `Order ${deletedOrder?.id?.slice(0, 8)} has been removed.`,
       });
 
       return true;
