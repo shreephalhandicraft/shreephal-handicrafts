@@ -204,7 +204,8 @@ export default function MyOrders() {
     setProcessingPayments((prev) => new Set(prev).add(order.order_id));
 
     try {
-      const totalAmount = Math.round(Number(order.amount) * 100);
+      // ✅ FIX: Use total_price from view (not amount)
+      const totalAmount = Math.round(Number(order.total_price || order.amount) * 100);
 
       const form = document.createElement("form");
       form.method = "POST";
@@ -432,7 +433,8 @@ export default function MyOrders() {
                             ) : (
                               <>
                                 <CreditCard className="h-3 w-3 mr-1" />
-                                Pay ₹{(Number(order.amount) / 1.08).toFixed(2)?.toLocaleString()}
+                                {/* ✅ FIX: Use total_price from view */}
+                                Pay ₹{Number(order.total_price || order.amount).toFixed(2)?.toLocaleString()}
                               </>
                             )}
                           </Button>
@@ -511,8 +513,9 @@ export default function MyOrders() {
                         </div>
 
                         <div className="text-left sm:text-right space-y-2">
+                          {/* ✅ FIX: Use total_price from view */}
                           <p className="text-lg sm:text-xl font-bold text-gray-900">
-                            ₹{(Number(order.amount) / 1.08).toFixed(2)?.toLocaleString() || "0"}
+                            ₹{Number(order.total_price || order.amount).toFixed(2)?.toLocaleString() || "0"}
                           </p>
                           <div className="space-y-1">
                             {order.payment_method && (
@@ -584,7 +587,8 @@ export default function MyOrders() {
                             ) : (
                               <>
                                 <CreditCard className="h-4 w-4 mr-2" />
-                                Pay Now - ₹{(Number(order.amount) / 1.08).toFixed(2)?.toLocaleString()}
+                                {/* ✅ FIX: Use total_price from view */}
+                                Pay Now - ₹{Number(order.total_price || order.amount).toFixed(2)?.toLocaleString()}
                               </>
                             )}
                           </Button>
