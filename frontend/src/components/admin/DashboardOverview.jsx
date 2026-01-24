@@ -134,6 +134,15 @@ export function DashboardOverview({ dashboardData }) {
     refreshData,
   } = dashboardData || {};
 
+  // ✅ Centralized price formatting function
+  const formatPrice = (price) => {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      minimumFractionDigits: 0,
+    }).format(price || 0);
+  };
+
   // ✅ FIXED: Fetch low stock products with correct schema
   const fetchStockData = async () => {
     try {
@@ -186,27 +195,43 @@ export function DashboardOverview({ dashboardData }) {
     }
   };
 
-  // Fetch recent orders and messages for display
+  // ✅ FIX BUG #2: Fetch recent orders from order_details_full view
   const fetchRecentData = async () => {
     try {
       setLoading(true);
 
-      // Fetch recent orders with customer info
-      const { data: orders, error: ordersError } = await supabase
-        .from("orders")
-        .select(
-          `
-          *,
-          customers (
-            name,
-            email
-          )
-        `
-        )
-        .order("created_at", { ascending: false })
-        .limit(5);
+      // ✅ Use order_details_full view for consistent data
+      const { data: orderRows, error: ordersError } = await supabase
+        .from("order_details_full")
+        .select("*")
+        .order("order_date", { ascending: false })
+        .limit(25); // Fetch more rows to ensure we get 5 unique orders
 
       if (ordersError) throw ordersError;
+
+      // ✅ Group by order_id (view returns one row per item)
+      const ordersMap = {};
+      (orderRows || []).forEach((row) => {
+        if (!ordersMap[row.order_id]) {
+          ordersMap[row.order_id] = {
+            id: row.order_id,
+            order_id: row.order_id,
+            status: row.order_status,
+            order_status: row.order_status,
+            payment_status: row.payment_status,
+            order_total: row.order_total, // ✅ Computed from order_items
+            created_at: row.order_date,
+            order_date: row.order_date,
+            customers: {
+              name: row.customer_name,
+              email: row.customer_email,
+            },
+            customer_name: row.customer_name,
+          };
+        }
+      });
+
+      const orders = Object.values(ordersMap).slice(0, 5); // Take first 5 unique orders
 
       // Fetch recent messages
       const { data: messages, error: messagesError } = await supabase
@@ -232,14 +257,6 @@ export function DashboardOverview({ dashboardData }) {
     fetchStockData();
   }, []);
 
-  const formatPrice = (price) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      minimumFractionDigits: 0,
-    }).format(price || 0);
-  };
-
   // Calculate growth percentages (mock data - you can implement real calculations)
   const calculateGrowth = (current, type) => {
     // This is a simplified growth calculation
@@ -256,7 +273,8 @@ export function DashboardOverview({ dashboardData }) {
   const stats = [
     {
       title: "Total Revenue",
-      value: `₹${totalRevenue.toLocaleString()}`,
+      // ✅ FIX BUG #2: Use formatPrice() for consistent formatting
+      value: formatPrice(totalRevenue),
       change: calculateGrowth(totalRevenue, "revenue"),
       changeType: "positive",
       icon: IndianRupee,
@@ -313,6 +331,7 @@ export function DashboardOverview({ dashboardData }) {
         <Button
           onClick={() => {
             refreshData?.();
+            fetchRecentData();
             fetchStockData();
           }}
           variant="outline"
@@ -681,7 +700,7 @@ export function DashboardOverview({ dashboardData }) {
                           #{order.id.slice(0, 8)}
                         </p>
                         <p className="text-xs sm:text-sm text-muted-foreground truncate">
-                          {order.customers?.name || "Unknown Customer"}
+                          {order.customers?.name || order.customer_name || "Unknown Customer"}
                         </p>
                       </div>
                     </div>
@@ -693,8 +712,9 @@ export function DashboardOverview({ dashboardData }) {
                         {order.status}
                       </Badge>
                       <div className="text-right">
+                        {/* ✅ FIX BUG #2: Use formatPrice() and order_total */}
                         <p className="font-medium text-foreground text-sm sm:text-base">
-                          ₹{order.amount}
+                          {formatPrice(order.order_total)}
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {new Date(order.created_at).toLocaleDateString()}
