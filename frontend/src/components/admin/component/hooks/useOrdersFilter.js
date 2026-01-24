@@ -7,6 +7,10 @@ export function useOrders() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [totalOrders, setTotalOrders] = useState(0);
+  
+  // ✅ FIX BUG #4: Track which orders are being updated
+  const [updatingIds, setUpdatingIds] = useState(new Set());
+  
   const { toast } = useToast();
 
   const fetchOrders = async (reset = true) => {
@@ -14,19 +18,13 @@ export function useOrders() {
       setLoading(reset);
 
       // ✅ FIX BUG #1: Use order_details_full view instead of orders table
-      // This view provides:
-      // - order_total (computed from order_items, not nullable)
-      // - Complete product details for each item
-      // - Pre-joined customer information
-      // - Same data source as user-facing pages
-
       console.log("🔍 Admin: Fetching orders from order_details_full view...");
 
       const { data, error } = await supabase
         .from("order_details_full")
         .select("*")
         .order("order_date", { ascending: false })
-        .limit(ORDERS_PER_PAGE * 2 * 5); // Multiply by avg items per order
+        .limit(ORDERS_PER_PAGE * 2 * 5);
 
       if (error) throw error;
 
@@ -39,35 +37,23 @@ export function useOrders() {
         const orderId = row.order_id;
 
         if (!groupedOrders[orderId]) {
-          // First row for this order - initialize order object
           groupedOrders[orderId] = {
-            // Map view columns to expected component structure
-            id: row.order_id, // Components expect 'id'
+            id: row.order_id,
             order_id: row.order_id,
             user_id: row.user_id,
             customer_id: row.customer_id,
-            
-            // ✅ FIX: Use order_status (view) → status (expected by components)
             status: row.order_status,
             payment_status: row.payment_status,
-            
-            // ✅ FIX: Use order_total (computed) and keep as 'amount' for backward compatibility
-            amount: row.order_total, // Components use 'amount' for display
-            order_total: row.order_total, // Keep original for clarity
-            
-            // ✅ FIX: Map order_date → created_at for compatibility
+            amount: row.order_total,
+            order_total: row.order_total,
             created_at: row.order_date,
             order_date: row.order_date,
             updated_at: row.updated_at,
-            
-            // Order metadata
             shipping_info: row.shipping_info,
             delivery_info: row.delivery_info,
             payment_method: row.payment_method,
             transaction_id: row.transaction_id,
             order_notes: row.order_notes,
-            
-            // Customer info (already flattened in view)
             customers: {
               id: row.customer_id,
               user_id: row.user_id,
@@ -76,18 +62,13 @@ export function useOrders() {
               phone: row.customer_phone,
               address: row.customer_address,
             },
-            
-            // Initialize items array
             items: [],
-            
-            // Convenience fields
             customer_name: row.customer_name,
             customer_email: row.customer_email,
             customer_phone: row.customer_phone,
           };
         }
 
-        // Add this item to the order's items array
         groupedOrders[orderId].items.push({
           item_id: row.item_id,
           product_id: row.product_id,
@@ -98,8 +79,6 @@ export function useOrders() {
           item_total: row.item_total,
           customization_data: row.customization_data,
           production_notes: row.production_notes,
-          
-          // Product details (great for admin UX!)
           product_name: row.product_name,
           product_description: row.product_description,
           product_image: row.product_image,
@@ -108,8 +87,6 @@ export function useOrders() {
           size_numeric: row.size_numeric,
           size_unit: row.size_unit,
           price_tier: row.price_tier,
-          
-          // Category info
           category_id: row.category_id,
           category_name: row.category_name,
         });
@@ -118,7 +95,6 @@ export function useOrders() {
       const ordersArray = Object.values(groupedOrders);
       
       console.log(`✅ Grouped into ${ordersArray.length} orders`);
-      console.log("Sample order structure:", ordersArray[0]);
 
       setOrders(ordersArray);
       setTotalOrders(ordersArray.length);
@@ -135,61 +111,159 @@ export function useOrders() {
     }
   };
 
+  // ✅ FIX BUG #4: Optimistic update implementation
   const updateOrder = async (orderId, updates) => {
+    // Prevent duplicate updates
+    if (updatingIds.has(orderId)) {
+      console.warn("⚠️ Update already in progress for order:", orderId);
+      return false;
+    }
+
     try {
-      // ✅ Updates still go to orders table (source table)
-      // View is read-only, used only for querying
+      // Mark order as updating
+      setUpdatingIds(prev => new Set(prev).add(orderId));
+
+      // 1️⃣ OPTIMISTIC UPDATE: Update UI immediately
+      const previousOrders = [...orders];
+      
+      setOrders(prev => prev.map(order => 
+        order.id === orderId 
+          ? { ...order, ...updates, updated_at: new Date().toISOString() }
+          : order
+      ));
+
+      console.log("✅ Optimistic update applied for order:", orderId);
+
+      // 2️⃣ BACKGROUND API CALL
       const { error } = await supabase
         .from("orders")
         .update({ ...updates, updated_at: new Date().toISOString() })
         .eq("id", orderId);
-      
-      if (error) throw error;
 
+      // 3️⃣ HANDLE RESULT
+      if (error) {
+        // ❌ ROLLBACK on error
+        console.error("❌ Update failed, rolling back:", error);
+        setOrders(previousOrders);
+        
+        toast({
+          title: "Update Failed",
+          description: error.message || "Failed to update order. Changes reverted.",
+          variant: "destructive",
+        });
+        
+        return false;
+      }
+
+      // ✅ SUCCESS - keep optimistic update
+      console.log("✅ Update confirmed by server");
+      
       toast({
-        title: "Order updated successfully",
-        description: "The order has been updated with new information.",
+        title: "Order Updated",
+        description: "The order has been updated successfully.",
       });
 
-      // Refetch from view to get updated computed values
+      // Optional: Refetch to ensure consistency (but not blocking)
       fetchOrders(false);
+      
       return true;
+      
     } catch (err) {
-      console.error("Update error:", err);
+      console.error("❌ Unexpected error during update:", err);
+      
       toast({
-        title: "Error updating order",
-        description: err.message,
+        title: "Update Error",
+        description: err.message || "An unexpected error occurred",
         variant: "destructive",
       });
+      
+      // Refetch to restore correct state
+      fetchOrders(false);
       return false;
+      
+    } finally {
+      // Remove from updating set
+      setUpdatingIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(orderId);
+        return newSet;
+      });
     }
   };
 
+  // ✅ FIX BUG #4: Optimistic delete implementation
   const deleteOrder = async (orderId) => {
+    // Prevent duplicate deletes
+    if (updatingIds.has(orderId)) {
+      console.warn("⚠️ Operation already in progress for order:", orderId);
+      return false;
+    }
+
     try {
-      // ✅ Deletes go to orders table (cascade will handle order_items)
+      // Mark as updating
+      setUpdatingIds(prev => new Set(prev).add(orderId));
+
+      // 1️⃣ OPTIMISTIC DELETE: Remove from UI immediately
+      const previousOrders = [...orders];
+      const deletedOrder = orders.find(o => o.id === orderId);
+      
+      setOrders(prev => prev.filter(order => order.id !== orderId));
+      setTotalOrders(prev => prev - 1);
+
+      console.log("✅ Optimistic delete applied for order:", orderId);
+
+      // 2️⃣ BACKGROUND API CALL
       const { error } = await supabase
         .from("orders")
         .delete()
         .eq("id", orderId);
-      
-      if (error) throw error;
 
+      // 3️⃣ HANDLE RESULT
+      if (error) {
+        // ❌ ROLLBACK on error
+        console.error("❌ Delete failed, rolling back:", error);
+        setOrders(previousOrders);
+        setTotalOrders(prev => prev + 1);
+        
+        toast({
+          title: "Delete Failed",
+          description: error.message || "Failed to delete order. Restored.",
+          variant: "destructive",
+        });
+        
+        return false;
+      }
+
+      // ✅ SUCCESS - keep optimistic delete
+      console.log("✅ Delete confirmed by server");
+      
       toast({
-        title: "Order deleted successfully",
-        description: "The order has been removed from the system.",
+        title: "Order Deleted",
+        description: `Order ${deletedOrder?.id?.slice(0, 8)} has been removed.",
       });
 
-      fetchOrders(false);
       return true;
+      
     } catch (err) {
-      console.error("Delete error:", err);
+      console.error("❌ Unexpected error during delete:", err);
+      
       toast({
-        title: "Error deleting order",
-        description: err.message,
+        title: "Delete Error",
+        description: err.message || "An unexpected error occurred",
         variant: "destructive",
       });
+      
+      // Refetch to restore correct state
+      fetchOrders(false);
       return false;
+      
+    } finally {
+      // Remove from updating set
+      setUpdatingIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(orderId);
+        return newSet;
+      });
     }
   };
 
@@ -204,13 +278,14 @@ export function useOrders() {
     fetchOrders,
     updateOrder,
     deleteOrder,
+    // ✅ Export updating state for UI to show loading indicators
+    updatingIds,
   };
 }
 
-// ✅ Filter function unchanged - works with 'status' field
+// Filter function unchanged
 function applyOrderFilter(orders, filterKey) {
   if (filterKey === "all" || !filterKey) return orders;
-
   return orders.filter((order) => order.status === filterKey);
 }
 
