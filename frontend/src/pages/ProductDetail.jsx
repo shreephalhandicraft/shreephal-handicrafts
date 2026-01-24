@@ -158,33 +158,119 @@ const ProductDetail = () => {
     }));
   };
 
+  // ✅ FIX CRITICAL BUG #1: Strict validation before creating cart item
+  const validateCartItem = () => {
+    if (!product) {
+      console.error('❌ No product loaded');
+      return false;
+    }
+    
+    // ✅ CRITICAL: Must have variants if product has variants configured
+    if (productVariants.length > 0 && !selectedVariant) {
+      console.error('❌ Product has variants but none selected');
+      toast({
+        title: "Size Required",
+        description: "Please select a size before adding to cart.",
+        variant: "destructive",
+        duration: 5000,
+      });
+      return false;
+    }
+    
+    // ✅ CRITICAL: Validate variant has ID
+    if (selectedVariant && !selectedVariant.id) {
+      console.error('❌ Selected variant missing ID:', selectedVariant);
+      toast({
+        title: "Invalid Size Selection",
+        description: "The selected size is invalid. Please try refreshing the page.",
+        variant: "destructive",
+        duration: 5000,
+      });
+      return false;
+    }
+    
+    // ✅ Stock validation
+    if (!getCurrentStock() || getStockQuantity() < quantity) {
+      toast({
+        title: "Out of Stock",
+        description: `Only ${getStockQuantity()} items available in stock.",
+        variant: "destructive",
+      });
+      return false;
+    }
+    
+    return true;
+  };
+
   const createCartItem = () => {
+    // ✅ FIX CRITICAL BUG #1: Final safety check
+    if (!selectedVariant?.id) {
+      console.error('❌ CRITICAL: Attempted to create cart item without variant ID');
+      return null;
+    }
+    
     const productCustomization = customizations[product.id] || {};
     return {
-      id: selectedVariant ? `${product.id}-${selectedVariant.id}` : product.id,
+      id: `${product.id}-${selectedVariant.id}`,
       productId: product.id,
-      variantId: selectedVariant?.id,
+      variantId: selectedVariant.id,  // ✅ GUARANTEED to exist
       name: product.title,
       price: getCurrentPrice(),
       image: product.image_url,
       quantity: quantity,
-      // ✅ FIXED: Changed size_code to size_display
-      variant: selectedVariant ? { 
+      variant: { 
         size: selectedVariant.size_display, 
         weight: selectedVariant.weight_grams 
-      } : null,
+      },
       customization: productCustomization,
     };
   };
 
   const handleAddToCart = async () => {
-    if (!product) return;
+    // ✅ FIX CRITICAL BUG #1: Validate BEFORE any operations
+    if (!validateCartItem()) {
+      return;
+    }
+    
     setIsAddingToCart(true);
     try {
-      addItem(createCartItem());
+      const cartItem = createCartItem();
+      
+      if (!cartItem) {
+        console.error('❌ Failed to create cart item');
+        toast({
+          title: "Error",
+          description: "Failed to add item to cart. Please try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      // ✅ Double-check variantId exists
+      if (!cartItem.variantId) {
+        console.error('❌ CRITICAL: Cart item created without variantId:', cartItem);
+        toast({
+          title: "Configuration Error",
+          description: "Unable to add item - missing size information. Please refresh and try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      const success = await addItem(cartItem);
+      
+      if (success) {
+        toast({
+          title: "Added to Cart!",
+          description: `${product.title} (${quantity} ${quantity > 1 ? "items" : "item"}) has been added to your cart.`,
+        });
+      }
+    } catch (error) {
+      console.error('❌ Add to cart error:', error);
       toast({
-        title: "Added to Cart!",
-        description: `${product.title} (${quantity} ${quantity > 1 ? "items" : "item"}) has been added to your cart.`,
+        title: "Error",
+        description: "Failed to add item to cart. Please try again.",
+        variant: "destructive",
       });
     } finally {
       setIsAddingToCart(false);
@@ -192,16 +278,48 @@ const ProductDetail = () => {
   };
 
   const handleBuyNow = async () => {
-    if (!product) return;
+    // ✅ FIX CRITICAL BUG #1: Validate BEFORE any operations
+    if (!validateCartItem()) {
+      return;
+    }
+    
     setIsBuying(true);
     try {
+      const cartItem = createCartItem();
+      
+      if (!cartItem || !cartItem.variantId) {
+        console.error('❌ CRITICAL: Cannot proceed to checkout without variantId');
+        toast({
+          title: "Configuration Error",
+          description: "Unable to proceed - missing size information. Please refresh and try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+      
       await clearCart();
-      addItem(createCartItem());
-      toast({ title: "Proceeding to Checkout", description: "Redirecting to checkout..." });
-      setTimeout(() => navigate("/checkout"), 500);
+      const success = await addItem(cartItem);
+      
+      if (success) {
+        toast({ 
+          title: "Proceeding to Checkout", 
+          description: "Redirecting to checkout..." 
+        });
+        setTimeout(() => navigate("/checkout"), 500);
+      } else {
+        toast({
+          title: "Error",
+          description: "Failed to add item for checkout. Please try again.",
+          variant: "destructive",
+        });
+      }
     } catch (error) {
       console.error("Buy Now error:", error);
-      toast({ title: "Error", description: "Failed to proceed to checkout. Please try again.", variant: "destructive" });
+      toast({ 
+        title: "Error", 
+        description: "Failed to proceed to checkout. Please try again.", 
+        variant: "destructive" 
+      });
     } finally {
       setIsBuying(false);
     }
