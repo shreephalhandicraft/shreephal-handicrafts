@@ -611,13 +611,13 @@ export const CartProvider = ({ children }) => {
     }
   };
 
-  // ✅ FIX BUG #8: Clear cart with error detection
+  // ✅ CRITICAL BUG #3 FIX: Cart clear with proper failure handling
   const clearCart = async () => {
     try {
       console.log("🧹 Clearing cart...");
 
       if (user) {
-        // ✅ FIX BUG #8: Throw error if database clear fails
+        // ✅ FIX: Try database delete first, THEN clear UI
         const { error } = await supabase
           .from("cart_items")
           .delete()
@@ -625,10 +625,20 @@ export const CartProvider = ({ children }) => {
 
         if (error) {
           console.error("❌ Database clear failed:", error);
-          throw new Error(`Failed to clear cart from database: ${error.message}`);
+          
+          // ✅ FIX: Show error and DON'T clear UI
+          toast({
+            title: "Cart Clear Failed",
+            description: "Failed to clear cart from database. Please try again or contact support.",
+            variant: "destructive",
+            duration: 8000,
+          });
+          
+          // ✅ FIX: Return false to signal failure
+          return false;
         }
 
-        // Clear localStorage details
+        // Only clear localStorage if DB succeeded
         const localCartKey = `user_${user.id}_cart_details`;
         localStorage.removeItem(localCartKey);
         
@@ -639,25 +649,25 @@ export const CartProvider = ({ children }) => {
         console.log("✅ Guest cart cleared successfully");
       }
 
-      // Clear UI state
+      // Only clear UI state if everything succeeded
       setCartItems([]);
       
       console.log("✅ Cart cleared completely");
-    } catch (error) {
-      console.error("❌ Failed to clear cart:", error);
+      return true; // ✅ Success
       
-      // ✅ FIX BUG #8: Show user error, but still clear UI to prevent confusion
+    } catch (error) {
+      console.error("❌ Unexpected error clearing cart:", error);
+      
+      // ✅ FIX: Show error and DON'T clear UI
       toast({
-        title: "Warning",
-        description: "Cart cleared from view, but database sync failed. Items may reappear on refresh.",
+        title: "Cart Clear Error",
+        description: "An unexpected error occurred. Please refresh and try again.",
         variant: "destructive",
+        duration: 8000,
       });
       
-      // Still clear UI to prevent worse UX
-      setCartItems([]);
-      
-      // Re-throw so caller knows operation partially failed
-      throw error;
+      // ✅ FIX: Return false to signal failure
+      return false;
     }
   };
 
