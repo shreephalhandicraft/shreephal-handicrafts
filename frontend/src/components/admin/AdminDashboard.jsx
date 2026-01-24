@@ -19,7 +19,6 @@ import { useToast } from "@/hooks/use-toast";
 export function AdminDashboard() {
   const [darkMode, setDarkMode] = useState(false);
   
-  // ✅ FIX BUG #3: Track realtime connection status
   const [realtimeStatus, setRealtimeStatus] = useState({
     orders: 'connecting',
     messages: 'connecting',
@@ -51,81 +50,127 @@ export function AdminDashboard() {
     document.documentElement.classList.toggle("dark", newDarkMode);
   };
 
-  // Fetch dashboard data from Supabase
+  // ✅ FIX BUG #5: Optimized dashboard data fetching with targeted queries
   const fetchDashboardData = async () => {
     try {
       setDashboardData((prev) => ({ ...prev, loading: true }));
+      
+      console.log("📊 Fetching dashboard metrics (optimized)...");
+      const startTime = performance.now();
 
-      const { data: orderRows, error: ordersError } = await supabase
-        .from("order_details_full")
-        .select("*")
-        .order("order_date", { ascending: false });
+      // Calculate 30 days ago timestamp
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const thirtyDaysAgoISO = thirtyDaysAgo.toISOString();
 
-      if (ordersError) throw ordersError;
+      // ✅ OPTIMIZATION: Run all queries in parallel
+      const [
+        totalOrdersResult,
+        pendingOrdersResult,
+        recentOrdersResult,
+        codOrdersResult,
+        payNowOrdersResult,
+        revenueRowsResult,
+        totalMessagesResult,
+        unreadMessagesResult,
+      ] = await Promise.all([
+        // 1. Total orders count (fast COUNT query)
+        supabase
+          .from("orders")
+          .select("*", { count: 'exact', head: true }),
+        
+        // 2. Pending orders count
+        supabase
+          .from("orders")
+          .select("*", { count: 'exact', head: true })
+          .eq("status", "pending"),
+        
+        // 3. Recent orders (last 30 days) count
+        supabase
+          .from("orders")
+          .select("*", { count: 'exact', head: true })
+          .gte("created_at", thirtyDaysAgoISO),
+        
+        // 4. COD orders count
+        supabase
+          .from("orders")
+          .select("*", { count: 'exact', head: true })
+          .eq("payment_method", "COD"),
+        
+        // 5. PayNow orders count
+        supabase
+          .from("orders")
+          .select("*", { count: 'exact', head: true })
+          .eq("payment_method", "PayNow"),
+        
+        // 6. Revenue calculation (only fetch order_total for completed payments)
+        supabase
+          .from("order_details_full")
+          .select("order_id, order_total, payment_status")
+          .eq("payment_status", "completed"),
+        
+        // 7. Total messages count
+        supabase
+          .from("messages")
+          .select("*", { count: 'exact', head: true }),
+        
+        // 8. Unread messages count
+        supabase
+          .from("messages")
+          .select("*", { count: 'exact', head: true })
+          .eq("is_read", false),
+      ]);
 
-      const ordersMap = {};
-      (orderRows || []).forEach((row) => {
-        if (!ordersMap[row.order_id]) {
-          ordersMap[row.order_id] = {
-            order_id: row.order_id,
-            order_status: row.order_status,
-            payment_status: row.payment_status,
-            payment_method: row.payment_method,
-            order_total: row.order_total,
-            order_date: row.order_date,
-          };
+      // Check for errors
+      const errors = [
+        totalOrdersResult.error,
+        pendingOrdersResult.error,
+        recentOrdersResult.error,
+        codOrdersResult.error,
+        payNowOrdersResult.error,
+        revenueRowsResult.error,
+        totalMessagesResult.error,
+        unreadMessagesResult.error,
+      ].filter(Boolean);
+
+      if (errors.length > 0) {
+        throw errors[0];
+      }
+
+      // ✅ Calculate revenue from unique orders (view returns 1 row per item)
+      const uniqueOrderTotals = {};
+      (revenueRowsResult.data || []).forEach(row => {
+        if (!uniqueOrderTotals[row.order_id]) {
+          uniqueOrderTotals[row.order_id] = parseFloat(row.order_total) || 0;
         }
       });
+      
+      const totalRevenue = Object.values(uniqueOrderTotals)
+        .reduce((sum, total) => sum + total, 0);
 
-      const orders = Object.values(ordersMap);
-
-      const { data: messages, error: messagesError } = await supabase
-        .from("messages")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (messagesError) throw messagesError;
-
-      const now = new Date();
-      const last30Days = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-
-      const recentOrders = orders.filter(
-        (order) => new Date(order.order_date) >= last30Days
-      ).length;
-
-      const pendingOrders = orders.filter(
-        (order) => order.order_status === "pending"
-      ).length;
-
-      const unreadMessages = messages.filter(
-        (message) => !message.is_read
-      ).length;
-
-      const totalRevenue = orders
-        .filter((order) => order.payment_status === "completed")
-        .reduce((sum, order) => sum + (parseFloat(order.order_total) || 0), 0);
-
-      const codOrders = orders.filter(
-        (order) => order.payment_method === "COD"
-      ).length;
-
-      const payNowOrders = orders.filter(
-        (order) => order.payment_method === "PayNow"
-      ).length;
+      const endTime = performance.now();
+      console.log(`✅ Metrics fetched in ${(endTime - startTime).toFixed(2)}ms`);
+      console.log("📊 Metrics:", {
+        totalOrders: totalOrdersResult.count,
+        pendingOrders: pendingOrdersResult.count,
+        recentOrders: recentOrdersResult.count,
+        totalRevenue: totalRevenue.toFixed(2),
+      });
 
       setDashboardData({
-        totalOrders: orders.length,
-        recentOrders,
-        pendingOrders,
-        totalMessages: messages.length,
-        unreadMessages,
-        totalRevenue,
-        codOrders,
-        payNowOrders,
+        totalOrders: totalOrdersResult.count || 0,
+        recentOrders: recentOrdersResult.count || 0,
+        pendingOrders: pendingOrdersResult.count || 0,
+        totalMessages: totalMessagesResult.count || 0,
+        unreadMessages: unreadMessagesResult.count || 0,
+        totalRevenue: totalRevenue,
+        codOrders: codOrdersResult.count || 0,
+        payNowOrders: payNowOrdersResult.count || 0,
         loading: false,
       });
+      
     } catch (error) {
-      console.error("Error fetching dashboard data:", error);
+      console.error("❌ Error fetching dashboard data:", error);
       toast({
         title: "Error loading dashboard",
         description: error.message,
@@ -135,13 +180,11 @@ export function AdminDashboard() {
     }
   };
 
-  // ✅ FIX BUG #3: Enhanced realtime subscriptions with error handling
   useEffect(() => {
     fetchDashboardData();
 
     console.log("🔄 Setting up realtime subscriptions...");
 
-    // Subscribe to orders table changes with proper error handling
     const ordersSubscription = supabase
       .channel("orders-channel")
       .on(
@@ -157,7 +200,6 @@ export function AdminDashboard() {
         }
       )
       .subscribe((status, err) => {
-        // ✅ Handle subscription status changes
         console.log("📡 Orders subscription status:", status);
         
         if (status === 'SUBSCRIBED') {
@@ -190,7 +232,6 @@ export function AdminDashboard() {
         }
       });
 
-    // Subscribe to messages table changes with proper error handling
     const messagesSubscription = supabase
       .channel("messages-channel")
       .on(
@@ -220,7 +261,6 @@ export function AdminDashboard() {
         }
       });
 
-    // Cleanup subscriptions on unmount
     return () => {
       console.log("🧹 Cleaning up subscriptions...");
       supabase.removeChannel(ordersSubscription);
@@ -228,11 +268,9 @@ export function AdminDashboard() {
     };
   }, []);
 
-  // Provide dashboard data to child components via context or props
   const dashboardContext = {
     ...dashboardData,
     refreshData: fetchDashboardData,
-    // ✅ Pass realtime status to components
     realtimeStatus,
   };
 
@@ -247,7 +285,7 @@ export function AdminDashboard() {
               darkMode={darkMode}
               toggleDarkMode={toggleDarkMode}
               dashboardData={dashboardData}
-              realtimeStatus={realtimeStatus} // ✅ Pass status to header
+              realtimeStatus={realtimeStatus}
             />
 
             <main className="flex-1 overflow-x-hidden overflow-y-auto bg-surface-light">
