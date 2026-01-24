@@ -49,13 +49,31 @@ export function AdminDashboard() {
     try {
       setDashboardData((prev) => ({ ...prev, loading: true }));
 
-      // Fetch Orders Data
-      const { data: orders, error: ordersError } = await supabase
-        .from("orders")
+      // ✅ FIX BUG #1: Use order_details_full view for accurate order totals
+      // This gives us order_total (computed from order_items)
+      const { data: orderRows, error: ordersError } = await supabase
+        .from("order_details_full")
         .select("*")
-        .order("created_at", { ascending: false });
+        .order("order_date", { ascending: false });
 
       if (ordersError) throw ordersError;
+
+      // ✅ Group by order_id since view returns one row per order item
+      const ordersMap = {};
+      (orderRows || []).forEach((row) => {
+        if (!ordersMap[row.order_id]) {
+          ordersMap[row.order_id] = {
+            order_id: row.order_id,
+            order_status: row.order_status,
+            payment_status: row.payment_status,
+            payment_method: row.payment_method,
+            order_total: row.order_total, // ✅ Computed from order_items
+            order_date: row.order_date,
+          };
+        }
+      });
+
+      const orders = Object.values(ordersMap);
 
       // Fetch Messages Data
       const { data: messages, error: messagesError } = await supabase
@@ -70,20 +88,21 @@ export function AdminDashboard() {
       const last30Days = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
       const recentOrders = orders.filter(
-        (order) => new Date(order.created_at) >= last30Days
+        (order) => new Date(order.order_date) >= last30Days
       ).length;
 
       const pendingOrders = orders.filter(
-        (order) => order.status === "pending"
+        (order) => order.order_status === "pending"
       ).length;
 
       const unreadMessages = messages.filter(
         (message) => !message.is_read
       ).length;
 
+      // ✅ FIX BUG #1: Use order_total (computed) instead of amount (may be NULL)
       const totalRevenue = orders
         .filter((order) => order.payment_status === "completed")
-        .reduce((sum, order) => sum + (parseFloat(order.amount) || 0), 0);
+        .reduce((sum, order) => sum + (parseFloat(order.order_total) || 0), 0);
 
       const codOrders = orders.filter(
         (order) => order.payment_method === "COD"
@@ -120,7 +139,7 @@ export function AdminDashboard() {
     // Initial data fetch
     fetchDashboardData();
 
-    // Subscribe to orders table changes
+    // ✅ Subscribe to orders table changes (view updates automatically)
     const ordersSubscription = supabase
       .channel("orders-channel")
       .on(
