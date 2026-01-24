@@ -4,6 +4,27 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="google-site-verification" content="n9SPsEcxH8TgppuTX9wlkyjRifYn-LB81gHut-4VrbY" />
+    
+    <!-- ✅ FIX BUG #6: Dark mode initialization (must run BEFORE React loads) -->
+    <!-- This prevents FOUC (Flash of Unstyled Content) for dark mode users -->
+    <script>
+      (function() {
+        try {
+          // Read dark mode preference from localStorage synchronously
+          const darkMode = localStorage.getItem('darkMode');
+          
+          // Apply dark class immediately if dark mode is enabled
+          if (darkMode === 'true') {
+            document.documentElement.classList.add('dark');
+          }
+        } catch (e) {
+          // Fail silently if localStorage is unavailable (private browsing, etc.)
+          // Browser will default to light mode gracefully
+          console.warn('Could not access localStorage for dark mode:', e);
+        }
+      })();
+    </script>
+    
     <!-- Primary Meta Tags -->
     <title>श्रीफल हैंडीक्राफ्ट - Authentic Indian Handicrafts | Shreephal Handicrafts</title>
     <meta name="title" content="श्रीफल हैंडीक्राफ्ट - Authentic Indian Handicrafts | Shreephal Handicrafts" />
