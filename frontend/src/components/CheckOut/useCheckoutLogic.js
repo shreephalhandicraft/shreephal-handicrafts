@@ -4,7 +4,7 @@ import { useCart } from "@/contexts/CartContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabaseClient";
-import { useStockReservation } from "@/hooks/useStockReservation"; // 🆕 NEW
+import { useStockReservation } from "@/hooks/useStockReservation";
 
 const PHONEPE_PAY_URL = import.meta.env.VITE_BACKEND_URL
   ? `${import.meta.env.VITE_BACKEND_URL}/pay`
@@ -18,7 +18,6 @@ export const useCheckoutLogic = () => {
   const { toast } = useToast();
   const payFormRef = useRef(null);
   
-  // 🆕 CRITICAL BUG #2 FIX: Use stock reservation hook
   const { reserveStock, confirmMultipleReservations } = useStockReservation();
 
   // State
@@ -182,7 +181,6 @@ export const useCheckoutLogic = () => {
     return true;
   }, [formData, toast]);
   
-  // ✅ FIX BUG #3: Validate cart items at checkout entry
   const validateCartItems = useCallback(() => {
     const cartItems = getCartForCheckout();
     
@@ -195,7 +193,6 @@ export const useCheckoutLogic = () => {
       return false;
     }
     
-    // ✅ CRITICAL: Check ALL items have variantId
     const itemsWithoutVariant = cartItems.filter(item => !item.variantId);
     
     if (itemsWithoutVariant.length > 0) {
@@ -207,7 +204,7 @@ export const useCheckoutLogic = () => {
         title: "Cart Validation Failed",
         description: `Some items are missing size selection: ${itemNames}. Please remove and re-add these items with proper size selection.`,
         variant: "destructive",
-        duration: 8000, // Longer duration for important error
+        duration: 8000,
       });
       
       return false;
@@ -217,7 +214,6 @@ export const useCheckoutLogic = () => {
     return true;
   }, [getCartForCheckout, toast]);
 
-  // Create customization details for order (LEGACY JSONB format)
   const createCustomizationDetails = useCallback((cartItems) => {
     const customizationDetails = {};
 
@@ -239,49 +235,102 @@ export const useCheckoutLogic = () => {
     return customizationDetails;
   }, []);
 
-  // ✅ ISSUE #7: Upload customization image to Cloudinary
-  const uploadCustomizationImage = useCallback(async (file, itemName) => {
-    try {
-      console.log(`  📤 Uploading customization image for: ${itemName}`);
-      
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('upload_preset', import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || 'shrifal_handicrafts');
-      formData.append('folder', 'shrifal-handicrafts/customizations');
-      
-      const cloudinaryResponse = await fetch(
-        `https://api.cloudinary.com/v1_1/${import.meta.env.VITE_CLOUDINARY_CLOUD_NAME}/image/upload`,
-        {
-          method: 'POST',
-          body: formData
-        }
-      );
-      
-      if (!cloudinaryResponse.ok) {
-        const errorData = await cloudinaryResponse.json();
-        throw new Error(errorData.error?.message || 'Cloudinary upload failed');
-      }
-      
-      const cloudinaryData = await cloudinaryResponse.json();
-      
-      console.log(`  ✅ Image uploaded: ${cloudinaryData.secure_url}`);
-      
-      return {
-        url: cloudinaryData.secure_url,
-        public_id: cloudinaryData.public_id,
-        format: cloudinaryData.format,
-        width: cloudinaryData.width,
-        height: cloudinaryData.height,
-        bytes: cloudinaryData.bytes
-      };
-      
-    } catch (error) {
-      console.error(`  ❌ Cloudinary upload failed for ${itemName}:`, error);
-      throw new Error(`Failed to upload customization image for ${itemName}: ${error.message}`);
+  // ✨ RISKY #2 FIX: Helper to delay execution (for retry backoff)
+  const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+  // ✨ RISKY #2 FIX: Check if error is retryable
+  const isRetryableError = (error, statusCode) => {
+    // Don't retry on client errors (bad request, file too large, etc)
+    if (statusCode && statusCode >= 400 && statusCode < 500) {
+      return false;
     }
+    
+    // Retry on network errors, timeouts, server errors
+    const retryableMessages = [
+      'network',
+      'timeout',
+      'ECONNREFUSED',
+      'ETIMEDOUT',
+      'ENOTFOUND',
+      '5', // 5xx server errors
+    ];
+    
+    const errorMessage = error.message?.toLowerCase() || '';
+    return retryableMessages.some(msg => errorMessage.includes(msg));
+  };
+
+  // ✨ RISKY #2 FIX: Upload with retry logic
+  const uploadCustomizationImage = useCallback(async (file, itemName) => {
+    const maxRetries = 3;
+    const baseDelay = 1000; // 1 second
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`  📤 Uploading customization image for: ${itemName} (Attempt ${attempt}/${maxRetries})`);
+        
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('upload_preset', import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || 'shrifal_handicrafts');
+        formData.append('folder', 'shrifal-handicrafts/customizations');
+        
+        const cloudinaryResponse = await fetch(
+          `https://api.cloudinary.com/v1_1/${import.meta.env.VITE_CLOUDINARY_CLOUD_NAME}/image/upload`,
+          {
+            method: 'POST',
+            body: formData
+          }
+        );
+        
+        const statusCode = cloudinaryResponse.status;
+        
+        if (!cloudinaryResponse.ok) {
+          const errorData = await cloudinaryResponse.json();
+          const errorMessage = errorData.error?.message || 'Cloudinary upload failed';
+          
+          // Check if error is retryable
+          if (attempt < maxRetries && isRetryableError(new Error(errorMessage), statusCode)) {
+            const delayMs = baseDelay * Math.pow(2, attempt - 1); // Exponential backoff: 1s, 2s, 4s
+            console.warn(`  ⚠️ Upload failed (${errorMessage}), retrying in ${delayMs}ms...`);
+            await delay(delayMs);
+            continue; // Retry
+          }
+          
+          // Permanent error or max retries reached
+          throw new Error(errorMessage);
+        }
+        
+        const cloudinaryData = await cloudinaryResponse.json();
+        
+        console.log(`  ✅ Image uploaded successfully: ${cloudinaryData.secure_url}`);
+        
+        return {
+          url: cloudinaryData.secure_url,
+          public_id: cloudinaryData.public_id,
+          format: cloudinaryData.format,
+          width: cloudinaryData.width,
+          height: cloudinaryData.height,
+          bytes: cloudinaryData.bytes
+        };
+        
+      } catch (error) {
+        // Check if we should retry
+        if (attempt < maxRetries && isRetryableError(error, null)) {
+          const delayMs = baseDelay * Math.pow(2, attempt - 1);
+          console.warn(`  ⚠️ Upload error (${error.message}), retrying in ${delayMs}ms...`);
+          await delay(delayMs);
+          continue; // Retry
+        }
+        
+        // Final attempt failed or permanent error
+        console.error(`  ❌ Cloudinary upload failed after ${attempt} attempt(s) for ${itemName}:`, error);
+        throw new Error(`Failed to upload customization image for ${itemName}: ${error.message}`);
+      }
+    }
+    
+    // Should never reach here, but just in case
+    throw new Error(`Failed to upload customization image for ${itemName} after ${maxRetries} attempts`);
   }, []);
 
-  // ✅ ISSUE #5 & #7: Create order with order_items table + Cloudinary uploads
   const createOrder = useCallback(
     async (paymentMethod = "PayNow") => {
       try {
@@ -303,7 +352,6 @@ export const useCheckoutLogic = () => {
         const cartItems = getCartForCheckout();
         console.log("\n📦 CART ITEMS:", JSON.stringify(cartItems, null, 2));
 
-        // ✅ FIX BUG #3: VALIDATE ALL ITEMS HAVE variant_id
         const itemsWithoutVariant = cartItems.filter(item => !item.variantId);
         if (itemsWithoutVariant.length > 0) {
           console.error("❌ Items missing variantId:", itemsWithoutVariant);
@@ -354,7 +402,6 @@ export const useCheckoutLogic = () => {
         const totalPaise = Math.round(total * 100);
         const customizationDetails = createCustomizationDetails(cartItems);
 
-        // ✅ Fetch catalog numbers
         console.log("\n📋 Fetching catalog numbers...");
         const productIds = cartItems.map(item => item.productId);
         const { data: productsData, error: productsError } = await supabase
@@ -376,7 +423,6 @@ export const useCheckoutLogic = () => {
         const orderData = {
           user_id: authUser.id,
           customer_id: customer.id,
-          // ⚠️ LEGACY: Keep JSONB for backwards compatibility
           items: cartItems.map((item) => ({
             id: item.id,
             productId: item.productId,
@@ -426,7 +472,6 @@ export const useCheckoutLogic = () => {
 
         console.log("✅ Order created:", order.id);
 
-        // ✅ ISSUE #7: UPLOAD CUSTOMIZATION IMAGES BEFORE INSERTING order_items
         console.log("\n📤 UPLOADING CUSTOMIZATION IMAGES...");
         const processedCartItems = [];
         
@@ -435,38 +480,36 @@ export const useCheckoutLogic = () => {
             ? { ...item.customization } 
             : null;
           
-          // If item has customization with uploaded image File object
           if (customizationData?.uploadedImage && customizationData.uploadedImage instanceof File) {
             try {
+              // ✨ RISKY #2 FIX: Now has retry logic!
               const uploadResult = await uploadCustomizationImage(
                 customizationData.uploadedImage, 
                 item.name
               );
               
-              // Replace File object with Cloudinary URL
               customizationData = {
                 ...customizationData,
                 uploadedImageUrl: uploadResult.url,
                 cloudinaryPublicId: uploadResult.public_id,
-                uploadedImage: null  // Remove File object (can't be stored in DB)
+                uploadedImage: null
               };
               
             } catch (error) {
-              console.error('Upload failed:', error);
+              console.error('Upload failed after retries:', error);
               
-              // Rollback order on upload failure
               await supabase.from('orders').delete().eq('id', order.id);
               
               toast({
                 title: 'Upload Failed',
-                description: `Failed to upload customization for ${item.name}. Order cancelled.`,
-                variant: 'destructive'
+                description: `Failed to upload customization for ${item.name} after multiple attempts. Order cancelled.`,
+                variant: 'destructive',
+                duration: 8000,
               });
               throw error;
             }
           }
           
-          // Clean customization data (remove empty fields)
           if (customizationData) {
             const cleanedCustomization = {};
             for (const [key, value] of Object.entries(customizationData)) {
@@ -485,7 +528,6 @@ export const useCheckoutLogic = () => {
           });
         }
 
-        // ✅ STEP 2: INSERT INTO order_items TABLE
         console.log("\n📝 Inserting into order_items table...");
         
         const orderItemsData = processedCartItems.map(item => ({
@@ -494,7 +536,7 @@ export const useCheckoutLogic = () => {
           variant_id: item.variantId,
           catalog_number: catalogNumberMap[item.productId] || null,
           quantity: item.quantity,
-          unit_price: Math.round(item.price * 100), // Convert to paise
+          unit_price: Math.round(item.price * 100),
           total_price: Math.round(item.price * item.quantity * 100),
           customization_data: item.processedCustomization
         }));
@@ -516,7 +558,6 @@ export const useCheckoutLogic = () => {
 
         console.log("✅ Order items inserted:", insertedItems.length);
 
-        // ✅ ISSUE #7: AUTO-CREATE CUSTOMIZATION REQUESTS
         console.log("\n🎨 CREATING CUSTOMIZATION REQUESTS...");
         const customizationRequests = [];
 
@@ -525,7 +566,6 @@ export const useCheckoutLogic = () => {
           const customData = orderItem.customization_data;
           
           if (customData && Object.keys(customData).length > 0) {
-            // Determine customization type
             const hasImage = customData.uploadedImageUrl || customData.uploadedImage;
             const hasText = customData.text || customData.customText;
             const hasColor = customData.color || customData.customColor;
@@ -534,8 +574,8 @@ export const useCheckoutLogic = () => {
             if (hasImage && hasText) customizationType = 'image_and_text';
             else if (hasImage) customizationType = 'image';
             else if (hasText) customizationType = 'text';
-            else if (hasColor) customizationType = 'text'; // Treat color as text customization
-            else continue; // Skip if no actual customization
+            else if (hasColor) customizationType = 'text';
+            else continue;
             
             const designFiles = hasImage ? {
               files: [{
@@ -559,7 +599,6 @@ export const useCheckoutLogic = () => {
           }
         }
 
-        // Insert customization requests if any
         if (customizationRequests.length > 0) {
           const { data: createdRequests, error: reqError } = await supabase
             .from('customization_requests')
@@ -568,7 +607,6 @@ export const useCheckoutLogic = () => {
           
           if (reqError) {
             console.error('❌ Failed to create customization requests:', reqError);
-            // Don't throw - order is already created, just log the error
             console.warn('  ⚠️ Order will proceed without customization request tracking');
           } else {
             console.log(`  ✅ Created ${createdRequests.length} customization requests`);
@@ -577,12 +615,10 @@ export const useCheckoutLogic = () => {
           console.log('  ℹ️ No customization requests needed');
         }
 
-        // ✅ CRITICAL BUG #2 FIX: ATOMIC STOCK RESERVATION + BATCH CONFIRMATION
         console.log("\n🔒 RESERVING & CONFIRMING STOCK ATOMICALLY...");
         const stockReservations = [];
         
         try {
-          // STEP 1: Reserve stock for all items
           console.log("  📦 Step 1: Creating reservations...");
           for (const item of cartItems) {
             console.log(`    - Reserving: ${item.name} (qty: ${item.quantity})`);
@@ -610,7 +646,6 @@ export const useCheckoutLogic = () => {
 
           console.log(`  ✅ All reservations created: ${stockReservations.length} items`);
 
-          // STEP 2: Batch confirm all reservations (atomic operation)
           console.log("\n  🎯 Step 2: Batch confirming reservations (atomic)...");
           const reservationIds = stockReservations.map(r => r.reservationId);
           
@@ -619,7 +654,6 @@ export const useCheckoutLogic = () => {
           console.log(`  ✅ ATOMIC CONFIRMATION SUCCESS: ${confirmResult.confirmedCount} items`);
           console.log(`     All stock decremented in single transaction`);
           
-          // Log final stock status for each item
           stockReservations.forEach(r => {
             console.log(`    ✅ ${r.item}: ${r.quantity} units confirmed`);
           });
@@ -627,7 +661,6 @@ export const useCheckoutLogic = () => {
         } catch (error) {
           console.error("\n  ❌ STOCK RESERVATION/CONFIRMATION FAILED:", error);
           
-          // AUTOMATIC ROLLBACK: Delete order, items, and customization requests
           console.log("  🔄 Rolling back order due to stock failure...");
           
           await supabase.from('customization_requests').delete().eq('order_id', order.id);
@@ -636,7 +669,6 @@ export const useCheckoutLogic = () => {
           
           console.log("  ✅ Rollback complete");
           
-          // Parse error for user-friendly message
           let userMessage = error.message;
           if (error.message.includes('Insufficient stock')) {
             userMessage = `Stock unavailable: ${error.message}`;
@@ -672,11 +704,9 @@ export const useCheckoutLogic = () => {
     ]
   );
 
-  // Handle PayNow payment
   const handlePayNow = useCallback(async () => {
     if (!validateForm()) return;
     
-    // ✅ FIX BUG #3: Validate cart items before payment
     if (!validateCartItems()) {
       return;
     }
@@ -749,11 +779,9 @@ export const useCheckoutLogic = () => {
     }
   }, [validateForm, validateCartItems, items, total, formData, createOrder, toast]);
 
-  // Handle Cash on Delivery
   const handleCODPayment = useCallback(async () => {
     if (!validateForm()) return;
     
-    // ✅ FIX BUG #3: Validate cart items before COD order
     if (!validateCartItems()) {
       return;
     }
@@ -763,11 +791,9 @@ export const useCheckoutLogic = () => {
     try {
       const order = await createOrder("COD");
 
-      // ✅ CRITICAL BUG #3 FIX: Check if cart clear succeeded
       const cartCleared = await clearCart();
       
       if (!cartCleared) {
-        // Cart clear failed but order was created successfully
         toast({
           title: "Order Placed with Warning",
           description: `Order #${order.id.slice(0, 8)} created but cart clear failed. Please refresh and manually clear your cart to avoid duplicate orders.`,
@@ -775,7 +801,6 @@ export const useCheckoutLogic = () => {
           duration: 10000,
         });
         
-        // Still navigate to order page (order succeeded)
         navigate(`/order/${order.id}`);
         return;
       }
@@ -801,7 +826,6 @@ export const useCheckoutLogic = () => {
     }
   }, [validateForm, validateCartItems, createOrder, clearCart, toast, navigate]);
 
-  // Clear URL parameters helper
   const clearUrlParams = useCallback(() => {
     const newSearchParams = new URLSearchParams(searchParams);
     newSearchParams.delete("status");
@@ -811,7 +835,6 @@ export const useCheckoutLogic = () => {
     setSearchParams(newSearchParams, { replace: true });
   }, [searchParams, setSearchParams]);
 
-  // Handle payment success
   const handlePaymentSuccess = useCallback(
     async (orderId, transactionId = null) => {
       try {
@@ -833,11 +856,9 @@ export const useCheckoutLogic = () => {
           order.payment_status === "completed" ||
           order.payment_status === "success"
         ) {
-          // ✅ CRITICAL BUG #3 FIX: Check if cart clear succeeded
           const cartCleared = await clearCart();
           
           if (!cartCleared) {
-            // Cart clear failed - show warning but still proceed
             toast({
               title: "Payment Successful - Cart Warning",
               description: "Payment completed but cart clear failed. Please manually clear your cart to avoid duplicate orders.",
@@ -883,7 +904,6 @@ export const useCheckoutLogic = () => {
     [clearCart, toast, navigate, clearUrlParams]
   );
 
-  // Handle payment failure
   const handlePaymentFailure = useCallback(
     async (orderId, message = null) => {
       try {
@@ -925,7 +945,6 @@ export const useCheckoutLogic = () => {
     [toast, clearUrlParams]
   );
 
-  // Check for payment status on mount - ONLY ONCE
   useEffect(() => {
     const paymentStatus = searchParams.get("status");
     const orderId = searchParams.get("orderId");
@@ -948,7 +967,6 @@ export const useCheckoutLogic = () => {
     paymentProcessed,
   ]);
 
-  // Redirect if cart becomes empty (but not during payment processing)
   useEffect(() => {
     if (
       !loading &&
@@ -960,7 +978,6 @@ export const useCheckoutLogic = () => {
     }
   }, [items.length, loading, navigate, processingPayment, paymentProcessed]);
 
-  // Fetch user profile on mount
   useEffect(() => {
     if (user) {
       fetchUserProfile();
@@ -970,28 +987,21 @@ export const useCheckoutLogic = () => {
   }, [user, fetchUserProfile]);
 
   return {
-    // State
     loading,
     processingPayment,
     formData,
     items,
     searchParams,
     payFormRef,
-
-    // Computed values
     subtotal,
     tax,
     total,
-
-    // Functions
     handleChange,
     handlePayNow,
     handleCODPayment,
     handlePaymentSuccess,
     handlePaymentFailure,
     validateForm,
-
-    // Additional utilities
     PHONEPE_PAY_URL,
   };
 };
