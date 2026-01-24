@@ -1,7 +1,7 @@
 # 📚 Database Functions Reference
 
 **Last Updated:** January 24, 2026  
-**Total Functions:** 15  
+**Total Functions:** 20 (↑ 5 new helper functions)  
 **Purpose:** Complete reference for all database functions, triggers, and stored procedures
 
 ---
@@ -9,15 +9,15 @@
 ## 📖 Table of Contents
 
 ### Core Functions
-1. [Stock Management](#1-stock-management)
-2. [Order Processing](#2-order-processing)
-3. [Product Calculations](#3-product-calculations)
-4. [Data Migration](#4-data-migration)
-5. [Triggers](#5-triggers)
+1. [Stock Management](#1-stock-management) - 9 functions
+2. [Order Processing](#2-order-processing) - 2 functions
+3. [Product Calculations](#3-product-calculations) - 2 functions
+4. [Data Migration](#4-data-migration) - 1 function
+5. [Triggers](#5-triggers) - 6 functions
 
 ---
 
-## 1. Stock Management
+## 1. Stock Management (9 Functions)
 
 ### 1.1 `decrement_variant_stock()` 🔒 **CRITICAL**
 
@@ -47,98 +47,11 @@ if (error) {
 }
 ```
 
-**SQL Direct Call:**
-```sql
-SELECT decrement_variant_stock(
-  'a1b2c3d4-e5f6-7890-abcd-ef1234567890'::uuid,
-  1
-);
--- Returns: true (success) or raises exception
-```
-
-**How It Works:**
-```sql
-BEGIN
-  -- 🔒 Lock the row (prevents concurrent reads)
-  SELECT stock_quantity INTO v_current_stock
-  FROM product_variants
-  WHERE id = p_variant_id
-  FOR UPDATE;
-  
-  -- Check stock availability
-  IF v_current_stock < p_quantity THEN
-    RAISE EXCEPTION 'Insufficient stock';
-  END IF;
-  
-  -- Atomic update
-  UPDATE product_variants
-  SET stock_quantity = stock_quantity - p_quantity
-  WHERE id = p_variant_id;
-  
-  RETURN true;
-END;
-```
-
-**Race Condition Prevention:**
-```
-User A                          User B
-------------------------------------------------
-Call function                   Call function
-Lock row 🔒                      Wait for lock...
-Read stock: 1                   (Still waiting)
-Update stock: 0                 (Still waiting)
-Commit & release lock 🔓         Lock acquired 🔒
-                                Read stock: 0
-                                Check: 0 < 1 ❌
-                                Throw exception
-                                User B sees "Out of stock" ✅
-```
-
-**When to Use:**
-- ✅ During checkout (before payment)
-- ✅ When confirming orders
-- ✅ Admin manual stock adjustments
-
-**When NOT to Use:**
-- ❌ During cart updates (use `reserve_variant_stock` instead)
-- ❌ For display purposes (query `product_variants` directly)
-
 ---
 
-### 1.2 `decrement_product_stock()` ⚠️ **LEGACY**
+### 1.2 `reserve_variant_stock()` ⭐ **RECOMMENDED**
 
-**Purpose:** Old stock decrement function (kept for backward compatibility)
-
-**Signature:**
-```sql
-CREATE FUNCTION decrement_product_stock(
-  variant_id uuid,
-  quantity integer
-) RETURNS jsonb
-```
-
-**Status:** ⚠️ **DEPRECATED** - Use `decrement_variant_stock()` instead
-
-**Migration Guide:**
-```javascript
-// OLD (don't use):
-const { data } = await supabase.rpc('decrement_product_stock', {
-  variant_id: 'uuid',
-  quantity: 1
-});
-
-// NEW (use this):
-const { data } = await supabase.rpc('decrement_variant_stock', {
-  p_variant_id: 'uuid',
-  p_quantity: 1
-});
-```
-
----
-
-### 1.3 `reserve_variant_stock()`
-
-**Purpose:** Reserve stock temporarily (for cart items, expires after timeout)
+**Purpose:** Reserve stock temporarily (expires in 15 minutes if not confirmed)
 
 **Signature:**
 ```sql
@@ -157,40 +70,22 @@ const { data: reservationId, error } = await supabase.rpc('reserve_variant_stock
   p_variant_id: variantId,
   p_user_id: user.id,
   p_quantity: 2,
-  p_order_id: null  // Optional: link to order
+  p_order_id: null  // Optional
 });
 
-// Store reservation ID for later confirmation
-localStorage.setItem('reservationId', reservationId);
-```
-
-**Flow:**
-```
-1. User adds item to cart → reserve_variant_stock()
-2. Stock reserved for 15 minutes
-3. User proceeds to checkout → confirm_stock_reservation()
-4. OR timeout expires → expire_old_stock_reservations() (cron job)
-```
-
-**Database Table:**
-```sql
-CREATE TABLE stock_reservations (
-  id uuid PRIMARY KEY,
-  variant_id uuid REFERENCES product_variants(id),
-  user_id uuid,
-  quantity integer,
-  order_id uuid,
-  expires_at timestamp DEFAULT NOW() + INTERVAL '15 minutes',
-  confirmed boolean DEFAULT false,
-  created_at timestamp DEFAULT NOW()
-);
+// Store in cart_items
+await supabase.from('cart_items').insert({
+  variant_id: variantId,
+  quantity: 2,
+  reservation_id: reservationId  // 🆕 Link reservation
+});
 ```
 
 ---
 
-### 1.4 `confirm_stock_reservation()`
+### 1.3 `confirm_stock_reservation()`
 
-**Purpose:** Confirm a stock reservation (convert to actual stock decrement)
+**Purpose:** Confirm a reservation and decrement actual stock
 
 **Signature:**
 ```sql
@@ -201,621 +96,402 @@ CREATE FUNCTION confirm_stock_reservation(
 
 **Usage:**
 ```javascript
-// During checkout confirmation
-const reservationId = localStorage.getItem('reservationId');
-
+// During checkout
 const { data, error } = await supabase.rpc('confirm_stock_reservation', {
   p_reservation_id: reservationId
 });
 
 if (data === true) {
-  // Reservation confirmed, stock decremented
-  // Proceed with payment
+  // Stock decremented, proceed with payment
 }
-```
-
-**How It Works:**
-```sql
-BEGIN
-  -- Mark reservation as confirmed
-  UPDATE stock_reservations
-  SET confirmed = true
-  WHERE id = p_reservation_id;
-  
-  -- Decrement actual stock
-  UPDATE product_variants
-  SET stock_quantity = stock_quantity - (
-    SELECT quantity FROM stock_reservations WHERE id = p_reservation_id
-  )
-  WHERE id = (
-    SELECT variant_id FROM stock_reservations WHERE id = p_reservation_id
-  );
-  
-  RETURN true;
-END;
 ```
 
 ---
 
-### 1.5 `expire_old_stock_reservations()`
+### 1.4 `confirm_multiple_reservations()` 🆕 **NEW**
 
-**Purpose:** Clean up expired stock reservations (cron job)
+**Purpose:** Confirm multiple reservations atomically (all-or-nothing)
+
+**Signature:**
+```sql
+CREATE FUNCTION confirm_multiple_reservations(
+  p_reservation_ids uuid[]
+) RETURNS jsonb
+```
+
+**Usage:**
+```javascript
+// Confirm entire cart at checkout
+const reservationIds = cartItems.map(item => item.reservation_id);
+
+const { data, error } = await supabase.rpc('confirm_multiple_reservations', {
+  p_reservation_ids: reservationIds
+});
+
+if (error) {
+  // All reservations rolled back automatically
+  console.error('Checkout failed:', error.message);
+} else {
+  // All stock decremented successfully
+  console.log('Confirmed:', data.confirmed_count);
+}
+```
+
+**Why Use This:**
+- ✅ Atomic operation (all succeed or all fail)
+- ✅ Prevents partial checkout failures
+- ✅ Single database round-trip
+
+---
+
+### 1.5 `get_available_stock()` 🆕 **NEW**
+
+**Purpose:** Get real-time available stock (total - active reservations)
+
+**Signature:**
+```sql
+CREATE FUNCTION get_available_stock(
+  p_variant_id uuid
+) RETURNS integer
+```
+
+**Usage:**
+```javascript
+// Show accurate availability on product page
+const { data: availableStock, error } = await supabase.rpc('get_available_stock', {
+  p_variant_id: variantId
+});
+
+console.log(`${availableStock} items available`);
+// Accounts for items in other users' carts
+```
+
+**Calculation:**
+```
+Available = Total Stock - Active Reservations (unconfirmed, not expired)
+```
+
+---
+
+### 1.6 `extend_reservation()` 🆕 **NEW**
+
+**Purpose:** Extend reservation expiry time (default: +15 minutes, max: 60)
+
+**Signature:**
+```sql
+CREATE FUNCTION extend_reservation(
+  p_reservation_id uuid,
+  p_extension_minutes integer DEFAULT 15
+) RETURNS timestamp  -- Returns new expiry time
+```
+
+**Usage:**
+```javascript
+// Extend reservation before checkout
+const { data: newExpiry, error } = await supabase.rpc('extend_reservation', {
+  p_reservation_id: reservationId,
+  p_extension_minutes: 10  // Add 10 more minutes
+});
+
+console.log('Extended until:', new Date(newExpiry));
+```
+
+**When to Use:**
+- User is on checkout page (about to complete purchase)
+- User actively viewing cart
+- Payment processing taking longer than expected
+
+---
+
+### 1.7 `cancel_reservation()` 🆕 **NEW**
+
+**Purpose:** Cancel/delete a reservation (releases stock immediately)
+
+**Signature:**
+```sql
+CREATE FUNCTION cancel_reservation(
+  p_reservation_id uuid
+) RETURNS boolean
+```
+
+**Usage:**
+```javascript
+// When user removes item from cart
+const { data: cancelled, error } = await supabase.rpc('cancel_reservation', {
+  p_reservation_id: reservationId
+});
+
+if (cancelled) {
+  console.log('Stock released back to inventory');
+}
+```
+
+**Returns:**
+- `true` - Reservation cancelled successfully
+- `false` - Reservation not found or already confirmed
+
+---
+
+### 1.8 `check_reservation_status()` 🆕 **NEW**
+
+**Purpose:** Get detailed reservation status including countdown timer
+
+**Signature:**
+```sql
+CREATE FUNCTION check_reservation_status(
+  p_reservation_id uuid
+) RETURNS jsonb
+```
+
+**Usage:**
+```javascript
+// Display countdown timer in cart
+const { data: status, error } = await supabase.rpc('check_reservation_status', {
+  p_reservation_id: reservationId
+});
+
+if (status.exists && !status.is_expired) {
+  console.log(`Time remaining: ${status.time_remaining_readable}`);
+  // "Time remaining: 12 minutes"
+} else {
+  console.log('Reservation expired - please refresh cart');
+}
+```
+
+**Response Structure:**
+```json
+{
+  "exists": true,
+  "reservation_id": "uuid",
+  "variant_id": "uuid",
+  "quantity": 2,
+  "confirmed": false,
+  "expires_at": "2026-01-24T17:05:00Z",
+  "is_expired": false,
+  "time_remaining_seconds": 720,
+  "time_remaining_minutes": 12.0,
+  "time_remaining_readable": "12 minutes"
+}
+```
+
+---
+
+### 1.9 `expire_old_stock_reservations()`
+
+**Purpose:** Clean up expired reservations (runs via cron every 5 minutes)
 
 **Signature:**
 ```sql
 CREATE FUNCTION expire_old_stock_reservations()
-RETURNS integer  -- Returns count of expired reservations
+RETURNS integer  -- Returns count of deleted reservations
 ```
 
-**Usage:**
+**Cron Setup:**
 ```sql
--- Run via cron job (every 5 minutes)
-SELECT expire_old_stock_reservations();
--- Returns: 5 (deleted 5 expired reservations)
-```
-
-**Setup Cron Job (Supabase):**
-```sql
--- Using pg_cron extension
+-- Automated cleanup (already configured)
 SELECT cron.schedule(
-  'expire-stock-reservations',  -- Job name
-  '*/5 * * * *',                -- Every 5 minutes
+  'expire-stock-reservations',
+  '*/5 * * * *',  -- Every 5 minutes
   'SELECT expire_old_stock_reservations();'
 );
 ```
 
-**Manual Cleanup:**
+**Manual Execution:**
 ```sql
--- Delete expired reservations manually
-DELETE FROM stock_reservations
-WHERE expires_at < NOW()
-AND confirmed = false;
+SELECT expire_old_stock_reservations();
+-- Returns: 3 (deleted 3 expired reservations)
 ```
 
 ---
 
-## 2. Order Processing
+### 1.10 `decrement_product_stock()` ⚠️ **DEPRECATED**
+
+**Status:** Legacy function - use `decrement_variant_stock()` instead
+
+---
+
+## 2. Order Processing (2 Functions)
 
 ### 2.1 `backfill_order_items()`
 
-**Purpose:** Migrate legacy orders to new `order_items` table (one-time migration)
-
-**Signature:**
-```sql
-CREATE FUNCTION backfill_order_items()
-RETURNS TABLE(
-  order_id uuid,
-  items_created integer,
-  status text
-)
-```
+**Purpose:** One-time migration from `orders.items` JSONB to `order_items` table
 
 **Usage:**
 ```sql
--- Run once to migrate all orders
 SELECT * FROM backfill_order_items();
-
--- Output:
---  order_id                              | items_created | status
--- ---------------------------------------|---------------|--------
---  a1b2c3d4-e5f6-7890-abcd-ef1234567890 | 3             | success
---  b2c3d4e5-f6a7-8901-bcde-f12345678901 | 2             | success
 ```
-
-**How It Works:**
-```sql
-FOR order_row IN SELECT * FROM orders WHERE items IS NOT NULL LOOP
-  -- Extract items from JSONB
-  FOR item IN SELECT * FROM jsonb_array_elements(order_row.items) LOOP
-    -- Insert into order_items table
-    INSERT INTO order_items (
-      order_id,
-      product_id,
-      variant_id,
-      quantity,
-      unit_price,
-      total_price
-    ) VALUES (
-      order_row.id,
-      item->>'productId',
-      item->>'variantId',
-      (item->>'quantity')::integer,
-      (item->>'price')::numeric,
-      (item->>'quantity')::integer * (item->>'price')::numeric
-    );
-  END LOOP;
-END LOOP;
-```
-
-**When to Use:**
-- ✅ After deploying new schema (one-time migration)
-- ✅ To populate `order_items` from legacy `orders.items` JSONB
-
-**When NOT to Use:**
-- ❌ On every order creation (use direct INSERT instead)
-- ❌ In production code (migration tool only)
 
 ---
 
 ### 2.2 `extract_customization_files()`
 
-**Purpose:** Extract file URLs from order items customization data
-
-**Signature:**
-```sql
-CREATE FUNCTION extract_customization_files()
-RETURNS TABLE(
-  order_item_id uuid,
-  file_url text,
-  cloudinary_public_id text
-)
-```
+**Purpose:** Extract customization file URLs for audit/cleanup
 
 **Usage:**
 ```sql
--- Get all customization files
 SELECT * FROM extract_customization_files();
-
--- Output:
---  order_item_id                         | file_url                          | cloudinary_public_id
--- ---------------------------------------|-----------------------------------|----------------------
---  a1b2c3d4-e5f6-7890-abcd-ef1234567890 | https://res.cloudinary.com/...    | shrifal/custom/abc123
 ```
-
-**Use Cases:**
-- Admin review of customization uploads
-- File cleanup/maintenance
-- Cloudinary storage audit
 
 ---
 
-## 3. Product Calculations
+## 3. Product Calculations (2 Functions)
 
 ### 3.1 `compute_product_base_price()`
 
-**Purpose:** Calculate the minimum price across all variants of a product
-
-**Signature:**
-```sql
-CREATE FUNCTION compute_product_base_price(
-  product_uuid uuid
-) RETURNS integer  -- Returns price in paise (smallest currency unit)
-```
+**Purpose:** Get minimum price across all active variants
 
 **Usage:**
 ```javascript
-// Get product base price
-const { data: basePrice, error } = await supabase.rpc('compute_product_base_price', {
+const { data: price } = await supabase.rpc('compute_product_base_price', {
   product_uuid: productId
 });
 
-console.log(`Starting from ₹${basePrice / 100}`);
-// Output: "Starting from ₹299"
-```
-
-**SQL:**
-```sql
-SELECT compute_product_base_price('product-uuid');
--- Returns: 29900 (₹299.00)
-```
-
-**How It Works:**
-```sql
-RETURN (
-  SELECT MIN(price)
-  FROM product_variants
-  WHERE product_id = product_uuid
-  AND is_active = true
-);
+console.log(`Starting from ₹${price / 100}`);
 ```
 
 ---
 
 ### 3.2 `compute_product_in_stock()`
 
-**Purpose:** Check if ANY variant of a product is in stock
-
-**Signature:**
-```sql
-CREATE FUNCTION compute_product_in_stock(
-  product_uuid uuid
-) RETURNS boolean
-```
+**Purpose:** Check if any variant is in stock
 
 **Usage:**
 ```javascript
-// Check product availability
-const { data: inStock, error } = await supabase.rpc('compute_product_in_stock', {
+const { data: inStock } = await supabase.rpc('compute_product_in_stock', {
   product_uuid: productId
 });
-
-if (inStock) {
-  showAddToCartButton();
-} else {
-  showOutOfStockMessage();
-}
-```
-
-**SQL:**
-```sql
-SELECT compute_product_in_stock('product-uuid');
--- Returns: true (at least one variant has stock > 0)
-```
-
-**How It Works:**
-```sql
-RETURN EXISTS (
-  SELECT 1
-  FROM product_variants
-  WHERE product_id = product_uuid
-  AND stock_quantity > 0
-  AND is_active = true
-);
 ```
 
 ---
 
-## 4. Data Migration
+## 4. Data Migration (1 Function)
 
 ### 4.1 `prevent_order_items_jsonb_write()` 🔒 **TRIGGER**
 
-**Purpose:** Prevent writes to deprecated `orders.items` JSONB column (enforce new schema)
+**Purpose:** Block writes to deprecated `orders.items` column
 
 **Type:** BEFORE INSERT/UPDATE Trigger
 
-**Usage:** Automatic (trigger-based)
-
-**How It Works:**
-```sql
-CREATE TRIGGER prevent_legacy_items_write
-BEFORE INSERT OR UPDATE ON orders
-FOR EACH ROW
-EXECUTE FUNCTION prevent_order_items_jsonb_write();
-
--- Function:
-CREATE FUNCTION prevent_order_items_jsonb_write()
-RETURNS TRIGGER AS $$
-BEGIN
-  IF NEW.items IS NOT NULL THEN
-    RAISE EXCEPTION 'Cannot write to orders.items. Use order_items table instead.';
-  END IF;
-  RETURN NEW;
-END;
-$$;
-```
-
-**Error Example:**
-```sql
-INSERT INTO orders (user_id, items, total_price)
-VALUES ('user-id', '[{"productId": "123"}]', 1000);
-
--- ERROR: Cannot write to orders.items. Use order_items table instead.
-```
-
 ---
 
-## 5. Triggers
+## 5. Triggers (6 Functions)
 
-### 5.1 `handle_new_user()` 🔒 **AUTH TRIGGER**
-
-**Purpose:** Auto-create customer profile when user registers
-
-**Type:** AFTER INSERT Trigger on `auth.users`
-
-**Usage:** Automatic
-
-**How It Works:**
-```sql
-CREATE TRIGGER on_auth_user_created
-AFTER INSERT ON auth.users
-FOR EACH ROW
-EXECUTE FUNCTION handle_new_user();
-
--- Function:
-CREATE FUNCTION handle_new_user()
-RETURNS TRIGGER AS $$
-BEGIN
-  INSERT INTO customers (user_id, email, created_at)
-  VALUES (
-    NEW.id,
-    NEW.email,
-    NEW.created_at
-  );
-  RETURN NEW;
-END;
-$$;
-```
-
-**Flow:**
-```
-1. User signs up → auth.users INSERT
-2. Trigger fires → handle_new_user()
-3. customers table row created automatically
-```
-
----
-
-### 5.2 `update_updated_at_column()` 🔒 **UNIVERSAL TRIGGER**
-
-**Purpose:** Auto-update `updated_at` timestamp on row changes
-
-**Type:** BEFORE UPDATE Trigger (applied to multiple tables)
-
-**Tables Using This:**
-- `products`
-- `product_variants`
-- `orders`
-- `customers`
-- `cart_items`
-
-**Usage:** Automatic
-
-**How It Works:**
-```sql
-CREATE TRIGGER update_products_updated_at
-BEFORE UPDATE ON products
-FOR EACH ROW
-EXECUTE FUNCTION update_updated_at_column();
-
--- Function:
-CREATE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.updated_at = NOW();
-  RETURN NEW;
-END;
-$$;
-```
-
-**Example:**
-```sql
-UPDATE products SET title = 'New Title' WHERE id = 'product-id';
--- updated_at automatically set to current timestamp ✅
-```
-
----
-
-### 5.3 `update_product_category_slug()` 🔒 **AUTO-SLUG TRIGGER**
-
-**Purpose:** Auto-generate URL-friendly slug from category name
-
-**Type:** BEFORE INSERT/UPDATE Trigger
-
-**Usage:** Automatic
-
-**How It Works:**
-```sql
-CREATE FUNCTION update_product_category_slug()
-RETURNS TRIGGER AS $$
-BEGIN
-  -- Convert name to slug: "Premium Gifts" → "premium-gifts"
-  NEW.slug = lower(regexp_replace(NEW.name, '[^a-zA-Z0-9]+', '-', 'g'));
-  RETURN NEW;
-END;
-$$;
-```
-
-**Example:**
-```sql
-INSERT INTO product_categories (name) VALUES ('Premium Gifts');
--- slug automatically set to 'premium-gifts' ✅
-```
-
----
-
-### 5.4 `update_product_price_on_variant_change()` 🔒 **PRICE SYNC TRIGGER**
-
-**Purpose:** Update `products.base_price` when variant prices change
-
-**Type:** AFTER INSERT/UPDATE/DELETE Trigger on `product_variants`
-
-**Usage:** Automatic
-
-**How It Works:**
-```sql
-CREATE FUNCTION update_product_price_on_variant_change()
-RETURNS TRIGGER AS $$
-BEGIN
-  -- Recalculate minimum price
-  UPDATE products
-  SET base_price = (
-    SELECT MIN(price)
-    FROM product_variants
-    WHERE product_id = NEW.product_id
-    AND is_active = true
-  )
-  WHERE id = NEW.product_id;
-  
-  RETURN NEW;
-END;
-$$;
-```
-
-**Example:**
-```sql
--- Product has 3 variants: ₹100, ₹200, ₹300
--- products.base_price = ₹100
-
-UPDATE product_variants SET price = 50 WHERE id = 'variant-1';
--- products.base_price automatically updated to ₹50 ✅
-```
-
----
-
-### 5.5 `update_product_stock_status_on_variant_change()` 🔒 **STOCK SYNC TRIGGER**
-
-**Purpose:** Update `products.in_stock` when variant stock changes
-
-**Type:** AFTER INSERT/UPDATE/DELETE Trigger on `product_variants`
-
-**Usage:** Automatic
-
-**How It Works:**
-```sql
-CREATE FUNCTION update_product_stock_status_on_variant_change()
-RETURNS TRIGGER AS $$
-BEGIN
-  -- Check if ANY variant has stock
-  UPDATE products
-  SET in_stock = EXISTS (
-    SELECT 1
-    FROM product_variants
-    WHERE product_id = NEW.product_id
-    AND stock_quantity > 0
-    AND is_active = true
-  )
-  WHERE id = NEW.product_id;
-  
-  RETURN NEW;
-END;
-$$;
-```
-
-**Example:**
-```sql
--- Product has 2 variants: stock = 0, stock = 5
--- products.in_stock = true
-
-UPDATE product_variants SET stock_quantity = 0 WHERE stock_quantity = 5;
--- products.in_stock automatically updated to false ✅
-```
+### 5.1 `handle_new_user()` - Auto-create customer profile
+### 5.2 `update_updated_at_column()` - Auto-update timestamps
+### 5.3 `update_product_category_slug()` - Auto-generate slugs
+### 5.4 `update_product_price_on_variant_change()` - Sync product prices
+### 5.5 `update_product_stock_status_on_variant_change()` - Sync stock status
 
 ---
 
 ## 📊 Function Usage Summary
 
+### 🆕 New Reservation Helpers (5)
+| Function | Purpose | When to Use |
+|----------|---------|-------------|
+| `get_available_stock()` | Real-time availability | Product pages, filters |
+| `extend_reservation()` | Add more time | Before checkout, payment |
+| `cancel_reservation()` | Release stock | Remove from cart |
+| `check_reservation_status()` | Get timer info | Cart countdown display |
+| `confirm_multiple_reservations()` | Batch confirm | Checkout (entire cart) |
+
 ### Production Critical (Use Always)
 | Function | Purpose | When to Use |
 |----------|---------|-------------|
-| `decrement_variant_stock()` | Atomic stock decrement | Checkout, order confirmation |
-| `reserve_variant_stock()` | Reserve stock temporarily | Add to cart |
-| `confirm_stock_reservation()` | Confirm reservation | Checkout completion |
-| `compute_product_base_price()` | Get minimum price | Product listing pages |
-| `compute_product_in_stock()` | Check availability | Product cards, filters |
+| `reserve_variant_stock()` | Reserve stock | Add to cart |
+| `confirm_stock_reservation()` | Confirm single | Checkout (single item) |
+| `decrement_variant_stock()` | Direct decrement | Admin, manual ops |
+| `compute_product_base_price()` | Get min price | Product listings |
+| `compute_product_in_stock()` | Check availability | Product cards |
 
 ### Maintenance Functions
 | Function | Purpose | Frequency |
 |----------|---------|----------|
-| `expire_old_stock_reservations()` | Clean up reservations | Cron: Every 5 min |
-| `backfill_order_items()` | Migrate legacy data | One-time migration |
-| `extract_customization_files()` | Audit file uploads | On-demand |
-
-### Deprecated
-| Function | Status | Use Instead |
-|----------|--------|-------------|
-| `decrement_product_stock()` | ⚠️ Legacy | `decrement_variant_stock()` |
+| `expire_old_stock_reservations()` | Cleanup | Cron: Every 5 min |
+| `backfill_order_items()` | Migrate data | One-time |
+| `extract_customization_files()` | Audit files | On-demand |
 
 ---
 
-## 🔧 How to Create New Functions
+## 🔄 Stock Reservation Flow
 
-### Template:
-```sql
-CREATE OR REPLACE FUNCTION your_function_name(
-  p_param1 datatype,
-  p_param2 datatype
-)
-RETURNS return_type
-LANGUAGE plpgsql
-AS $$
-DECLARE
-  v_variable datatype;
-BEGIN
-  -- Your logic here
-  
-  RETURN result;
-EXCEPTION
-  WHEN OTHERS THEN
-    RAISE EXCEPTION 'Error: %', SQLERRM;
-END;
-$$;
-
--- Add documentation
-COMMENT ON FUNCTION your_function_name(datatype, datatype) IS
-'Brief description of what this function does';
-
--- Grant permissions
-GRANT EXECUTE ON FUNCTION your_function_name(datatype, datatype) TO authenticated;
 ```
-
-### Best Practices:
-1. ✅ Use `p_` prefix for parameters
-2. ✅ Use `v_` prefix for variables
-3. ✅ Add `COMMENT` for documentation
-4. ✅ Handle exceptions explicitly
-5. ✅ Use row-level locking for concurrent operations
-6. ✅ Test with `BEGIN; ... ROLLBACK;` before deploying
-
----
-
-## 🧪 Testing Functions
-
-### Unit Test Template:
-```sql
--- Create test data
-BEGIN;
-
-INSERT INTO product_variants (id, product_id, price, stock_quantity)
-VALUES ('test-variant', 'test-product', 1000, 5);
-
--- Test function
-SELECT decrement_variant_stock('test-variant', 2);
-
--- Verify result
-SELECT stock_quantity FROM product_variants WHERE id = 'test-variant';
--- Expected: 3
-
--- Cleanup
-ROLLBACK;
-```
-
-### Concurrent Test:
-```sql
--- Terminal 1:
-BEGIN;
-SELECT decrement_variant_stock('variant-with-1-stock', 1);
--- Wait 10 seconds
-COMMIT;
-
--- Terminal 2 (run immediately):
-BEGIN;
-SELECT decrement_variant_stock('same-variant-id', 1);
--- Should wait, then throw "Insufficient stock"
-COMMIT;
+┌────────────────────────────────┐
+│  USER ADDS ITEM TO CART        │
+└────────────────────────────────┘
+           │
+           ↓
+┌────────────────────────────────┐
+│  reserve_variant_stock()      │
+│  Returns: reservation_id       │
+└────────────────────────────────┘
+           │
+           ↓
+┌────────────────────────────────┐
+│  Stock Reserved (15 min)       │
+│  Timer: 14:59... 14:58...     │
+└────────────────────────────────┘
+           │
+      ┌────┼────┐
+      │         │
+      ↓         ↓
+┌────────┐  ┌───────────┐
+│ CHECKOUT│  │ TIMEOUT   │
+└────────┘  └───────────┘
+      │              │
+      ↓              ↓
+confirm()      expire()
+Stock ↓        Stock released
 ```
 
 ---
 
-## 🚨 Common Errors
+## 🧪 Testing Guide
 
-### Error: "Variant not found"
-**Cause:** Invalid `variant_id` passed to function  
-**Fix:** Verify variant exists: `SELECT id FROM product_variants WHERE id = 'uuid';`
+### Test Complete Reservation Flow:
+```sql
+BEGIN;  -- Safe test transaction
 
-### Error: "Insufficient stock"
-**Cause:** Not enough stock available  
-**Fix:** Check stock: `SELECT stock_quantity FROM product_variants WHERE id = 'uuid';`
+-- 1. Create test variant
+INSERT INTO product_variants (id, product_id, sku, price, stock_quantity)
+VALUES ('test-var-001', gen_random_uuid(), 'TEST-001', 1000, 10);
 
-### Error: "Permission denied for function"
-**Cause:** User doesn't have EXECUTE permission  
-**Fix:** `GRANT EXECUTE ON FUNCTION function_name TO authenticated;`
+-- 2. Reserve stock
+SELECT reserve_variant_stock('test-var-001'::uuid, auth.uid(), 2, NULL) 
+AS reservation_id \gset
 
-### Error: "Function does not exist"
-**Cause:** Function not created or wrong schema  
-**Fix:** Create function or specify schema: `SELECT public.function_name();`
+-- 3. Check available stock
+SELECT get_available_stock('test-var-001'::uuid);
+-- Expected: 8 (10 total - 2 reserved)
+
+-- 4. Check reservation status
+SELECT check_reservation_status(:'reservation_id');
+
+-- 5. Extend reservation
+SELECT extend_reservation(:'reservation_id', 10);
+
+-- 6. Confirm reservation
+SELECT confirm_stock_reservation(:'reservation_id');
+
+-- 7. Verify stock decremented
+SELECT stock_quantity FROM product_variants WHERE id = 'test-var-001';
+-- Expected: 8
+
+ROLLBACK;  -- Clean up
+```
 
 ---
 
 ## 📞 Support
 
-For questions or issues:
-1. Check this documentation first
-2. Review function source code in `/supabase/functions/`
-3. Test functions in Supabase SQL Editor
-4. Check database logs for detailed error messages
+For questions:
+1. Check this documentation
+2. Review SQL files in `/database/migrations/`
+3. Test in Supabase SQL Editor
+4. Check logs for errors
 
 ---
 
 **Maintained by:** Development Team  
 **Last Review:** January 24, 2026  
-**Version:** 1.0.0
+**Version:** 2.0.0 (↑ Major update: Added 5 helper functions)
