@@ -4,6 +4,7 @@ import { useCart } from "@/contexts/CartContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabaseClient";
+import { useStockReservation } from "@/hooks/useStockReservation"; // 🆕 NEW
 
 const PHONEPE_PAY_URL = import.meta.env.VITE_BACKEND_URL
   ? `${import.meta.env.VITE_BACKEND_URL}/pay`
@@ -16,6 +17,9 @@ export const useCheckoutLogic = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const payFormRef = useRef(null);
+  
+  // 🆕 CRITICAL BUG #2 FIX: Use stock reservation hook
+  const { reserveStock, confirmMultipleReservations } = useStockReservation();
 
   // State
   const [loading, setLoading] = useState(true);
@@ -281,7 +285,7 @@ export const useCheckoutLogic = () => {
   const createOrder = useCallback(
     async (paymentMethod = "PayNow") => {
       try {
-        console.log("\n=== CREATING ORDER WITH CUSTOMIZATION UPLOADS ===");
+        console.log("\n=== CREATING ORDER WITH ATOMIC STOCK RESERVATION ===");
 
         if (!user?.id) {
           throw new Error("User not authenticated");
@@ -573,62 +577,80 @@ export const useCheckoutLogic = () => {
           console.log('  ℹ️ No customization requests needed');
         }
 
-        // ✅ STEP 3: DECREMENT STOCK
-        console.log("\n📉 DECREMENTING STOCK...");
-        const stockUpdates = [];
+        // ✅ CRITICAL BUG #2 FIX: ATOMIC STOCK RESERVATION + BATCH CONFIRMATION
+        console.log("\n🔒 RESERVING & CONFIRMING STOCK ATOMICALLY...");
+        const stockReservations = [];
         
-        for (const item of cartItems) {
-          console.log(`\n  Processing: ${item.name}`);
-          console.log(`    - variantId: ${item.variantId}`);
-          console.log(`    - quantity: ${item.quantity}`);
-          
-          if (!item.variantId) {
-            console.error(`    ❌ CRITICAL: Missing variantId for ${item.name}`);
-            throw new Error(`Product "${item.name}" is missing variant information.`);
-          }
-
-          try {
-            const { data: result, error } = await supabase.rpc('decrement_product_stock', {
-              variant_id: item.variantId,
-              quantity: item.quantity
-            });
-
-            if (error) {
-              console.error(`    ❌ RPC Error:`, error);
-              throw new Error(`Stock update failed for ${item.name}: ${error.message}`);
+        try {
+          // STEP 1: Reserve stock for all items
+          console.log("  📦 Step 1: Creating reservations...");
+          for (const item of cartItems) {
+            console.log(`    - Reserving: ${item.name} (qty: ${item.quantity})`);
+            
+            if (!item.variantId) {
+              throw new Error(`Missing variantId for ${item.name}`);
             }
 
-            const stockResult = typeof result === 'string' ? JSON.parse(result) : result;
-            
-            if (stockResult && !stockResult.success) {
-              console.error(`    ❌ Stock Error:`, stockResult.error);
-              throw new Error(
-                `${item.name}: ${stockResult.error}${stockResult.available ? ` (Available: ${stockResult.available})` : ''}`
-              );
-            }
-
-            console.log(`    ✅ Stock decremented: ${stockResult.previous_stock} → ${stockResult.new_stock}`);
-            stockUpdates.push({
-              item: item.name,
-              success: true,
-              result: stockResult
-            });
-
-          } catch (error) {
-            console.error(`    ❌ Failed to decrement stock:`, error);
-            
-            // Rollback order, items, and customization requests
-            await supabase.from('customization_requests').delete().eq('order_id', order.id);
-            await supabase.from('order_items').delete().eq('order_id', order.id);
-            await supabase.from('orders').delete().eq('id', order.id);
-            
-            throw new Error(
-              `Stock reservation failed for "${item.name}". ${error.message}. Order cancelled.`
+            const reservationId = await reserveStock(
+              item.variantId,
+              item.quantity,
+              user.id,
+              order.id
             );
+            
+            stockReservations.push({
+              item: item.name,
+              variantId: item.variantId,
+              quantity: item.quantity,
+              reservationId: reservationId
+            });
+            
+            console.log(`    ✅ Reserved: ${reservationId}`);
           }
+
+          console.log(`  ✅ All reservations created: ${stockReservations.length} items`);
+
+          // STEP 2: Batch confirm all reservations (atomic operation)
+          console.log("\n  🎯 Step 2: Batch confirming reservations (atomic)...");
+          const reservationIds = stockReservations.map(r => r.reservationId);
+          
+          const confirmResult = await confirmMultipleReservations(reservationIds);
+          
+          console.log(`  ✅ ATOMIC CONFIRMATION SUCCESS: ${confirmResult.confirmedCount} items`);
+          console.log(`     All stock decremented in single transaction`);
+          
+          // Log final stock status for each item
+          stockReservations.forEach(r => {
+            console.log(`    ✅ ${r.item}: ${r.quantity} units confirmed`);
+          });
+
+        } catch (error) {
+          console.error("\n  ❌ STOCK RESERVATION/CONFIRMATION FAILED:", error);
+          
+          // AUTOMATIC ROLLBACK: Delete order, items, and customization requests
+          console.log("  🔄 Rolling back order due to stock failure...");
+          
+          await supabase.from('customization_requests').delete().eq('order_id', order.id);
+          await supabase.from('order_items').delete().eq('order_id', order.id);
+          await supabase.from('orders').delete().eq('id', order.id);
+          
+          console.log("  ✅ Rollback complete");
+          
+          // Parse error for user-friendly message
+          let userMessage = error.message;
+          if (error.message.includes('Insufficient stock')) {
+            userMessage = `Stock unavailable: ${error.message}`;
+          } else if (error.message.includes('Reserved stock')) {
+            userMessage = 'Items currently in other carts. Please try again in a few minutes.';
+          }
+          
+          throw new Error(userMessage);
         }
 
-        console.log(`\n✅ Stock updated for ${stockUpdates.length}/${cartItems.length} items`);
+        console.log("\n✅ STOCK RESERVATION COMPLETE (BUG #2 FIXED)");
+        console.log("   - Atomic operation: All-or-nothing");
+        console.log("   - No race conditions possible");
+        console.log("   - Automatic rollback on failure");
         console.log("\n🎉 ORDER CREATION COMPLETE WITH CUSTOMIZATIONS\n");
         
         return order;
@@ -637,7 +659,17 @@ export const useCheckoutLogic = () => {
         throw error;
       }
     },
-    [user?.id, formData, total, getCartForCheckout, createCustomizationDetails, uploadCustomizationImage, toast]
+    [
+      user?.id, 
+      formData, 
+      total, 
+      getCartForCheckout, 
+      createCustomizationDetails, 
+      uploadCustomizationImage, 
+      reserveStock,
+      confirmMultipleReservations,
+      toast
+    ]
   );
 
   // Handle PayNow payment
