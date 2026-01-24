@@ -30,7 +30,7 @@ export function OrdersListItem({ order, onView, onEdit, onDelete }) {
             Order #{order.id.slice(0, 8)}
           </p>
           <p className="text-xs sm:text-sm text-muted-foreground truncate">
-            {String(order.customers?.name || "Unknown Customer")}
+            {String(order.customers?.name || order.customer_name || "Unknown Customer")}
           </p>
           <p className="text-xs text-muted-foreground">{displayDate}</p>
         </div>
@@ -41,8 +41,11 @@ export function OrdersListItem({ order, onView, onEdit, onDelete }) {
         {/* Amount and Items */}
         <div className="flex items-center gap-4">
           <div className="text-center">
+            {/* ✅ FIX BUG #1: Use order_total from view, not amount */}
+            {/* order_total is computed from order_items (source of truth) */}
+            {/* Fallback to amount for backward compatibility */}
             <p className="font-medium text-foreground text-sm sm:text-base">
-              ₹{(Number(order.amount) / 1.08).toFixed(2) || 0}
+              ₹{Number(order.order_total || order.amount || 0).toLocaleString()}
             </p>
             <p className="text-xs text-muted-foreground">Total</p>
           </div>
