@@ -1,73 +1,79 @@
-# Netlify Headers Configuration
-# Security and Performance Headers
+# Enhanced Headers for SEO, Security & Performance
+# Vercel automatically applies these to the deployed site
 
-/*
-  # Security Headers
-  X-Frame-Options: DENY
-  X-Content-Type-Options: nosniff
-  X-XSS-Protection: 1; mode=block
-  Referrer-Policy: strict-origin-when-cross-origin
-  Permissions-Policy: geolocation=(), microphone=(), camera=()
-  
-  # Content Security Policy - Fixed for Google Fonts and Cloudinary
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https: blob:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://res.cloudinary.com; frame-ancestors 'none';
-  
-  # Preconnect headers for faster resource loading
-  Link: <https://fonts.googleapis.com>; rel=preconnect; crossorigin
-  Link: <https://fonts.gstatic.com>; rel=preconnect; crossorigin
-  Link: <https://res.cloudinary.com>; rel=preconnect; crossorigin
-
-# Static Assets - Long term caching with immutable
+# ========================================
+# STATIC ASSETS - Long-term caching
+# ========================================
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
+  X-Content-Type-Options: nosniff
 
-# 🐛 FIX: Favicons - Moderate cache (30 days, allow updates)
-/favicon.ico
-  Cache-Control: public, max-age=2592000, must-revalidate
+# Images - 30 days cache
+/*.jpg
+  Cache-Control: public, max-age=2592000, immutable
+  X-Content-Type-Options: nosniff
 
-/favicon-*.png
-  Cache-Control: public, max-age=2592000, must-revalidate
+/*.jpeg
+  Cache-Control: public, max-age=2592000, immutable
+  X-Content-Type-Options: nosniff
 
-/android-chrome-*.png
-  Cache-Control: public, max-age=2592000, must-revalidate
+/*.png
+  Cache-Control: public, max-age=2592000, immutable
+  X-Content-Type-Options: nosniff
 
-/apple-touch-icon.png
-  Cache-Control: public, max-age=2592000, must-revalidate
+/*.webp
+  Cache-Control: public, max-age=2592000, immutable
+  X-Content-Type-Options: nosniff
 
-# Images - Longer cache
-*.jpg
-  Cache-Control: public, max-age=31536000, immutable
-*.jpeg
-  Cache-Control: public, max-age=31536000, immutable
-*.png
-  Cache-Control: public, max-age=31536000, immutable
-*.webp
-  Cache-Control: public, max-age=31536000, immutable
-*.avif
-  Cache-Control: public, max-age=31536000, immutable
-*.svg
-  Cache-Control: public, max-age=31536000, immutable
+/*.svg
+  Cache-Control: public, max-age=2592000, immutable
+  X-Content-Type-Options: nosniff
+  Content-Type: image/svg+xml
 
-# HTML - No cache
-/*.html
-  Cache-Control: public, max-age=0, must-revalidate
-
-/index.html
-  Cache-Control: public, max-age=0, must-revalidate
-
-# Service Worker - No cache
-/sw.js
-  Cache-Control: public, max-age=0, must-revalidate
-/registerSW.js
-  Cache-Control: public, max-age=0, must-revalidate
-
-# Manifest - Short cache
-/manifest.json
-  Cache-Control: public, max-age=86400
-
-# Sitemap and Robots
+# ========================================
+# SEO FILES - Short cache, correct MIME types
+# ========================================
 /sitemap.xml
-  Cache-Control: public, max-age=3600
+  Content-Type: application/xml; charset=utf-8
+  Cache-Control: public, max-age=3600, must-revalidate
+  X-Robots-Tag: noindex
 
 /robots.txt
+  Content-Type: text/plain; charset=utf-8
+  Cache-Control: public, max-age=3600, must-revalidate
+  X-Robots-Tag: noindex
+
+/manifest.json
+  Content-Type: application/manifest+json; charset=utf-8
   Cache-Control: public, max-age=86400
+
+# ========================================
+# FAVICONS - 7 days cache
+# ========================================
+/favicon.ico
+  Cache-Control: public, max-age=604800
+  X-Content-Type-Options: nosniff
+
+/*.ico
+  Cache-Control: public, max-age=604800
+  X-Content-Type-Options: nosniff
+
+# ========================================
+# HTML PAGES - No cache, SEO optimized
+# ========================================
+/*
+  Cache-Control: public, max-age=0, must-revalidate
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: SAMEORIGIN
+  X-XSS-Protection: 1; mode=block
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+
+# ========================================
+# SECURITY HEADERS (for all pages)
+# ========================================
+/*
+  Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob:; font-src 'self' data:; connect-src 'self' https://*.supabase.co https://res.cloudinary.com; frame-ancestors 'self'
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: SAMEORIGIN
