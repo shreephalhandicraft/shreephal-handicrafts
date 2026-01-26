@@ -70,7 +70,7 @@ export function ProductsPage() {
       if (catErr) throw catErr;
       setCategories(cats || []);
 
-      // Fetch products ONLY (no variants!)
+      // Fetch products ONLY (price and in_stock auto-computed by triggers)
       const { data: prods, error: prodErr } = await supabase
         .from("products")
         .select("*")
@@ -79,12 +79,12 @@ export function ProductsPage() {
 
       setProducts(prods || []);
 
-      // Fetch variants only for fetched product ids
+      // Fetch variants with correct schema fields (no size_code!)
       const productIds = prods?.map((p) => p.id) || [];
       if (productIds.length > 0) {
         const { data: vars, error: varErr } = await supabase
           .from("product_variants")
-          .select("id, product_id, size_code, price, stock_quantity")
+          .select("id, product_id, sku, size_display, size_numeric, size_unit, price_tier, price, stock_quantity")
           .in("product_id", productIds);
         if (varErr) throw varErr;
 
@@ -475,17 +475,28 @@ export function ProductsPage() {
                         {variantsMap[product.id] &&
                           variantsMap[product.id].length > 0 && (
                             <div className="mb-4">
-                              <h4 className="font-semibold mb-1">
+                              <h4 className="font-semibold mb-1 text-sm">
                                 Available Sizes:
                               </h4>
-                              <ul className="flex flex-wrap gap-3 text-sm">
+                              <ul className="flex flex-wrap gap-2 text-sm">
                                 {variantsMap[product.id].map((variant) => (
                                   <li
                                     key={variant.id}
-                                    className="bg-gray-100 px-3 py-1 rounded-full border border-gray-300"
+                                    className="bg-gray-100 px-3 py-1 rounded-full border border-gray-300 text-xs"
                                   >
-                                    {variant.size_code} — ₹
-                                    {variant.price.toFixed(2)}
+                                    <span className="font-medium">
+                                      {variant.size_display}
+                                    </span>
+                                    {variant.price && (
+                                      <span className="ml-1 text-gray-600">
+                                        — ₹{Number(variant.price).toFixed(2)}
+                                      </span>
+                                    )}
+                                    {variant.sku && (
+                                      <span className="ml-1 text-gray-500 text-xs">
+                                        ({variant.sku})
+                                      </span>
+                                    )}
                                   </li>
                                 ))}
                               </ul>
@@ -502,8 +513,9 @@ export function ProductsPage() {
                           <div className="flex items-center gap-1">
                             <IndianRupee className="h-4 w-4 text-muted-foreground" />
                             <span className="text-xl font-bold">
-                              {product.price.toFixed(2)}
+                              {product.price ? Number(product.price).toFixed(2) : '0.00'}
                             </span>
+                            <span className="text-xs text-gray-500">(base)</span>
                           </div>
 
                           <div className="flex space-x-2">

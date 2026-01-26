@@ -9,6 +9,8 @@ import {
   LogOut,
   Settings,
   ArrowLeft,
+  Wifi,
+  WifiOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,8 +26,9 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 
-export function DashboardHeader({ darkMode, toggleDarkMode }) {
+export function DashboardHeader({ darkMode, toggleDarkMode, realtimeStatus }) {
   const [searchTerm, setSearchTerm] = useState("");
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -57,7 +60,6 @@ export function DashboardHeader({ darkMode, toggleDarkMode }) {
   const handleSearch = (e) => {
     e.preventDefault();
     if (searchTerm.trim()) {
-      // Implement search functionality here
       console.log("Searching for:", searchTerm);
       toast({
         title: "Search",
@@ -65,6 +67,55 @@ export function DashboardHeader({ darkMode, toggleDarkMode }) {
       });
     }
   };
+
+  // ✅ Determine overall realtime connection status
+  const getConnectionStatus = () => {
+    if (!realtimeStatus) return { status: 'unknown', label: 'Unknown', color: 'gray' };
+    
+    const ordersStatus = realtimeStatus.orders;
+    const messagesStatus = realtimeStatus.messages;
+    
+    // Both connected = fully connected
+    if (ordersStatus === 'connected' && messagesStatus === 'connected') {
+      return { 
+        status: 'connected', 
+        label: 'Live', 
+        color: 'green',
+        icon: Wifi,
+      };
+    }
+    
+    // Any error = error state
+    if (ordersStatus === 'error' || messagesStatus === 'error') {
+      return { 
+        status: 'error', 
+        label: 'Offline', 
+        color: 'red',
+        icon: WifiOff,
+      };
+    }
+    
+    // Connecting
+    if (ordersStatus === 'connecting' || messagesStatus === 'connecting') {
+      return { 
+        status: 'connecting', 
+        label: 'Connecting', 
+        color: 'yellow',
+        icon: Wifi,
+      };
+    }
+    
+    // Disconnected
+    return { 
+      status: 'disconnected', 
+      label: 'Disconnected', 
+      color: 'gray',
+      icon: WifiOff,
+    };
+  };
+
+  const connectionStatus = getConnectionStatus();
+  const StatusIcon = connectionStatus.icon || Wifi;
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -97,6 +148,33 @@ export function DashboardHeader({ darkMode, toggleDarkMode }) {
 
         {/* Right side - Actions and User Menu */}
         <div className="flex items-center gap-2 sm:gap-4">
+          {/* ✅ Realtime Connection Status Indicator */}
+          {realtimeStatus && (
+            <div 
+              className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full border border-border bg-surface-light"
+              title={`Realtime updates: ${connectionStatus.label}`}
+            >
+              <StatusIcon 
+                className={cn(
+                  "h-3.5 w-3.5",
+                  connectionStatus.color === 'green' && "text-green-600 animate-pulse",
+                  connectionStatus.color === 'red' && "text-red-600",
+                  connectionStatus.color === 'yellow' && "text-yellow-600 animate-pulse",
+                  connectionStatus.color === 'gray' && "text-gray-400"
+                )}
+              />
+              <span className={cn(
+                "text-xs font-medium",
+                connectionStatus.color === 'green' && "text-green-600",
+                connectionStatus.color === 'red' && "text-red-600",
+                connectionStatus.color === 'yellow' && "text-yellow-600",
+                connectionStatus.color === 'gray' && "text-gray-500"
+              )}>
+                {connectionStatus.label}
+              </span>
+            </div>
+          )}
+
           {/* Back to Site Button */}
           <Button
             variant="ghost"
@@ -141,7 +219,6 @@ export function DashboardHeader({ darkMode, toggleDarkMode }) {
             title="Notifications"
           >
             <Bell className="h-4 w-4" />
-            {/* Notification badge - you can add logic to show when there are new notifications */}
             <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center text-[10px] font-medium">
               3
             </span>
@@ -180,7 +257,6 @@ export function DashboardHeader({ darkMode, toggleDarkMode }) {
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
 
-                {/* Admin Profile Link */}
                 <DropdownMenuItem asChild>
                   <Link to="/admin/profile" className="cursor-pointer">
                     <User className="mr-2 h-4 w-4" />
@@ -188,7 +264,6 @@ export function DashboardHeader({ darkMode, toggleDarkMode }) {
                   </Link>
                 </DropdownMenuItem>
 
-                {/* Settings */}
                 <DropdownMenuItem asChild>
                   <Link to="/admin/settings" className="cursor-pointer">
                     <Settings className="mr-2 h-4 w-4" />
@@ -198,7 +273,6 @@ export function DashboardHeader({ darkMode, toggleDarkMode }) {
 
                 <DropdownMenuSeparator />
 
-                {/* Back to Main Site */}
                 <DropdownMenuItem
                   onClick={handleBackToSite}
                   className="cursor-pointer"
@@ -209,7 +283,6 @@ export function DashboardHeader({ darkMode, toggleDarkMode }) {
 
                 <DropdownMenuSeparator />
 
-                {/* Logout */}
                 <DropdownMenuItem
                   onClick={handleLogout}
                   className="cursor-pointer text-red-600 focus:text-red-600"
@@ -220,7 +293,6 @@ export function DashboardHeader({ darkMode, toggleDarkMode }) {
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
-            // Fallback if somehow user is not authenticated
             <Button
               variant="ghost"
               size="sm"

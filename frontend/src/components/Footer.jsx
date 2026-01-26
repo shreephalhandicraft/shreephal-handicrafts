@@ -147,6 +147,11 @@ export const Footer = () => {
             <ul className="space-y-2 sm:space-y-3">
               {[
                 {
+                  to: "/trophy-shop-jabalpur",
+                  label: "Trophy Shop in Jabalpur",
+                  featured: true
+                },
+                {
                   to: "/category/trophies/products",
                   label: "Trophies & Awards",
                 },
@@ -159,13 +164,16 @@ export const Footer = () => {
                   to: "/category/calendars/products",
                   label: "Custom Calendars",
                 },
-
                 { to: "/shop", label: "View All Products" },
               ].map((link) => (
                 <li key={link.to}>
                   <Link
                     to={link.to}
-                    className="group flex items-center text-sm sm:text-base text-gray-300 hover:text-primary transition-all duration-300"
+                    className={`group flex items-center text-sm sm:text-base transition-all duration-300 ${
+                      link.featured 
+                        ? 'text-primary font-semibold hover:text-primary/80' 
+                        : 'text-gray-300 hover:text-primary'
+                    }`}
                   >
                     <ArrowRight className="h-3 w-3 sm:h-4 sm:w-4 mr-2 opacity-0 group-hover:opacity-100 transform -translate-x-2 group-hover:translate-x-0 transition-all duration-300" aria-hidden="true" />
                     <span className="group-hover:translate-x-1 transition-transform duration-300">

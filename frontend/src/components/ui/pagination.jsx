@@ -1,92 +1,139 @@
-import * as React from "react";
-import { ChevronLeft, ChevronRight, MoreHorizontal } from "lucide-react";
+import React from 'react';
+import { Button } from '@/components/ui/button';
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 
-import { cn } from "@/lib/utils";
-import { buttonVariants } from "@/components/ui/button";
+/**
+ * ✅ Pagination UI component
+ * Works with usePagination hook
+ */
+export const Pagination = ({
+  currentPage,
+  totalPages,
+  startIndex,
+  endIndex,
+  totalCount,
+  hasNextPage,
+  hasPrevPage,
+  nextPage,
+  prevPage,
+  goToPage,
+  className = '',
+}) => {
+  // Generate page numbers to display
+  const getPageNumbers = () => {
+    const pages = [];
+    const maxButtons = 5; // Show max 5 page buttons
+    
+    if (totalPages <= maxButtons) {
+      // Show all pages if total is small
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i);
+      }
+    } else {
+      // Show ellipsis for large page counts
+      if (currentPage <= 3) {
+        // Near start: [1] [2] [3] [4] ... [last]
+        pages.push(1, 2, 3, 4, '...', totalPages);
+      } else if (currentPage >= totalPages - 2) {
+        // Near end: [1] ... [last-3] [last-2] [last-1] [last]
+        pages.push(1, '...', totalPages - 3, totalPages - 2, totalPages - 1, totalPages);
+      } else {
+        // Middle: [1] ... [current-1] [current] [current+1] ... [last]
+        pages.push(1, '...', currentPage - 1, currentPage, currentPage + 1, '...', totalPages);
+      }
+    }
+    
+    return pages;
+  };
 
-const Pagination = ({ className, ...props }) => (
-  <nav
-    role="navigation"
-    aria-label="pagination"
-    className={cn("mx-auto flex w-full justify-center", className)}
-    {...props}
-  />
-);
-Pagination.displayName = "Pagination";
+  if (totalPages <= 1) {
+    // Don't show pagination for single page
+    return null;
+  }
 
-const PaginationContent = React.forwardRef(({ className, ...props }, ref) => (
-  <ul
-    ref={ref}
-    className={cn("flex flex-row items-center gap-1", className)}
-    {...props}
-  />
-));
-PaginationContent.displayName = "PaginationContent";
+  return (
+    <div className={`flex flex-col sm:flex-row items-center justify-between gap-4 ${className}`}>
+      {/* Item range info */}
+      <div className="text-sm text-gray-600">
+        Showing <span className="font-medium text-gray-900">{startIndex}</span> to{' '}
+        <span className="font-medium text-gray-900">{endIndex}</span> of{' '}
+        <span className="font-medium text-gray-900">{totalCount}</span> results
+      </div>
 
-const PaginationItem = React.forwardRef(({ className, ...props }, ref) => (
-  <li ref={ref} className={cn("", className)} {...props} />
-));
-PaginationItem.displayName = "PaginationItem";
+      {/* Pagination controls */}
+      <div className="flex items-center gap-2">
+        {/* First page */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => goToPage(1)}
+          disabled={!hasPrevPage}
+          className="hidden sm:flex"
+        >
+          <ChevronsLeft className="h-4 w-4" />
+        </Button>
 
-const PaginationLink = ({ className, isActive, size = "icon", ...props }) => (
-  <a
-    aria-current={isActive ? "page" : undefined}
-    className={cn(
-      buttonVariants({
-        variant: isActive ? "outline" : "ghost",
-        size,
-      }),
-      className
-    )}
-    {...props}
-  />
-);
-PaginationLink.displayName = "PaginationLink";
+        {/* Previous page */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={prevPage}
+          disabled={!hasPrevPage}
+        >
+          <ChevronLeft className="h-4 w-4" />
+          <span className="ml-1">Previous</span>
+        </Button>
 
-const PaginationPrevious = ({ className, ...props }) => (
-  <PaginationLink
-    aria-label="Go to previous page"
-    size="default"
-    className={cn("gap-1 pl-2.5", className)}
-    {...props}
-  >
-    <ChevronLeft className="h-4 w-4" />
-    <span>Previous</span>
-  </PaginationLink>
-);
-PaginationPrevious.displayName = "PaginationPrevious";
+        {/* Page numbers */}
+        <div className="hidden sm:flex items-center gap-1">
+          {getPageNumbers().map((page, index) => (
+            page === '...' ? (
+              <span key={`ellipsis-${index}`} className="px-2 text-gray-500">
+                …
+              </span>
+            ) : (
+              <Button
+                key={page}
+                variant={currentPage === page ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => goToPage(page)}
+                className="min-w-[40px]"
+              >
+                {page}
+              </Button>
+            )
+          ))}
+        </div>
 
-const PaginationNext = ({ className, ...props }) => (
-  <PaginationLink
-    aria-label="Go to next page"
-    size="default"
-    className={cn("gap-1 pr-2.5", className)}
-    {...props}
-  >
-    <span>Next</span>
-    <ChevronRight className="h-4 w-4" />
-  </PaginationLink>
-);
-PaginationNext.displayName = "PaginationNext";
+        {/* Mobile: Current page indicator */}
+        <div className="flex sm:hidden text-sm font-medium text-gray-700 px-3">
+          {currentPage} / {totalPages}
+        </div>
 
-const PaginationEllipsis = ({ className, ...props }) => (
-  <span
-    aria-hidden
-    className={cn("flex h-9 w-9 items-center justify-center", className)}
-    {...props}
-  >
-    <MoreHorizontal className="h-4 w-4" />
-    <span className="sr-only">More pages</span>
-  </span>
-);
-PaginationEllipsis.displayName = "PaginationEllipsis";
+        {/* Next page */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={nextPage}
+          disabled={!hasNextPage}
+        >
+          <span className="mr-1">Next</span>
+          <ChevronRight className="h-4 w-4" />
+        </Button>
 
-export {
-  Pagination,
-  PaginationContent,
-  PaginationEllipsis,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
+        {/* Last page */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => goToPage(totalPages)}
+          disabled={!hasNextPage}
+          className="hidden sm:flex"
+        >
+          <ChevronsRight className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
 };
+
+export default Pagination;

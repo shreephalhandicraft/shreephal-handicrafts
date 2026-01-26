@@ -1,3 +1,5 @@
+// Login.jsx - Fixed: Better error handling and session management
+
 import { useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Layout } from "@/components/Layout";
@@ -6,10 +8,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, AlertCircle } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { supabase } from "@/lib/supabaseClient";
 
-// You can replace this with a real Spinner component
 const Spinner = () => (
   <div className="flex items-center justify-center">
     <svg className="animate-spin h-5 w-5 text-white" viewBox="0 0 24 24">
@@ -39,6 +41,7 @@ const Login = () => {
 
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [emailNotConfirmed, setEmailNotConfirmed] = useState(false);
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -51,41 +54,107 @@ const Login = () => {
       ...formData,
       [e.target.name]: e.target.value,
     });
+    // Reset email confirmation warning when user changes input
+    if (emailNotConfirmed) {
+      setEmailNotConfirmed(false);
+    }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setEmailNotConfirmed(false);
 
-    const { user, error } = await login(formData.email, formData.password);
+    try {
+      console.log("🔐 Attempting login...");
 
-    setIsSubmitting(false);
+      const { user, error } = await login(formData.email, formData.password);
 
-    if (user) {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (session) {
-        toast({
-          title: "Welcome back!",
-          description: "You have been successfully logged in.",
-        });
-
-        navigate(from, { replace: true }); // ✅ Safe redirect here
-      } else {
-        toast({
-          title: "Login Issue",
-          description: "Unable to establish session. Try again.",
-          variant: "destructive",
-        });
+      if (error) {
+        console.error("❌ Login error:", error);
+        
+        // Check for specific error types
+        if (error.includes("Email not confirmed") || error.includes("email_confirmed_at")) {
+          setEmailNotConfirmed(true);
+          toast({
+            title: "Email Not Verified",
+            description: "Please check your email and verify your account before logging in.",
+            variant: "destructive",
+            duration: 5000,
+          });
+        } else if (error.includes("Invalid login credentials")) {
+          toast({
+            title: "Invalid Credentials",
+            description: "The email or password you entered is incorrect.",
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "Login Failed",
+            description: error || "Please check your credentials and try again.",
+            variant: "destructive",
+          });
+        }
+        setIsSubmitting(false);
+        return;
       }
-    } else {
+
+      if (user) {
+        console.log("✅ Login successful:", user);
+
+        // Verify session exists
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
+
+        if (sessionError) {
+          console.error("❌ Session error:", sessionError);
+          throw new Error("Failed to establish session");
+        }
+
+        if (session) {
+          console.log("✅ Session established");
+          
+          toast({
+            title: "Welcome back!",
+            description: "You have been successfully logged in.",
+          });
+
+          // Check if user is admin
+          const { data: adminData } = await supabase
+            .from("admin_users")
+            .select("id, role")
+            .eq("email", user.email)
+            .maybeSingle();
+
+          if (adminData) {
+            console.log("🔑 Admin user detected");
+            // If user tried to access admin, redirect there, otherwise dashboard
+            const redirectPath = from.startsWith("/admin") ? from : "/admin";
+            setTimeout(() => {
+              navigate(redirectPath, { replace: true });
+            }, 1000);
+          } else {
+            // Regular user - redirect to intended page or home
+            setTimeout(() => {
+              navigate(from, { replace: true });
+            }, 1000);
+          }
+        } else {
+          console.error("❌ No session created");
+          throw new Error("Unable to establish session. Please try again.");
+        }
+      }
+    } catch (err) {
+      console.error("❌ Login exception:", err);
       toast({
         title: "Login Failed",
-        description: error || "Please check your credentials and try again.",
+        description: err.message || "Something went wrong. Please try again.",
         variant: "destructive",
       });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -101,6 +170,15 @@ const Login = () => {
               <p className="text-gray-600">Sign in to your account</p>
             </div>
 
+            {emailNotConfirmed && (
+              <Alert className="mb-6 border-yellow-200 bg-yellow-50">
+                <AlertCircle className="h-4 w-4 text-yellow-600" />
+                <AlertDescription className="text-yellow-700">
+                  Your email address hasn't been verified yet. Please check your inbox for the verification link.
+                </AlertDescription>
+              </Alert>
+            )}
+
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
                 <Label htmlFor="email">Email Address</Label>
@@ -113,6 +191,8 @@ const Login = () => {
                   onChange={handleChange}
                   className="mt-1"
                   placeholder="Enter your email"
+                  disabled={isSubmitting}
+                  autoComplete="email"
                 />
               </div>
 
@@ -127,11 +207,15 @@ const Login = () => {
                     value={formData.password}
                     onChange={handleChange}
                     placeholder="Enter your password"
+                    disabled={isSubmitting}
+                    autoComplete="current-password"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    tabIndex="-1"
+                    disabled={isSubmitting}
                   >
                     {showPassword ? (
                       <EyeOff className="h-4 w-4" />
@@ -142,13 +226,30 @@ const Login = () => {
                 </div>
               </div>
 
-              <div className="text-right text-sm">
-                <Link
-                  to="/forgot-password"
-                  className="text-blue-500 hover:underline"
-                >
-                  Forgot Password?
-                </Link>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center">
+                  <input
+                    id="remember-me"
+                    name="remember-me"
+                    type="checkbox"
+                    className="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded"
+                  />
+                  <label
+                    htmlFor="remember-me"
+                    className="ml-2 block text-sm text-gray-700"
+                  >
+                    Remember me
+                  </label>
+                </div>
+
+                <div className="text-sm">
+                  <Link
+                    to="/forgot-password"
+                    className="text-primary hover:underline"
+                  >
+                    Forgot password?
+                  </Link>
+                </div>
               </div>
 
               <Button type="submit" className="w-full" disabled={isSubmitting}>
@@ -167,6 +268,41 @@ const Login = () => {
                 </Link>
               </p>
             </div>
+
+            {emailNotConfirmed && (
+              <div className="mt-6 pt-6 border-t border-gray-200">
+                <div className="text-center">
+                  <p className="text-sm text-gray-600 mb-2">
+                    Didn't receive the email?
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      try {
+                        const { error } = await supabase.auth.resend({
+                          type: 'signup',
+                          email: formData.email,
+                        });
+                        if (error) throw error;
+                        toast({
+                          title: "Email Sent",
+                          description: "Check your inbox for the verification link.",
+                        });
+                      } catch (err) {
+                        toast({
+                          title: "Failed to Resend",
+                          description: err.message,
+                          variant: "destructive",
+                        });
+                      }
+                    }}
+                  >
+                    Resend Verification Email
+                  </Button>
+                </div>
+              </div>
+            )}
 
             <div className="mt-6 pt-6 border-t border-gray-200">
               <p className="text-sm text-gray-500 text-center">

@@ -7,51 +7,59 @@
   <!-- Homepage -->
   <url>
     <loc>https://shreephalhandicrafts.com/</loc>
-    <lastmod>2026-01-15</lastmod>
+    <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
+  </url>
+
+  <!-- 🎯 Trophy Shop Jabalpur Landing Page (HIGH PRIORITY for Local SEO) -->
+  <url>
+    <loc>https://shreephalhandicrafts.com/trophy-shop-jabalpur</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.95</priority>
   </url>
 
   <!-- Shop/Products Main Page -->
   <url>
     <loc>https://shreephalhandicrafts.com/shop</loc>
-    <lastmod>2026-01-15</lastmod>
+    <lastmod>2026-01-24</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
 
   <!-- Product Category Pages (Correct Route Format) -->
   <url>
+    <loc>https://shreephalhandicrafts.com/category/trophies/products</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+
+  <url>
     <loc>https://shreephalhandicrafts.com/category/key-holders/products</loc>
-    <lastmod>2026-01-15</lastmod>
+    <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
 
   <url>
     <loc>https://shreephalhandicrafts.com/category/mandirs/products</loc>
-    <lastmod>2026-01-15</lastmod>
+    <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
 
   <url>
     <loc>https://shreephalhandicrafts.com/category/photo-frames/products</loc>
-    <lastmod>2026-01-15</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-
-  <url>
-    <loc>https://shreephalhandicrafts.com/category/trophies/products</loc>
-    <lastmod>2026-01-15</lastmod>
+    <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
 
   <url>
     <loc>https://shreephalhandicrafts.com/category/customization/products</loc>
-    <lastmod>2026-01-15</lastmod>
+    <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -59,14 +67,14 @@
   <!-- Important Static Pages -->
   <url>
     <loc>https://shreephalhandicrafts.com/about</loc>
-    <lastmod>2026-01-15</lastmod>
+    <lastmod>2026-01-24</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
 
   <url>
     <loc>https://shreephalhandicrafts.com/contact</loc>
-    <lastmod>2026-01-15</lastmod>
+    <lastmod>2026-01-24</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -74,21 +82,21 @@
   <!-- Policy Pages -->
   <url>
     <loc>https://shreephalhandicrafts.com/terms-conditions</loc>
-    <lastmod>2026-01-15</lastmod>
+    <lastmod>2026-01-24</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.4</priority>
   </url>
 
   <url>
     <loc>https://shreephalhandicrafts.com/privacy-policy</loc>
-    <lastmod>2026-01-15</lastmod>
+    <lastmod>2026-01-24</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.4</priority>
   </url>
 
   <url>
     <loc>https://shreephalhandicrafts.com/refund-policy</loc>
-    <lastmod>2026-01-15</lastmod>
+    <lastmod>2026-01-24</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.4</priority>
   </url>
@@ -96,7 +104,7 @@
   <!-- Shopping Cart (Low priority, but indexed) -->
   <url>
     <loc>https://shreephalhandicrafts.com/cart</loc>
-    <lastmod>2026-01-15</lastmod>
+    <lastmod>2026-01-24</lastmod>
     <changefreq>always</changefreq>
     <priority>0.3</priority>
   </url>

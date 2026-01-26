@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import { Layout } from "@/components/Layout";
 import CheckoutForm from "../components/CheckOut/CheckoutForm";
 import PaymentMethods from "../components/CheckOut/PaymentMethods";
@@ -38,8 +38,9 @@ const Checkout = () => {
     formData: {},
   });
 
+  // ✅ FIX MEDIUM BUG #1: Wrap in useCallback to prevent infinite loop
   // Handle validation changes from CheckoutForm
-  const handleValidationChange = (validationState) => {
+  const handleValidationChange = useCallback((validationState) => {
     setFormValidation(validationState);
 
     // Update the checkout logic with the validated form data
@@ -54,10 +55,11 @@ const Checkout = () => {
         });
       });
     }
-  };
+  }, [handleChange]); // Only recreate if handleChange changes
 
+  // ✅ FIX: Wrap in useCallback for stability
   // Handle data loaded from database
-  const handleDataLoaded = (loadedData) => {
+  const handleDataLoaded = useCallback((loadedData) => {
     console.log("Customer data loaded in checkout:", loadedData);
 
     // Update checkout logic with loaded data
@@ -72,7 +74,7 @@ const Checkout = () => {
         });
       }
     });
-  };
+  }, [handleChange]); // Only recreate if handleChange changes
 
   // Enhanced payment handlers that check validation
   const handleValidatedPayNow = () => {
@@ -140,8 +142,7 @@ const Checkout = () => {
               <Alert className="mb-6 border-yellow-200 bg-yellow-50">
                 <AlertTriangle className="h-4 w-4 text-yellow-600" />
                 <AlertDescription className="text-yellow-700">
-                  Please complete all required fields before proceeding with
-                  payment.
+                  ⚠ Please review and complete all required fields below
                 </AlertDescription>
               </Alert>
             )}

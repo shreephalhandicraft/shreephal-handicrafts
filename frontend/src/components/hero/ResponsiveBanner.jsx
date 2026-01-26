@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Award, ArrowRight } from "lucide-react";
+import { Award, ArrowRight, Trophy } from "lucide-react";
 
 export const ResponsiveBanner = () => {
   return (
@@ -96,6 +96,18 @@ export const ResponsiveBanner = () => {
               <ArrowRight className="ml-2 h-4 w-4 lg:h-5 lg:w-5 group-hover:translate-x-1 transition-transform" />
             </Button>
           </Link>
+          
+          {/* 🏆 NEW: Trophy Shop Jabalpur CTA */}
+          <Link to="/trophy-shop-jabalpur" className="w-full sm:w-auto">
+            <Button
+              size="lg"
+              className="w-full sm:w-auto text-sm sm:text-base lg:text-lg py-3 sm:py-4 lg:py-5 px-6 sm:px-8 lg:px-10 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-white shadow-2xl hover:shadow-amber-500/25 transform hover:-translate-y-1 transition-all duration-300 font-semibold"
+            >
+              <Trophy className="mr-2 h-4 w-4 lg:h-5 lg:w-5" />
+              <span>Trophy Shop in Jabalpur</span>
+            </Button>
+          </Link>
+          
           <Link to="/about" className="w-full sm:w-auto">
             <Button
               variant="outline"

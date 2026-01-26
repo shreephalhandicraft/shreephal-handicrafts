@@ -1,8 +1,6 @@
-// RouteGuards.jsx (Modified: Removed PhoneVerificationRoute)
+// RouteGuards.jsx - ✅ FIXED: Uses cached admin status from AuthContext
 import { useAuth } from "@/contexts/AuthContext";
 import { Navigate, useLocation } from "react-router-dom";
-import { supabase } from "@/lib/supabaseClient";
-import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 
 // Public Route - Redirects authenticated users away from auth pages
@@ -39,39 +37,11 @@ export const PrivateRoute = ({ children, redirectTo = "/login" }) => {
   return children;
 };
 
+// ✅ FIX MEDIUM BUG #3: Admin Route now uses cached status from AuthContext
 // Admin Route - Requires admin privileges
 export const AdminRoute = ({ children, redirectTo = "/" }) => {
-  const { user, loading } = useAuth();
+  const { user, loading, isAdmin, adminLoading } = useAuth();
   const location = useLocation();
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [adminLoading, setAdminLoading] = useState(true);
-
-  useEffect(() => {
-    const checkAdminStatus = async () => {
-      if (!user) {
-        setAdminLoading(false);
-        return;
-      }
-
-      try {
-        const { data, error } = await supabase
-          .from("admin_users")
-          .select("id, role")
-          .eq("email", user.email)
-          .single();
-
-        if (!error && data) {
-          setIsAdmin(true);
-        }
-      } catch (error) {
-        console.error("Admin check error:", error);
-      } finally {
-        setAdminLoading(false);
-      }
-    };
-
-    checkAdminStatus();
-  }, [user]);
 
   if (loading || adminLoading) {
     return <LoadingScreen />;
@@ -82,6 +52,7 @@ export const AdminRoute = ({ children, redirectTo = "/" }) => {
   }
 
   if (!isAdmin) {
+    console.log("⚠️ Access denied: User is not an admin");
     return <Navigate to={redirectTo} replace />;
   }
 
@@ -93,50 +64,17 @@ export const GuestRoute = ({ children }) => {
   return children;
 };
 
+// ✅ FIX: Protected Route now uses cached admin role from AuthContext
 // Protected Route - Requires specific permissions/roles
 export const ProtectedRoute = ({
   children,
   requiredRole = null,
-  requiredPermission = null,
   fallback = "/",
 }) => {
-  const { user, loading } = useAuth();
+  const { user, loading, adminRole, adminLoading } = useAuth();
   const location = useLocation();
-  const [hasAccess, setHasAccess] = useState(false);
-  const [permissionLoading, setPermissionLoading] = useState(true);
 
-  useEffect(() => {
-    const checkPermissions = async () => {
-      if (!user) {
-        setPermissionLoading(false);
-        return;
-      }
-
-      try {
-        const { data, error } = await supabase
-          .from("admin_users")
-          .select("role")
-          .eq("email", user.email)
-          .single();
-
-        if (!error && data) {
-          if (requiredRole && data.role === requiredRole) {
-            setHasAccess(true);
-          } else if (!requiredRole) {
-            setHasAccess(true);
-          }
-        }
-      } catch (error) {
-        console.error("Permission check error:", error);
-      } finally {
-        setPermissionLoading(false);
-      }
-    };
-
-    checkPermissions();
-  }, [user, requiredRole, requiredPermission]);
-
-  if (loading || permissionLoading) {
+  if (loading || adminLoading) {
     return <LoadingScreen />;
   }
 
@@ -144,7 +82,14 @@ export const ProtectedRoute = ({
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
-  if (!hasAccess) {
+  // ✅ Use cached adminRole instead of querying database
+  if (requiredRole && adminRole !== requiredRole) {
+    console.log("⚠️ Access denied: Required role", requiredRole, "but user has", adminRole);
+    return <Navigate to={fallback} replace />;
+  }
+
+  if (!adminRole) {
+    console.log("⚠️ Access denied: User is not an admin");
     return <Navigate to={fallback} replace />;
   }
 

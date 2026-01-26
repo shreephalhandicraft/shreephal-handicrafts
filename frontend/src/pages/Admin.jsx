@@ -1,10 +1,130 @@
+import { useState, useEffect } from "react";
 import { Layout } from "@/components/Layout";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
-import { BarChart3, Package, Users, DollarSign } from "lucide-react";
+import { BarChart3, Package, Users, DollarSign, AlertTriangle, Flame, TrendingDown, RefreshCw } from "lucide-react";
+import { supabase } from "@/lib/supabaseClient";
+import { useToast } from "@/hooks/use-toast";
 
 const Admin = () => {
   const { user } = useAuth();
+  const { toast } = useToast();
+  
+  // ✅ NEW: Stock management state
+  const [lowStockProducts, setLowStockProducts] = useState([]);
+  const [loadingStock, setLoadingStock] = useState(true);
+  const [totalInventoryValue, setTotalInventoryValue] = useState(0);
+  const [stockStats, setStockStats] = useState({
+    critical: 0, // stock <= 2
+    low: 0,      // stock <= 5
+    healthy: 0,  // stock > 5
+  });
+
+  // ✅ NEW: Fetch low stock products
+  useEffect(() => {
+    const fetchStockData = async () => {
+      try {
+        setLoadingStock(true);
+        
+        // ✅ FIXED: Changed size_code to size_display
+        // Fetch all product variants with stock info
+        const { data: variants, error } = await supabase
+          .from('product_variants')
+          .select(`
+            id,
+            size_display,
+            stock_quantity,
+            price,
+            is_active,
+            product_id,
+            products!product_id (
+              id,
+              title,
+              image_url,
+              price
+            )
+          `)
+          .eq('is_active', true)
+          .lte('stock_quantity', 10) // Get products with stock <= 10
+          .order('stock_quantity', { ascending: true });
+
+        if (error) throw error;
+
+        // Calculate statistics
+        let critical = 0;
+        let low = 0;
+        let healthy = 0;
+        let totalValue = 0;
+
+        variants?.forEach(variant => {
+          const stock = variant.stock_quantity || 0;
+          const value = stock * (variant.price || variant.products?.price || 0);
+          totalValue += value;
+
+          if (stock === 0 || stock <= 2) critical++;
+          else if (stock <= 5) low++;
+          else healthy++;
+        });
+
+        setStockStats({ critical, low, healthy });
+        setLowStockProducts(variants || []);
+        setTotalInventoryValue(totalValue);
+      } catch (error) {
+        console.error('Error fetching stock data:', error);
+        toast({
+          title: "Error",
+          description: "Failed to load stock data",
+          variant: "destructive",
+        });
+      } finally {
+        setLoadingStock(false);
+      }
+    };
+
+    if (user) {
+      fetchStockData();
+    }
+  }, [user, toast]);
+
+  const formatPrice = (price) => {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      minimumFractionDigits: 0,
+    }).format(price || 0);
+  };
+
+  const getStockBadge = (stock) => {
+    if (stock === 0) {
+      return (
+        <Badge className="bg-red-100 text-red-800 border-red-300">
+          <AlertTriangle className="h-3 w-3 mr-1" />
+          Out of Stock
+        </Badge>
+      );
+    } else if (stock <= 2) {
+      return (
+        <Badge className="bg-red-100 text-red-800 border-red-300 animate-pulse">
+          <Flame className="h-3 w-3 mr-1" />
+          Critical: {stock} left
+        </Badge>
+      );
+    } else if (stock <= 5) {
+      return (
+        <Badge className="bg-orange-100 text-orange-800 border-orange-300">
+          <TrendingDown className="h-3 w-3 mr-1" />
+          Low: {stock} left
+        </Badge>
+      );
+    } else {
+      return (
+        <Badge className="bg-green-100 text-green-800 border-green-300">
+          {stock} in stock
+        </Badge>
+      );
+    }
+  };
 
   if (!user) {
     return (
@@ -29,8 +149,39 @@ const Admin = () => {
             <h1 className="text-3xl font-bold text-gray-900 mb-2">
               Admin Dashboard
             </h1>
-            <p className="text-gray-600">Welcome back, {user.name}!</p>
+            <p className="text-gray-600">Welcome back, {user.email}!</p>
           </div>
+
+          {/* ✅ NEW: Low Stock Alert Banner */}
+          {!loadingStock && (stockStats.critical > 0 || stockStats.low > 0) && (
+            <div className="mb-6 bg-gradient-to-r from-red-50 to-orange-50 border-l-4 border-red-500 p-6 rounded-lg shadow-sm">
+              <div className="flex items-start">
+                <AlertTriangle className="h-6 w-6 text-red-600 mt-0.5 mr-3 flex-shrink-0" />
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-red-900 mb-2">
+                    ⚠️ Inventory Alert: Low Stock Detected
+                  </h3>
+                  <p className="text-red-800 mb-3">
+                    {stockStats.critical > 0 && (
+                      <span className="font-medium">
+                        {stockStats.critical} product{stockStats.critical > 1 ? 's are' : ' is'} critically low (≤2 units)
+                      </span>
+                    )}
+                    {stockStats.critical > 0 && stockStats.low > 0 && <span> and </span>}
+                    {stockStats.low > 0 && (
+                      <span className="font-medium">
+                        {stockStats.low} product{stockStats.low > 1 ? 's are' : ' is'} running low (≤5 units)
+                      </span>
+                    )}
+                  </p>
+                  <Button size="sm" className="bg-red-600 hover:bg-red-700">
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Restock Now
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Stats Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -40,47 +191,144 @@ const Admin = () => {
                   <DollarSign className="h-6 w-6 text-blue-600" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-gray-900">$12,450</p>
-                  <p className="text-sm text-gray-600">Total Revenue</p>
+                  <p className="text-2xl font-bold text-gray-900">{formatPrice(totalInventoryValue)}</p>
+                  <p className="text-sm text-gray-600">Inventory Value</p>
                 </div>
               </div>
             </div>
 
+            {/* ✅ NEW: Critical Stock Card */}
+            <div className="bg-white rounded-lg shadow-sm border p-6">
+              <div className="flex items-center">
+                <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center mr-4">
+                  <AlertTriangle className="h-6 w-6 text-red-600" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-red-600">{stockStats.critical}</p>
+                  <p className="text-sm text-gray-600">Critical Stock</p>
+                </div>
+              </div>
+            </div>
+
+            {/* ✅ NEW: Low Stock Card */}
+            <div className="bg-white rounded-lg shadow-sm border p-6">
+              <div className="flex items-center">
+                <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center mr-4">
+                  <TrendingDown className="h-6 w-6 text-orange-600" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-orange-600">{stockStats.low}</p>
+                  <p className="text-sm text-gray-600">Low Stock</p>
+                </div>
+              </div>
+            </div>
+
+            {/* ✅ NEW: Healthy Stock Card */}
             <div className="bg-white rounded-lg shadow-sm border p-6">
               <div className="flex items-center">
                 <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mr-4">
                   <Package className="h-6 w-6 text-green-600" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-gray-900">124</p>
-                  <p className="text-sm text-gray-600">Orders</p>
+                  <p className="text-2xl font-bold text-green-600">{stockStats.healthy}</p>
+                  <p className="text-sm text-gray-600">Healthy Stock</p>
                 </div>
               </div>
+            </div>
+          </div>
+
+          {/* ✅ NEW: Low Stock Products Table */}
+          <div className="bg-white rounded-lg shadow-sm border p-6 mb-8">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-semibold text-gray-900 flex items-center">
+                <AlertTriangle className="h-5 w-5 text-orange-500 mr-2" />
+                Products Requiring Attention
+              </h2>
+              <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Refresh
+              </Button>
             </div>
 
-            <div className="bg-white rounded-lg shadow-sm border p-6">
-              <div className="flex items-center">
-                <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mr-4">
-                  <Users className="h-6 w-6 text-purple-600" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-gray-900">89</p>
-                  <p className="text-sm text-gray-600">Customers</p>
-                </div>
+            {loadingStock ? (
+              <div className="text-center py-8">
+                <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
+                <p className="mt-2 text-gray-600">Loading stock data...</p>
               </div>
-            </div>
-
-            <div className="bg-white rounded-lg shadow-sm border p-6">
-              <div className="flex items-center">
-                <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center mr-4">
-                  <BarChart3 className="h-6 w-6 text-orange-600" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-gray-900">23%</p>
-                  <p className="text-sm text-gray-600">Growth</p>
-                </div>
+            ) : lowStockProducts.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <Package className="h-12 w-12 mx-auto mb-2 text-green-500" />
+                <p className="font-medium">All products are well stocked!</p>
               </div>
-            </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Product</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Variant</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Stock Status</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Price</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Value</th>
+                      <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lowStockProducts.map((variant) => {
+                      const stock = variant.stock_quantity || 0;
+                      const price = variant.price || variant.products?.price || 0;
+                      const value = stock * price;
+                      
+                      return (
+                        <tr 
+                          key={variant.id} 
+                          className={`border-b hover:bg-gray-50 transition-colors ${
+                            stock <= 2 ? 'bg-red-50' : stock <= 5 ? 'bg-orange-50' : ''
+                          }`}
+                        >
+                          <td className="py-3 px-4">
+                            <div className="flex items-center space-x-3">
+                              {variant.products?.image_url ? (
+                                <img 
+                                  src={variant.products.image_url} 
+                                  alt={variant.products.title}
+                                  className="w-10 h-10 rounded object-cover"
+                                />
+                              ) : (
+                                <div className="w-10 h-10 rounded bg-gray-200 flex items-center justify-center">
+                                  <Package className="h-5 w-5 text-gray-400" />
+                                </div>
+                              )}
+                              <span className="font-medium text-gray-900">
+                                {variant.products?.title || 'Unknown Product'}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4">
+                            {/* ✅ FIXED: Changed size_code to size_display */}
+                            <Badge variant="outline">{variant.size_display || 'Default'}</Badge>
+                          </td>
+                          <td className="py-3 px-4">
+                            {getStockBadge(stock)}
+                          </td>
+                          <td className="py-3 px-4 text-gray-900">
+                            {formatPrice(price)}
+                          </td>
+                          <td className="py-3 px-4 text-gray-900 font-medium">
+                            {formatPrice(value)}
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <Button size="sm" variant="outline">
+                              Restock
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
           {/* Quick Actions */}

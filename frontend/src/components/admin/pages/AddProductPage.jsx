@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import ImageUploadDirect from "@/components/ImageUploadDirect.jsx";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabaseClient";
+import { TrendingUp, Package, Info } from "lucide-react";
 
 export default function AddProductPage() {
   const { toast } = useToast();
@@ -14,12 +15,12 @@ export default function AddProductPage() {
   // Form states
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [price, setPrice] = useState("");
+  const [previewPrice, setPreviewPrice] = useState(0); // ✅ Real-time preview
+  const [previewStock, setPreviewStock] = useState(false); // ✅ Real-time preview
   const [categories, setCategories] = useState([]);
   const [categoryId, setCategoryId] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [uploading, setUploading] = useState(false);
-  const [inStock, setInStock] = useState(false);
   const [featured, setFeatured] = useState(false);
   const [featuredCount, setFeaturedCount] = useState(0);
   const [customizableFields, setCustomizableFields] = useState({
@@ -28,11 +29,19 @@ export default function AddProductPage() {
   });
   const [gst_5pct, setGst5pct] = useState(false);
   const [gst_18pct, setGst18pct] = useState(false);
-
   const [catalogNumber, setCatalogNumber] = useState("");
-  // Variants (maximum 3)
+
+  // ✅ ENHANCED: Variants with all new fields
   const [variants, setVariants] = useState([
-    { size: "", price: "", stock_quantity: "" },
+    {
+      sku: "",
+      size_display: "",
+      size_numeric: "",
+      size_unit: "inch",
+      price_tier: "A",
+      price: "",
+      stock_quantity: "",
+    },
   ]);
 
   useEffect(() => {
@@ -58,26 +67,93 @@ export default function AddProductPage() {
     fetchFeaturedCount();
   }, [toast]);
 
+  // ✅ REAL-TIME: Update price and stock preview when variants change
+  useEffect(() => {
+    if (variants.length > 0) {
+      // Auto-compute minimum price
+      const validPrices = variants
+        .map((v) => parseFloat(v.price))
+        .filter((p) => !isNaN(p) && p > 0);
+
+      if (validPrices.length > 0) {
+        setPreviewPrice(Math.min(...validPrices));
+      } else {
+        setPreviewPrice(0);
+      }
+
+      // Auto-compute stock status
+      const hasStock = variants.some((v) => {
+        const qty = Number(v.stock_quantity);
+        return !isNaN(qty) && qty > 0;
+      });
+      setPreviewStock(hasStock);
+    } else {
+      setPreviewPrice(0);
+      setPreviewStock(false);
+    }
+  }, [variants]);
+
+  // ✅ REAL-TIME: Update SKUs when catalog number changes
+  useEffect(() => {
+    if (catalogNumber.trim()) {
+      setVariants((vars) =>
+        vars.map((v) => ({
+          ...v,
+          sku: `${catalogNumber.trim()}-${v.price_tier}`,
+        }))
+      );
+    }
+  }, [catalogNumber]);
+
   const onUploadSuccess = (imgData) => {
     setImageUrl(imgData.url || imgData.cloudinary_url || "");
     toast({ title: "Image uploaded successfully" });
     setUploading(false);
   };
 
-  const handleUploadStart = () => {
-    setUploading(true);
-  };
-
+  // ✅ ENHANCED: Handle variant changes with SKU auto-generation
   const handleVariantChange = (idx, field, value) => {
     setVariants((current) =>
-      current.map((v, i) => (i === idx ? { ...v, [field]: value } : v))
+      current.map((v, i) => {
+        if (i !== idx) return v;
+
+        const updated = { ...v, [field]: value };
+
+        // Auto-generate SKU when price_tier changes
+        if (field === "price_tier" && catalogNumber.trim()) {
+          updated.sku = `${catalogNumber.trim()}-${value}`;
+        }
+
+        return updated;
+      })
     );
   };
 
+  // ✅ ENHANCED: Add variant with new fields
   const addVariant = () => {
-    if (variants.length < 3) {
-      setVariants([...variants, { size: "", price: "", stock_quantity: "" }]);
+    if (variants.length >= 3) {
+      toast({
+        title: "Limit reached",
+        description: "Maximum 3 sizes allowed.",
+        variant: "destructive",
+      });
+      return;
     }
+
+    const nextTier = String.fromCharCode(65 + variants.length); // A, B, C
+
+    setVariants([
+      ...variants,
+      {
+        sku: catalogNumber.trim() ? `${catalogNumber.trim()}-${nextTier}` : "",
+        size_display: "",
+        size_numeric: "",
+        size_unit: "inch",
+        price_tier: nextTier,
+        price: "",
+        stock_quantity: "",
+      },
+    ]);
   };
 
   const removeVariant = (idx) => {
@@ -90,8 +166,11 @@ export default function AddProductPage() {
     setCustomizableFields((prev) => ({ ...prev, [field]: e.target.checked }));
   };
 
+  // ✅ COMPLETE VALIDATION
   const validateAndSubmit = async (e) => {
     e.preventDefault();
+
+    // Validate title
     if (!title.trim()) {
       toast({
         title: "Validation Error",
@@ -100,14 +179,29 @@ export default function AddProductPage() {
       });
       return;
     }
-    if (!price || Number(price) < 0) {
+
+    // ✅ VALIDATION: Catalog number required
+    if (!catalogNumber.trim()) {
       toast({
         title: "Validation Error",
-        description: "Price must be a positive number.",
+        description: "Catalog number is required (e.g., SM-1614, MH-2401).",
         variant: "destructive",
       });
       return;
     }
+
+    // ✅ VALIDATION: Catalog number format
+    if (!/^[A-Z]{2,4}-\d{3,5}$/.test(catalogNumber.trim())) {
+      toast({
+        title: "Validation Error",
+        description:
+          "Catalog number must be in format: 2-4 letters, dash, 3-5 numbers (e.g., SM-1614)",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validate category
     if (!categoryId) {
       toast({
         title: "Validation Error",
@@ -116,6 +210,8 @@ export default function AddProductPage() {
       });
       return;
     }
+
+    // Validate featured limit
     if (featured && featuredCount >= 4) {
       toast({
         title: "Featured limit reached",
@@ -126,25 +222,94 @@ export default function AddProductPage() {
       return;
     }
 
-    // Validate variants
-    if (
-      variants.some(
-        (v) =>
-          !v.size ||
-          !v.price ||
-          Number(v.price) <= 0 ||
-          !v.stock_quantity ||
-          Number(v.stock_quantity) < 0
-      )
-    ) {
+    // ✅ VALIDATION: At least one variant
+    if (variants.length === 0) {
       toast({
         title: "Validation Error",
-        description:
-          "Each variant must have size, price (>0), and stock quantity (>=0).",
+        description: "At least one size variant is required.",
         variant: "destructive",
       });
       return;
     }
+
+    // ✅ VALIDATION: All required variant fields
+    for (let i = 0; i < variants.length; i++) {
+      const v = variants[i];
+
+      if (!v.size_display || !v.size_display.trim()) {
+        toast({
+          title: "Validation Error",
+          description: `Variant ${i + 1}: Size display is required.`,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (!v.price_tier || !v.price_tier.trim()) {
+        toast({
+          title: "Validation Error",
+          description: `Variant ${i + 1}: Price tier is required.`,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (!v.sku || !v.sku.trim()) {
+        toast({
+          title: "Validation Error",
+          description: `Variant ${i + 1}: SKU is required (check catalog number).`,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (!v.price || isNaN(parseFloat(v.price)) || parseFloat(v.price) <= 0) {
+        toast({
+          title: "Validation Error",
+          description: `Variant ${i + 1}: Price must be greater than 0.`,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (
+        v.stock_quantity === "" ||
+        isNaN(Number(v.stock_quantity)) ||
+        Number(v.stock_quantity) < 0
+      ) {
+        toast({
+          title: "Validation Error",
+          description: `Variant ${i + 1}: Stock quantity must be 0 or greater.`,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // ✅ VALIDATION: Size numeric if provided
+      if (v.size_numeric && isNaN(parseFloat(v.size_numeric))) {
+        toast({
+          title: "Validation Error",
+          description: `Variant ${i + 1}: Size numeric must be a valid number.`,
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
+    // ✅ VALIDATION: SKU uniqueness
+    const skus = variants.map((v) => v.sku.trim()).filter(Boolean);
+    const uniqueSkus = new Set(skus);
+    if (skus.length !== uniqueSkus.size) {
+      toast({
+        title: "Validation Error",
+        description:
+          "Duplicate SKUs detected. Each variant must have a unique SKU.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // ✅ VALIDATION: Max 3 variants
     if (variants.length > 3) {
       toast({
         title: "Validation Error",
@@ -154,22 +319,23 @@ export default function AddProductPage() {
       return;
     }
 
-    // Insert main product
+    // ✅ FIXED: Don't send price or in_stock - triggers will compute them
     const newProduct = {
       title: title.trim(),
       description: description.trim(),
-      price: parseFloat(price),
+      // price will be auto-set by trigger
       category_id: categoryId,
       image_url: imageUrl,
-      in_stock: inStock,
+      // in_stock will be auto-set by trigger
       customizable_fields: customizableFields,
       featured,
-      catalog_number: catalogNumber.trim(),
-      gst_5pct, // Add this line
-      gst_18pct, // Add this line
+      catalog_number: catalogNumber.trim().toUpperCase(),
+      gst_5pct,
+      gst_18pct,
       created_at: new Date().toISOString(),
     };
 
+    // Insert product
     const { data: prodData, error } = await supabase
       .from("products")
       .insert([newProduct])
@@ -185,20 +351,28 @@ export default function AddProductPage() {
       return;
     }
 
-    // Insert variants (sizes) to product_variants table
+    // ✅ ENHANCED: Insert variants with all new fields
     const variantsToInsert = variants.map((v) => ({
       product_id: prodData.id,
-      size_code: v.size,
+      sku: v.sku.trim().toUpperCase(),
+      size_display: v.size_display.trim(),
+      size_numeric: v.size_numeric ? parseFloat(v.size_numeric) : null,
+      size_unit: v.size_unit || "inch",
+      price_tier: v.price_tier.trim().toUpperCase(),
       price: parseFloat(v.price),
       stock_quantity: Number(v.stock_quantity),
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }));
+
     const { error: variantErr } = await supabase
       .from("product_variants")
       .insert(variantsToInsert);
 
     if (variantErr) {
+      // If variant insert fails, delete the product to maintain consistency
+      await supabase.from("products").delete().eq("id", prodData.id);
+
       toast({
         title: "Failed to add product variants",
         description: variantErr.message,
@@ -207,19 +381,29 @@ export default function AddProductPage() {
       return;
     }
 
-    toast({ title: "Product added successfully" });
+    toast({
+      title: "Product added successfully",
+      description:
+        "Price and stock status have been automatically computed from variants.",
+    });
     navigate("/admin/products");
   };
 
   return (
     <form
       onSubmit={validateAndSubmit}
-      className="max-w-3xl mx-auto p-8 bg-white rounded-lg shadow-md space-y-8"
+      className="max-w-5xl mx-auto p-8 bg-white rounded-lg shadow-md space-y-8"
       noValidate
     >
-      <h2 className="text-3xl font-semibold text-gray-800 mb-6">
-        Add New Product
-      </h2>
+      <div className="border-b pb-4">
+        <h2 className="text-3xl font-semibold text-gray-800">
+          Add New Product
+        </h2>
+        <p className="text-sm text-gray-600 mt-1">
+          Fill in the details below. Price and stock will be automatically
+          calculated from variants.
+        </p>
+      </div>
 
       {/* Product Title */}
       <div className="flex flex-col">
@@ -252,24 +436,84 @@ export default function AddProductPage() {
         />
       </div>
 
-      {/* Base Price */}
+      {/* Catalog Number */}
       <div className="flex flex-col">
-        <Label htmlFor="price" className="mb-1 font-medium text-gray-700">
-          Base Price (₹) <span className="text-red-500">*</span>
+        <Label
+          htmlFor="catalogNumber"
+          className="mb-1 font-medium text-gray-700"
+        >
+          Catalog Number <span className="text-red-500">*</span>
         </Label>
         <Input
-          id="price"
-          type="number"
-          min="0"
-          step="0.01"
-          placeholder="Enter base price"
-          value={price}
-          onChange={(e) => setPrice(e.target.value)}
+          id="catalogNumber"
+          placeholder="e.g., SM-1614, MH-2401"
+          value={catalogNumber}
+          onChange={(e) => setCatalogNumber(e.target.value.toUpperCase())}
           required
-          className="placeholder-gray-400"
+          className="placeholder-gray-400 font-mono"
         />
-        <p className="text-xs text-gray-500 mt-1">
-          This is the default price if no variants.
+        <p className="text-xs text-gray-600 mt-1 flex items-center gap-1">
+          <Info className="w-3 h-3" />
+          Format: 2-4 letters, dash, 3-5 numbers. Used for SKU generation.
+        </p>
+      </div>
+
+      {/* ✅ PREVIEW: Auto-Computed Price */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <TrendingUp className="w-5 h-5 text-blue-600" />
+          <Label className="text-sm font-semibold text-blue-900">
+            Base Price (Auto-Computed Preview)
+          </Label>
+        </div>
+        <div className="text-3xl font-bold text-blue-700">
+          ₹{previewPrice.toFixed(2)}
+        </div>
+        <p className="text-xs text-blue-600 mt-1">
+          Will be set to the minimum variant price automatically by database
+          trigger
+        </p>
+      </div>
+
+      {/* ✅ PREVIEW: Auto-Computed Stock Status */}
+      <div
+        className={`border rounded-lg p-4 ${
+          previewStock
+            ? "bg-green-50 border-green-200"
+            : "bg-red-50 border-red-200"
+        }`}
+      >
+        <div className="flex items-center gap-2 mb-2">
+          <Package
+            className={`w-5 h-5 ${
+              previewStock ? "text-green-600" : "text-red-600"
+            }`}
+          />
+          <Label
+            className={`text-sm font-semibold ${
+              previewStock ? "text-green-900" : "text-red-900"
+            }`}
+          >
+            Stock Status (Auto-Computed Preview)
+          </Label>
+        </div>
+        <div className="flex items-center gap-2">
+          <div
+            className={`w-3 h-3 rounded-full ${
+              previewStock ? "bg-green-500" : "bg-red-500"
+            }`}
+          />
+          <span className="font-medium text-lg">
+            {previewStock ? "In Stock" : "Out of Stock"}
+          </span>
+        </div>
+        <p
+          className={`text-xs mt-1 ${
+            previewStock ? "text-green-600" : "text-red-600"
+          }`}
+        >
+          Will be updated automatically by database trigger based on variant
+          inventory
         </p>
       </div>
 
@@ -320,92 +564,189 @@ export default function AddProductPage() {
         </div>
       </div>
 
-      {/* Sizes & Variants */}
-      <fieldset className="border border-gray-300 rounded-md p-4">
-        <legend className="text-lg font-semibold text-gray-700 mb-4">
-          Sizes & Variants (max 3)
+      {/* ✅ ENHANCED: Sizes & Variants with Full Fields */}
+      <fieldset className="border-2 border-indigo-200 rounded-lg p-6 bg-indigo-50/30">
+        <legend className="text-xl font-semibold text-indigo-900 px-2">
+          Sizes & Variants (max 3) <span className="text-red-500">*</span>
         </legend>
+        <p className="text-sm text-gray-700 mb-6 bg-yellow-50 border border-yellow-200 rounded p-3">
+          <Info className="w-4 h-4 inline mr-1" />
+          <strong>Important:</strong> Product price will be automatically set to
+          the <strong>lowest variant price</strong>. Stock status will be{" "}
+          <strong>"In Stock"</strong> if ANY variant has stock &gt; 0.
+        </p>
+
         {variants.map((variant, idx) => (
           <div
             key={idx}
-            className="mb-4 flex flex-wrap gap-4 items-end border p-4 rounded-md shadow-sm"
+            className="mb-6 border-2 border-gray-300 rounded-lg p-6 bg-white shadow-sm"
           >
-            <div className="flex-1 min-w-[6rem]">
-              <Label
-                htmlFor={`size-${idx}`}
-                className="block mb-1 font-medium text-gray-600"
-              >
-                Size <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id={`size-${idx}`}
-                placeholder="e.g. 6, 6.5, 7"
-                value={variant.size}
-                onChange={(e) =>
-                  handleVariantChange(idx, "size", e.target.value)
-                }
-                required
-                className="placeholder-gray-400"
-              />
-            </div>
-
-            <div className="flex-1 min-w-[8rem]">
-              <Label
-                htmlFor={`price-${idx}`}
-                className="block mb-1 font-medium text-gray-600"
-              >
-                Price (₹) <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id={`price-${idx}`}
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="Price for size"
-                value={variant.price}
-                onChange={(e) =>
-                  handleVariantChange(idx, "price", e.target.value)
-                }
-                required
-                className="placeholder-gray-400"
-              />
-            </div>
-
-            <div className="flex-1 min-w-[10rem]">
-              <Label
-                htmlFor={`stock-${idx}`}
-                className="block mb-1 font-medium text-gray-600"
-              >
-                Stock Quantity <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id={`stock-${idx}`}
-                type="number"
-                min="0"
-                step="1"
-                placeholder="Stock qty"
-                value={variant.stock_quantity}
-                onChange={(e) =>
-                  handleVariantChange(idx, "stock_quantity", e.target.value)
-                }
-                required
-                className="placeholder-gray-400"
-              />
-            </div>
-
-            {variants.length > 1 && (
-              <div className="flex items-center">
+            <h4 className="font-semibold text-gray-800 mb-4 flex items-center justify-between">
+              <span>
+                Variant {idx + 1}{" "}
+                <span className="text-sm font-normal text-gray-500">
+                  (Tier: {variant.price_tier})
+                </span>
+              </span>
+              {variants.length > 1 && (
                 <Button
                   type="button"
                   variant="destructive"
-                  className="h-10 px-3 py-2"
+                  size="sm"
                   onClick={() => removeVariant(idx)}
-                  aria-label={`Remove variant ${idx + 1}`}
+                  className="ml-auto"
                 >
                   Remove
                 </Button>
+              )}
+            </h4>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {/* SKU Display (Read-only, Auto-generated) */}
+              <div className="lg:col-span-1">
+                <Label className="text-xs font-semibold text-gray-700 mb-1 block">
+                  SKU (Auto-Generated)
+                </Label>
+                <Input
+                  value={variant.sku || "Enter catalog first"}
+                  disabled
+                  className="bg-gray-100 text-gray-700 font-mono text-sm"
+                />
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Format: {catalogNumber || "CATALOG"}-{variant.price_tier}
+                </p>
               </div>
-            )}
+
+              {/* Size Display */}
+              <div>
+                <Label className="text-xs font-semibold text-gray-700 mb-1 block">
+                  Size Display <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  placeholder="e.g., 6 INCH, Small"
+                  value={variant.size_display}
+                  onChange={(e) =>
+                    handleVariantChange(idx, "size_display", e.target.value)
+                  }
+                  required
+                  className="placeholder-gray-400"
+                />
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Shown to customers
+                </p>
+              </div>
+
+              {/* Price Tier */}
+              <div>
+                <Label className="text-xs font-semibold text-gray-700 mb-1 block">
+                  Price Tier <span className="text-red-500">*</span>
+                </Label>
+                <select
+                  value={variant.price_tier}
+                  onChange={(e) =>
+                    handleVariantChange(idx, "price_tier", e.target.value)
+                  }
+                  className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-indigo-500"
+                  required
+                >
+                  <option value="A">A (Smallest/Cheapest)</option>
+                  <option value="B">B</option>
+                  <option value="C">C</option>
+                  <option value="D">D</option>
+                  <option value="S">S (Small)</option>
+                  <option value="M">M (Medium)</option>
+                  <option value="L">L (Large)</option>
+                  <option value="XL">XL (Extra Large)</option>
+                  <option value="G">G (Gold)</option>
+                  <option value="SV">SV (Silver)</option>
+                  <option value="BR">BR (Bronze)</option>
+                </select>
+                <p className="text-xs text-gray-500 mt-0.5">For SKU suffix</p>
+              </div>
+
+              {/* Size Numeric (Optional) */}
+              <div>
+                <Label className="text-xs font-semibold text-gray-700 mb-1 block">
+                  Size (Number)
+                </Label>
+                <Input
+                  type="number"
+                  step="0.1"
+                  placeholder="6.0"
+                  value={variant.size_numeric}
+                  onChange={(e) =>
+                    handleVariantChange(idx, "size_numeric", e.target.value)
+                  }
+                  className="placeholder-gray-400"
+                />
+                <p className="text-xs text-gray-500 mt-0.5">
+                  For range filtering
+                </p>
+              </div>
+
+              {/* Size Unit */}
+              <div>
+                <Label className="text-xs font-semibold text-gray-700 mb-1 block">
+                  Unit
+                </Label>
+                <select
+                  value={variant.size_unit}
+                  onChange={(e) =>
+                    handleVariantChange(idx, "size_unit", e.target.value)
+                  }
+                  className="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="inch">Inch</option>
+                  <option value="cm">CM</option>
+                  <option value="mm">MM</option>
+                  <option value="unit">Unit (S/M/L)</option>
+                  <option value="kg">KG</option>
+                  <option value="gram">Gram</option>
+                </select>
+              </div>
+
+              {/* Price */}
+              <div>
+                <Label className="text-xs font-semibold text-gray-700 mb-1 block">
+                  Price (₹) <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="60.00"
+                  value={variant.price}
+                  onChange={(e) =>
+                    handleVariantChange(idx, "price", e.target.value)
+                  }
+                  required
+                  className="placeholder-gray-400"
+                />
+                <p className="text-xs text-gray-500 mt-0.5">Must be &gt; 0</p>
+              </div>
+
+              {/* Stock Quantity */}
+              <div className="lg:col-span-3">
+                <Label className="text-xs font-semibold text-gray-700 mb-1 block">
+                  Stock Quantity <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="100"
+                  value={variant.stock_quantity}
+                  onChange={(e) =>
+                    handleVariantChange(idx, "stock_quantity", e.target.value)
+                  }
+                  required
+                  className="placeholder-gray-400"
+                />
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Available units in inventory
+                </p>
+              </div>
+            </div>
           </div>
         ))}
 
@@ -413,30 +754,19 @@ export default function AddProductPage() {
           <Button
             type="button"
             onClick={addVariant}
-            className="mt-2 w-full sm:w-auto"
+            className="w-full mt-4"
             variant="outline"
           >
-            Add Size
+            + Add Another Size Variant
           </Button>
         )}
-      </fieldset>
 
-      {/* In Stock */}
-      <div className="flex items-center space-x-2">
-        <input
-          id="inStock"
-          type="checkbox"
-          checked={inStock}
-          onChange={(e) => setInStock(e.target.checked)}
-          className="h-5 w-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-        />
-        <Label
-          htmlFor="inStock"
-          className="font-medium text-gray-700 cursor-pointer"
-        >
-          In Stock
-        </Label>
-      </div>
+        {variants.length === 0 && (
+          <p className="text-sm text-gray-600 mb-3 text-center bg-yellow-50 border border-yellow-200 rounded p-3">
+            ⚠️ At least one size variant is required to enable the product.
+          </p>
+        )}
+      </fieldset>
 
       {/* Featured */}
       <div className="flex items-center space-x-2">
@@ -452,7 +782,10 @@ export default function AddProductPage() {
           htmlFor="featured"
           className="font-medium text-gray-700 cursor-pointer select-none"
         >
-          Featured (max 4)
+          Featured (max 4){" "}
+          {featuredCount >= 4 && !featured && (
+            <span className="text-xs text-red-600 ml-2">Limit reached</span>
+          )}
         </Label>
       </div>
 
@@ -493,6 +826,8 @@ export default function AddProductPage() {
           </Label>
         </div>
       </fieldset>
+
+      {/* GST Tax Rate */}
       <fieldset className="border border-gray-300 rounded-md p-4 space-y-4">
         <legend className="text-lg font-semibold text-gray-700 mb-4">
           GST Tax Rate
@@ -535,30 +870,18 @@ export default function AddProductPage() {
         </div>
       </fieldset>
 
-      {/* Catalog Number */}
-      <div className="flex flex-col">
-        <Label
-          htmlFor="catalogNumber"
-          className="mb-1 font-medium text-gray-700"
-        >
-          Catalog Number (optional)
-        </Label>
-        <Input
-          id="catalogNumber"
-          placeholder="Enter catalog number"
-          value={catalogNumber}
-          onChange={(e) => setCatalogNumber(e.target.value)}
-          className="placeholder-gray-400"
-        />
-      </div>
-
       {/* Submit Button */}
-      <Button
-        type="submit"
-        className="w-full py-3 text-lg font-semibold bg-indigo-600 hover:bg-indigo-700 transition-colors rounded-md shadow-md"
-      >
-        Add Product
-      </Button>
+      <div className="pt-6 border-t">
+        <Button
+          type="submit"
+          className="w-full py-3 text-lg font-semibold bg-indigo-600 hover:bg-indigo-700 transition-colors rounded-md shadow-md"
+        >
+          Add Product
+        </Button>
+        <p className="text-xs text-center text-gray-600 mt-3">
+          ℹ️ Price and stock status will be computed automatically after saving
+        </p>
+      </div>
     </form>
   );
 }

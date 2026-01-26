@@ -64,7 +64,7 @@ export default function EditProductPage() {
         setGst18pct(product.gst_18pct || false);
         setCatalogNumber(product.catalog_number || "");
 
-        // Fetch variants
+        // ✅ FIXED: Fetch variants using size_display instead of size_code
         const { data: variantData, error: variantError } = await supabase
           .from("product_variants")
           .select("*")
@@ -75,7 +75,7 @@ export default function EditProductPage() {
           setVariants(
             variantData.map((v) => ({
               id: v.id,
-              size: v.size_code,
+              size: v.size_display,  // ✅ FIXED: Was size_code
               price: v.price,
               stock_quantity: v.stock_quantity,
             }))
@@ -156,14 +156,14 @@ export default function EditProductPage() {
       });
       return;
     }
-    if (!price || Number(price) < 0) {
-      toast({
-        title: "Validation Error",
-        description: "Price must be a positive number.",
-        variant: "destructive",
-      });
-      return;
-    }
+    
+    // ✅ REMOVED: Price validation (price is now auto-computed from variants)
+    // Old code:
+    // if (!price || Number(price) < 0) {
+    //   toast({ title: "Validation Error", description: "Price must be a positive number.", variant: "destructive" });
+    //   return;
+    // }
+    
     if (!categoryId) {
       toast({
         title: "Validation Error",
@@ -208,11 +208,12 @@ export default function EditProductPage() {
       return;
     }
 
-    // Update main product
+    // Update main product (price will be auto-computed by trigger)
     const updatedProduct = {
       title: title.trim(),
       description: description.trim(),
-      price: parseFloat(price),
+      // ✅ Price is now optional - trigger will compute it from variants
+      price: price ? parseFloat(price) : null,
       category_id: categoryId,
       image_url: imageUrl,
       in_stock: inStock,
@@ -254,10 +255,10 @@ export default function EditProductPage() {
       return;
     }
 
-    // Insert new variants
+    // ✅ FIXED: Insert new variants using size_display instead of size_code
     const variantsToInsert = variants.map((v) => ({
       product_id: productId,
-      size_code: v.size,
+      size_display: v.size,  // ✅ FIXED: Was size_code
       price: parseFloat(v.price),
       stock_quantity: Number(v.stock_quantity),
       created_at: new Date().toISOString(),
@@ -341,22 +342,25 @@ export default function EditProductPage() {
           />
         </div>
 
-        {/* Base Price */}
+        {/* Base Price - ✅ OPTIONAL (auto-computed) */}
         <div className="flex flex-col">
           <Label htmlFor="price" className="mb-1 font-medium text-gray-700">
-            Base Price (₹) <span className="text-red-500">*</span>
+            Base Price (₹) <span className="text-gray-500 text-sm">(optional - auto-computed from variants)</span>
           </Label>
           <Input
             id="price"
             type="number"
             min="0"
             step="0.01"
-            placeholder="Enter base price"
+            placeholder="Auto-computed from variants"
             value={price}
             onChange={(e) => setPrice(e.target.value)}
-            required
             className="placeholder-gray-400"
+            disabled
           />
+          <p className="text-xs text-gray-500 mt-1">
+            ℹ️ Price will be automatically calculated from the lowest variant price.
+          </p>
         </div>
 
         {/* Category select */}
@@ -409,7 +413,7 @@ export default function EditProductPage() {
         {/* Sizes & Variants */}
         <fieldset className="border border-gray-300 rounded-md p-4">
           <legend className="text-lg font-semibold text-gray-700 mb-4">
-            Sizes & Variants (max 3)
+            Sizes & Variants (max 3) <span className="text-red-500">*</span>
           </legend>
           {variants.map((variant, idx) => (
             <div
@@ -425,7 +429,7 @@ export default function EditProductPage() {
                 </Label>
                 <Input
                   id={`size-${idx}`}
-                  placeholder="e.g. 6, 6.5, 7"
+                  placeholder="e.g. 6 INCH, 8 INCH"
                   value={variant.size}
                   onChange={(e) =>
                     handleVariantChange(idx, "size", e.target.value)
