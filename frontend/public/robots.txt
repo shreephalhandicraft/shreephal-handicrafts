@@ -1,26 +1,80 @@
-# Robots.txt for Shreephal Handicrafts
 # https://shreephalhandicrafts.com/robots.txt
+# Optimized for Google & search engines
 
 User-agent: *
 Allow: /
 
-# Disallow admin and sensitive areas (if any)
+# 🚫 Block private/auth routes from indexing
 Disallow: /admin/
+Disallow: /login
+Disallow: /register
+Disallow: /checkout
+Disallow: /cart
+Disallow: /my-orders
+Disallow: /order/
+Disallow: /favourites
+Disallow: /personal-details
+Disallow: /verify-phone
 Disallow: /api/
+Disallow: /_next/
 Disallow: /*.json$
 
-# Allow crawling of images and assets
+# ✅ Explicitly allow important pages for SEO
+Allow: /shop
+Allow: /category/
+Allow: /about
+Allow: /contact
+Allow: /trophy-shop-jabalpur
+Allow: /terms-conditions
+Allow: /privacy-policy
+Allow: /refund-policy
+
+# ✅ Allow all media assets
 Allow: /*.jpg$
 Allow: /*.jpeg$
 Allow: /*.png$
 Allow: /*.gif$
 Allow: /*.svg$
 Allow: /*.webp$
+Allow: /*.ico$
 Allow: /*.css$
 Allow: /*.js$
 
-# Sitemap location
+# 🗺️ Sitemap location
 Sitemap: https://shreephalhandicrafts.com/sitemap.xml
 
-# Crawl-delay for polite crawling
+# 🤖 Google-specific optimizations
+User-agent: Googlebot
+Allow: /
+Disallow: /admin/
+Disallow: /login
+Disallow: /register
+Disallow: /checkout
+Disallow: /cart
+Disallow: /my-orders
+Disallow: /order/
+Disallow: /favourites
+Disallow: /personal-details
+
+# 🤖 Googlebot Image - Allow all images
+User-agent: Googlebot-Image
+Allow: /
+
+# 🤖 Bing
+User-agent: Bingbot
+Allow: /
+Disallow: /admin/
 Crawl-delay: 1
+
+# 🤖 Block bad bots
+User-agent: AhrefsBot
+Disallow: /
+
+User-agent: SemrushBot
+Disallow: /
+
+User-agent: DotBot
+Disallow: /
+
+# No crawl delay for Google (they manage it automatically)
+# Crawl-delay only for other bots
