@@ -1101,16 +1101,9 @@ export const useCheckoutLogic = () => {
         // ✨ Show user-friendly message with specific guidance
         toast({
           title: parsedError.title,
-          description: (
-            <div className="space-y-2">
-              <p>{parsedError.description}</p>
-              {parsedError.action && (
-                <p className="text-sm font-medium mt-2">
-                  👉 {parsedError.action}
-                </p>
-              )}
-            </div>
-          ),
+          description: parsedError.action
+  ? `${parsedError.description}\n👉 ${parsedError.action}`
+  : parsedError.description,
           variant: "destructive",
           duration: 8000, // Longer duration for important error details
         });
