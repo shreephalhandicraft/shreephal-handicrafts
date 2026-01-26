@@ -1,7 +1,11 @@
 {
+  "buildCommand": "cd frontend && npm run build",
+  "outputDirectory": "frontend/dist",
+  "installCommand": "cd frontend && npm install",
+  "framework": null,
   "rewrites": [
     {
-      "source": "/((?!sitemap\\.xml|robots\\.txt|favicon\\.ico|manifest\\.json|.*\\.(png|jpg|jpeg|svg|webp|ico|xml|txt|json)).*)$",
+      "source": "/((?!sitemap\\.xml|robots\\.txt|favicon\\.ico|manifest\\.json|_headers|.*\\.(png|jpg|jpeg|svg|webp|ico|xml|txt|json)).*)$",
       "destination": "/index.html"
     }
   ],
@@ -57,7 +61,7 @@
           "key": "Cache-Control",
           "value": "public, max-age=86400"
         }
-      ]
+      ]  
     }
   ]
 }
