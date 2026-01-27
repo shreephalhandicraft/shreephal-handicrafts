@@ -53,7 +53,7 @@ export function ProductsPage() {
   const [variantsMap, setVariantsMap] = useState({}); // Variants keyed by product_id
   const [categories, setCategories] = useState([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState("all");
-  const [searchTerm, setSearchTerm] = "");
+  const [searchTerm, setSearchTerm] = useState(""); // ✅ FIXED: Added useState()
   const [viewMode, setViewMode] = useState("grid"); // grid or list
   const [deleteProduct, setDeleteProduct] = useState(null);
   const [deleteWarning, setDeleteWarning] = useState(null); // ✅ NEW: Warning message
