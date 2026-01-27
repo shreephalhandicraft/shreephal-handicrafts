@@ -404,16 +404,6 @@ export function EditProductForm({
     }
   };
 
-  // Update SKUs when catalog number changes
-  useEffect(() => {
-    if (catalogNumber) {
-      setVariants(vars => vars.map((v, idx) => ({
-        ...v,
-        sku: `${catalogNumber}-${v.price_tier || String.fromCharCode(65 + idx)}`
-      })));
-    }
-  }, [catalogNumber]);
-
   // 🔒 BULLETPROOF: Check if variant can be updated (not locked by active orders)
   const canUpdateVariant = (current, original) => {
     if (!original) return true; // New variant
@@ -557,14 +547,30 @@ export function EditProductForm({
       return;
     }
 
-    // ✅ FIX: Check if ANY variant actually changed before processing
-    const hasAnyVariantChanged = variants.some((v, i) => {
+    // 🔧 DEBUG: More strict variant change check
+    // Only compare EXISTING saved variants (ignore new ones without IDs)
+    const existingVariants = variants.filter(v => v.id !== undefined);
+    
+    console.log('🔍 Checking variant changes...');
+    console.log('Existing variants:', existingVariants.length);
+    console.log('Original variants:', originalVariantsRef.current.length);
+    
+    const hasAnyVariantChanged = existingVariants.some((v) => {
       const originalVariant = originalVariantsRef.current.find(ov => ov.id === v.id);
-      return hasVariantChanged(v, originalVariant);
+      const changed = hasVariantChanged(v, originalVariant);
+      if (changed) {
+        console.log('⚠️ Variant changed:', v.size_display, v.id);
+        console.log('Current:', v);
+        console.log('Original:', originalVariant);
+      }
+      return changed;
     });
+
+    console.log('📊 Has any variant changed?', hasAnyVariantChanged);
 
     // ✅ Skip variant updates entirely if nothing changed
     if (!hasAnyVariantChanged) {
+      console.log('✅ No variant changes detected - skipping variant updates');
       toast({ 
         title: "Product saved successfully", 
         description: "Product details updated",
@@ -572,6 +578,7 @@ export function EditProductForm({
       return;
     }
 
+    console.log('🔄 Processing variant updates...');
     let updatedCount = 0;
     let insertedCount = 0;
     let skippedCount = 0;
@@ -759,8 +766,7 @@ export function EditProductForm({
               alt="Product"
               className="mt-4 w-28 h-28 object-cover rounded shadow border"
             />
-          />  
-          )}
+          )}  
         </div>
 
         <div className={`border rounded-lg p-4 ${
