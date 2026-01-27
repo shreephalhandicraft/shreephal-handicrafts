@@ -14,7 +14,9 @@ import {
   ArchiveRestore, 
   Trash2, 
   AlertCircle,
-  ShoppingCart 
+  ShoppingCart,
+  CheckCircle,
+  Clock
 } from "lucide-react";
 
 export function EditProductForm({
@@ -44,13 +46,59 @@ export function EditProductForm({
     product?.catalog_number || ""
   );
 
-  // ✅ NEW: Variants with is_active and order_count
+  // Variants with is_active and order_count
   const [variants, setVariants] = useState([]);
   const [loadingVariants, setLoadingVariants] = useState(true);
   const [showInactive, setShowInactive] = useState(false);
   
-  // ✅ NEW: Track original variants to detect changes
+  // Track original variants to detect changes
   const originalVariantsRef = useRef([]);
+
+  // ✅ NEW: Helper to check order status for a single variant
+  const getOrderStatusForVariant = async (variantId) => {
+    if (!variantId) {
+      return { pendingOrders: 0, deliveredOrders: 0, totalOrders: 0 };
+    }
+
+    try {
+      const { data: orderItems, error } = await supabase
+        .from("order_items")
+        .select(`
+          id,
+          variant_id,
+          order_id,
+          orders!inner (
+            id,
+            status
+          )
+        `)
+        .eq("variant_id", variantId);
+      
+      if (error) throw error;
+      
+      let pendingOrders = 0;
+      let deliveredOrders = 0;
+      
+      for (const item of orderItems || []) {
+        const orderStatus = item.orders?.status?.toLowerCase();
+        
+        if (orderStatus === 'delivered') {
+          deliveredOrders++;
+        } else {
+          pendingOrders++;
+        }
+      }
+      
+      return {
+        pendingOrders,
+        deliveredOrders,
+        totalOrders: pendingOrders + deliveredOrders
+      };
+    } catch (error) {
+      console.error("Error checking order status:", error);
+      return { pendingOrders: 0, deliveredOrders: 0, totalOrders: 0 };
+    }
+  };
 
   // Fetch categories & variants
   useEffect(() => {
@@ -66,7 +114,6 @@ export function EditProductForm({
     async function fetchVariants() {
       setLoadingVariants(true);
       try {
-        // ✅ Fetch ALL variants (including inactive) with order count
         const { data, error } = await supabase
           .from("product_variants")
           .select(`
@@ -85,7 +132,6 @@ export function EditProductForm({
         
         if (error) throw error;
 
-        // ✅ Check order count for each variant
         if (data && data.length > 0) {
           const variantsWithOrderCount = await Promise.all(
             data.map(async (variant) => {
@@ -102,11 +148,8 @@ export function EditProductForm({
           );
           
           setVariants(variantsWithOrderCount);
-          
-          // ✅ Store original variants for comparison
           originalVariantsRef.current = JSON.parse(JSON.stringify(variantsWithOrderCount));
           
-          // Update price from ACTIVE variants only
           const activePrices = variantsWithOrderCount
             .filter(v => v.is_active)
             .map(v => parseFloat(v.price))
@@ -153,7 +196,7 @@ export function EditProductForm({
     fetchFeaturedCount();
   }, [product]);
 
-  // ✅ Update price and stock from ACTIVE variants only
+  // Update price and stock from ACTIVE variants only
   useEffect(() => {
     const activeVariants = variants.filter(v => v.is_active);
     
@@ -231,8 +274,8 @@ export function EditProductForm({
     ]);
   };
 
-  // ✅ IMPROVED: Smart delete with soft delete for ordered variants
-  const removeVariant = async (idx, variantId, orderCount) => {
+  // ✅ IMPROVED: Smart delete with order status check
+  const removeVariant = async (idx, variantId) => {
     try {
       if (!variantId) {
         // New unsaved variant - just remove from UI
@@ -240,8 +283,11 @@ export function EditProductForm({
         return;
       }
 
-      if (orderCount > 0) {
-        // ✅ Has orders - SOFT DELETE (deactivate)
+      // ✅ Check order status
+      const { pendingOrders, deliveredOrders } = await getOrderStatusForVariant(variantId);
+
+      if (pendingOrders > 0) {
+        // ✅ Has active orders - SOFT DELETE
         const { error } = await supabase
           .from("product_variants")
           .update({ 
@@ -252,7 +298,6 @@ export function EditProductForm({
         
         if (error) throw error;
         
-        // Update local state
         setVariants((vars) =>
           vars.map((v, i) =>
             i === idx ? { ...v, is_active: false } : v
@@ -261,10 +306,10 @@ export function EditProductForm({
         
         toast({ 
           title: "Variant deactivated", 
-          description: `This size has ${orderCount} order(s). Deactivated instead of deleted.`,
+          description: `This size has ${pendingOrders} active order(s). Deactivated to preserve order data.`,
         });
       } else {
-        // ✅ No orders - HARD DELETE (permanent)
+        // ✅ No active orders - HARD DELETE
         const { error } = await supabase
           .from("product_variants")
           .delete()
@@ -272,19 +317,21 @@ export function EditProductForm({
         
         if (error) throw error;
         
-        // Remove from UI
         setVariants((vars) => vars.filter((_, i) => i !== idx));
+        
+        const message = deliveredOrders > 0
+          ? `Size had ${deliveredOrders} delivered order(s) and was permanently deleted.`
+          : "Size removed permanently";
         
         toast({ 
           title: "Variant deleted", 
-          description: "Size removed permanently" 
+          description: message
         });
       }
     } catch (err) {
       console.error("Remove variant error:", err);
       
       if (err.message.includes("foreign key constraint")) {
-        // Fallback to soft delete
         try {
           const { error } = await supabase
             .from("product_variants")
@@ -323,7 +370,7 @@ export function EditProductForm({
     }
   };
 
-  // ✅ NEW: Reactivate deactivated variant
+  // Reactivate deactivated variant
   const reactivateVariant = async (idx, variantId) => {
     try {
       const { error } = await supabase
@@ -356,7 +403,7 @@ export function EditProductForm({
     }
   };
 
-  // ✅ Update SKUs when catalog number changes
+  // Update SKUs when catalog number changes
   useEffect(() => {
     if (catalogNumber) {
       setVariants(vars => vars.map((v, idx) => ({
@@ -366,9 +413,9 @@ export function EditProductForm({
     }
   }, [catalogNumber]);
 
-  // ✅ NEW: Helper to check if variant has changed
+  // Helper to check if variant has changed
   const hasVariantChanged = (current, original) => {
-    if (!original) return true; // New variant
+    if (!original) return true;
     
     return (
       current.size_display !== original.size_display ||
@@ -421,7 +468,6 @@ export function EditProductForm({
       return;
     }
 
-    // ✅ Validate ACTIVE variants only
     const activeVariants = variants.filter(v => v.is_active);
     
     if (activeVariants.length === 0) {
@@ -451,7 +497,6 @@ export function EditProductForm({
       return;
     }
 
-    // ✅ Validate SKU uniqueness among ACTIVE variants
     const activeSkus = activeVariants.map(v => v.sku).filter(Boolean);
     const uniqueSkus = new Set(activeSkus);
     if (activeSkus.length !== uniqueSkus.size) {
@@ -494,14 +539,13 @@ export function EditProductForm({
       return;
     }
 
-    // ✅ IMPROVED: Only update/insert variants that have CHANGED
     let updatedCount = 0;
     let insertedCount = 0;
     
     for (let i = 0; i < variants.length; i++) {
       const v = variants[i];
       
-      if (!v.is_active && !v.id) continue; // Skip unsaved inactive variants
+      if (!v.is_active && !v.id) continue;
       
       const variantData = {
         size_display: v.size_display,
@@ -511,16 +555,14 @@ export function EditProductForm({
         sku: v.sku || `${catalogNumber}-${v.price_tier}`,
         price: parseFloat(v.price),
         stock_quantity: Number(v.stock_quantity),
-        is_active: v.is_active !== false, // Default true if undefined
+        is_active: v.is_active !== false,
         updated_at: new Date().toISOString(),
       };
 
       if (v.id) {
-        // ✅ EXISTING VARIANT: Check if it has changed
         const originalVariant = originalVariantsRef.current.find(ov => ov.id === v.id);
         
         if (hasVariantChanged(v, originalVariant)) {
-          // ✅ Variant has changed - update it
           const { error } = await supabase
             .from("product_variants")
             .update(variantData)
@@ -529,7 +571,6 @@ export function EditProductForm({
           if (error) {
             console.error("Update variant error:", error);
             
-            // ✅ If FK constraint error and variant has orders, skip it
             if (error.message.includes("foreign key constraint") && v.order_count > 0) {
               toast({
                 title: "Skipped ordered variant",
@@ -548,9 +589,7 @@ export function EditProductForm({
             updatedCount++;
           }
         }
-        // else: Variant unchanged, skip update
       } else {
-        // ✅ NEW VARIANT: Insert it
         const { error } = await supabase
           .from("product_variants")
           .insert([{
@@ -572,7 +611,6 @@ export function EditProductForm({
       }
     }
 
-    // ✅ Show summary message
     const messages = [];
     if (updatedCount > 0) messages.push(`${updatedCount} variant(s) updated`);
     if (insertedCount > 0) messages.push(`${insertedCount} variant(s) added`);
@@ -583,7 +621,6 @@ export function EditProductForm({
     });
   };
 
-  // ✅ Filter variants based on showInactive toggle
   const displayVariants = showInactive 
     ? variants 
     : variants.filter(v => v.is_active !== false);
@@ -747,14 +784,13 @@ export function EditProductForm({
           </p>
         </div>
 
-        {/* ✅ IMPROVED VARIANTS SECTION */}
+        {/* IMPROVED VARIANTS SECTION */}
         <fieldset className="border border-gray-300 rounded-md p-4">
           <div className="flex items-center justify-between mb-4">
             <legend className="text-base font-semibold text-gray-800">
               Sizes & Variants (max 3 active)
             </legend>
             
-            {/* ✅ Toggle to show/hide inactive variants */}
             {variants.filter(v => !v.is_active).length > 0 && (
               <Button
                 type="button"
@@ -795,7 +831,6 @@ export function EditProductForm({
                         : 'bg-white border-gray-300'
                     }`}
                   >
-                    {/* ✅ Status Badges */}
                     <div className="flex items-center gap-2 mb-3 flex-wrap">
                       {isInactive && (
                         <Badge variant="secondary" className="bg-gray-500 text-white">
@@ -816,23 +851,21 @@ export function EditProductForm({
                       )}
                     </div>
 
-                    {/* ✅ Warning for ordered variants */}
                     {hasOrders && !isInactive && (
                       <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-3 flex items-start gap-2">
                         <AlertCircle className="h-4 w-4 text-yellow-600 mt-0.5 flex-shrink-0" />
                         <div>
                           <p className="text-xs text-yellow-800 font-medium">
-                            ⚠️ This variant has been ordered {variant.order_count} time(s)
+                            ⚠️ This variant has {variant.order_count} order(s)
                           </p>
                           <p className="text-xs text-yellow-700 mt-1">
-                            Changes will be applied carefully to preserve order history
+                            Will check order status before deletion
                           </p>
                         </div>
                       </div>
                     )}
 
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                      {/* SKU */}
                       <div>
                         <Label className="text-xs">SKU</Label>
                         <Input
@@ -842,7 +875,6 @@ export function EditProductForm({
                         />
                       </div>
 
-                      {/* Size Display */}
                       <div>
                         <Label className="text-xs">Size Display <span className="text-red-600">*</span></Label>
                         <Input
@@ -854,7 +886,6 @@ export function EditProductForm({
                         />
                       </div>
 
-                      {/* Size Numeric */}
                       <div>
                         <Label className="text-xs">Size (Number)</Label>
                         <Input
@@ -867,7 +898,6 @@ export function EditProductForm({
                         />
                       </div>
 
-                      {/* Size Unit */}
                       <div>
                         <Label className="text-xs">Unit</Label>
                         <select
@@ -883,7 +913,6 @@ export function EditProductForm({
                         </select>
                       </div>
 
-                      {/* Price Tier */}
                       <div>
                         <Label className="text-xs">Tier <span className="text-red-600">*</span></Label>
                         <select
@@ -904,7 +933,6 @@ export function EditProductForm({
                         </select>
                       </div>
 
-                      {/* Price */}
                       <div>
                         <Label className="text-xs">Price (₹) <span className="text-red-600">*</span></Label>
                         <Input
@@ -919,7 +947,6 @@ export function EditProductForm({
                         />
                       </div>
 
-                      {/* Stock */}
                       <div className="md:col-span-2">
                         <Label className="text-xs">Stock Quantity <span className="text-red-600">*</span></Label>
                         <Input
@@ -934,10 +961,8 @@ export function EditProductForm({
                       </div>
                     </div>
 
-                    {/* ✅ Action Buttons */}
                     <div className="flex gap-2 mt-4">
                       {isInactive ? (
-                        // Reactivate button for inactive variants
                         <Button
                           type="button"
                           variant="outline"
@@ -949,19 +974,18 @@ export function EditProductForm({
                           Reactivate
                         </Button>
                       ) : (
-                        // Delete/Deactivate button for active variants
                         variants.filter(v => v.is_active !== false).length > 1 && (
                           <Button
                             type="button"
                             variant={hasOrders ? "outline" : "destructive"}
                             size="sm"
-                            onClick={() => removeVariant(idx, variant.id, variant.order_count)}
+                            onClick={() => removeVariant(idx, variant.id)}
                             className="flex items-center gap-2"
                           >
                             {hasOrders ? (
                               <>
-                                <Archive className="h-4 w-4" />
-                                Deactivate
+                                <Trash2 className="h-4 w-4" />
+                                Delete
                               </>
                             ) : (
                               <>
