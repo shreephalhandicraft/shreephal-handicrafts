@@ -557,6 +557,21 @@ export function EditProductForm({
       return;
     }
 
+    // ✅ FIX: Check if ANY variant actually changed before processing
+    const hasAnyVariantChanged = variants.some((v, i) => {
+      const originalVariant = originalVariantsRef.current.find(ov => ov.id === v.id);
+      return hasVariantChanged(v, originalVariant);
+    });
+
+    // ✅ Skip variant updates entirely if nothing changed
+    if (!hasAnyVariantChanged) {
+      toast({ 
+        title: "Product saved successfully", 
+        description: "Product details updated",
+      });
+      return;
+    }
+
     let updatedCount = 0;
     let insertedCount = 0;
     let skippedCount = 0;
@@ -744,6 +759,7 @@ export function EditProductForm({
               alt="Product"
               className="mt-4 w-28 h-28 object-cover rounded shadow border"
             />
+          />  
           )}
         </div>
 
