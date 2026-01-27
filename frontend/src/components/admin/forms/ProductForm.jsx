@@ -16,7 +16,8 @@ import {
   AlertCircle,
   ShoppingCart,
   CheckCircle,
-  Clock
+  Clock,
+  Lock
 } from "lucide-react";
 
 export function EditProductForm({
@@ -54,7 +55,7 @@ export function EditProductForm({
   // Track original variants to detect changes
   const originalVariantsRef = useRef([]);
 
-  // ✅ NEW: Helper to check order status for a single variant
+  // ✅ Helper to check order status for a single variant
   const getOrderStatusForVariant = async (variantId) => {
     if (!variantId) {
       return { pendingOrders: 0, deliveredOrders: 0, totalOrders: 0 };
@@ -413,6 +414,23 @@ export function EditProductForm({
     }
   }, [catalogNumber]);
 
+  // 🔒 BULLETPROOF: Check if variant can be updated (not locked by active orders)
+  const canUpdateVariant = (current, original) => {
+    if (!original) return true; // New variant
+    
+    // Only check fields that would violate foreign key
+    const criticalFieldsChanged = (
+      current.size_display !== original.size_display ||
+      current.size_numeric !== original.size_numeric ||
+      current.size_unit !== original.size_unit ||
+      current.price_tier !== original.price_tier ||
+      current.sku !== original.sku ||
+      parseFloat(current.price) !== parseFloat(original.price)
+    );
+    
+    return !criticalFieldsChanged;
+  };
+
   // Helper to check if variant has changed
   const hasVariantChanged = (current, original) => {
     if (!original) return true;
@@ -541,6 +559,7 @@ export function EditProductForm({
 
     let updatedCount = 0;
     let insertedCount = 0;
+    let skippedCount = 0;
     
     for (let i = 0; i < variants.length; i++) {
       const v = variants[i];
@@ -563,6 +582,37 @@ export function EditProductForm({
         const originalVariant = originalVariantsRef.current.find(ov => ov.id === v.id);
         
         if (hasVariantChanged(v, originalVariant)) {
+          // 🔒 BULLETPROOF: Check order status BEFORE attempting update
+          if (v.order_count > 0 && !canUpdateVariant(v, originalVariant)) {
+            const { pendingOrders } = await getOrderStatusForVariant(v.id);
+            
+            if (pendingOrders > 0) {
+              skippedCount++;
+              toast({
+                title: "Variant locked",
+                description: `Size "${v.size_display}" has ${pendingOrders} active order(s) and cannot be modified. Only stock quantity can be updated.`,
+                variant: "default",
+              });
+              
+              // ✅ Allow stock_quantity update only
+              if (Number(v.stock_quantity) !== Number(originalVariant.stock_quantity)) {
+                const { error } = await supabase
+                  .from("product_variants")
+                  .update({ 
+                    stock_quantity: Number(v.stock_quantity),
+                    updated_at: new Date().toISOString()
+                  })
+                  .eq("id", v.id);
+                
+                if (!error) {
+                  updatedCount++;
+                }
+              }
+              continue;
+            }
+          }
+          
+          // ✅ Safe to update - no active orders or only delivered orders
           const { error } = await supabase
             .from("product_variants")
             .update(variantData)
@@ -570,16 +620,6 @@ export function EditProductForm({
           
           if (error) {
             console.error("Update variant error:", error);
-            
-            if (error.message.includes("foreign key constraint") && v.order_count > 0) {
-              toast({
-                title: "Skipped ordered variant",
-                description: `Size "${v.size_display}" has ${v.order_count} order(s) and cannot be modified.`,
-                variant: "default",
-              });
-              continue;
-            }
-            
             toast({
               title: "Failed to update size",
               description: error.message,
@@ -614,6 +654,7 @@ export function EditProductForm({
     const messages = [];
     if (updatedCount > 0) messages.push(`${updatedCount} variant(s) updated`);
     if (insertedCount > 0) messages.push(`${insertedCount} variant(s) added`);
+    if (skippedCount > 0) messages.push(`${skippedCount} locked variant(s) skipped`);
     
     toast({ 
       title: "Product saved successfully", 
@@ -821,6 +862,8 @@ export function EditProductForm({
               {displayVariants.map((variant, idx) => {
                 const isInactive = variant.is_active === false;
                 const hasOrders = (variant.order_count || 0) > 0;
+                const originalVariant = originalVariantsRef.current.find(ov => ov.id === variant.id);
+                const isLocked = hasOrders && originalVariant && !canUpdateVariant(variant, originalVariant);
                 
                 return (
                   <div
@@ -828,6 +871,8 @@ export function EditProductForm({
                     className={`border rounded-lg p-4 mb-4 transition-all ${
                       isInactive 
                         ? 'bg-gray-100 border-gray-400 opacity-75' 
+                        : isLocked
+                        ? 'bg-orange-50 border-orange-300'
                         : 'bg-white border-gray-300'
                     }`}
                   >
@@ -838,20 +883,40 @@ export function EditProductForm({
                           Inactive
                         </Badge>
                       )}
+                      {isLocked && (
+                        <Badge variant="outline" className="border-orange-500 text-orange-700">
+                          <Lock className="h-3 w-3 mr-1" />
+                          Locked
+                        </Badge>
+                      )}
                       {hasOrders && (
                         <Badge variant="outline" className="border-blue-500 text-blue-700">
                           <ShoppingCart className="h-3 w-3 mr-1" />
                           {variant.order_count} order{variant.order_count > 1 ? 's' : ''}
                         </Badge>
                       )}
-                      {!isInactive && (
+                      {!isInactive && !isLocked && (
                         <Badge variant="default" className="bg-green-500">
                           Active
                         </Badge>
                       )}
                     </div>
 
-                    {hasOrders && !isInactive && (
+                    {isLocked && (
+                      <div className="bg-orange-100 border border-orange-300 rounded-lg p-3 mb-3 flex items-start gap-2">
+                        <Lock className="h-4 w-4 text-orange-600 mt-0.5 flex-shrink-0" />
+                        <div>
+                          <p className="text-xs text-orange-900 font-medium">
+                            🔒 This variant has active orders
+                          </p>
+                          <p className="text-xs text-orange-700 mt-1">
+                            Price, size, and SKU are locked. Only stock quantity can be updated.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {hasOrders && !isInactive && !isLocked && (
                       <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-3 flex items-start gap-2">
                         <AlertCircle className="h-4 w-4 text-yellow-600 mt-0.5 flex-shrink-0" />
                         <div>
@@ -881,7 +946,7 @@ export function EditProductForm({
                           placeholder="6 INCH"
                           value={variant.size_display}
                           onChange={(e) => handleVariantChange(idx, "size_display", e.target.value)}
-                          disabled={isInactive}
+                          disabled={isInactive || isLocked}
                           required={!isInactive}
                         />
                       </div>
@@ -894,7 +959,7 @@ export function EditProductForm({
                           placeholder="6.0"
                           value={variant.size_numeric}
                           onChange={(e) => handleVariantChange(idx, "size_numeric", e.target.value)}
-                          disabled={isInactive}
+                          disabled={isInactive || isLocked}
                         />
                       </div>
 
@@ -904,7 +969,7 @@ export function EditProductForm({
                           value={variant.size_unit || 'inch'}
                           onChange={(e) => handleVariantChange(idx, "size_unit", e.target.value)}
                           className="w-full border rounded p-2 text-sm"
-                          disabled={isInactive}
+                          disabled={isInactive || isLocked}
                         >
                           <option value="inch">Inch</option>
                           <option value="cm">CM</option>
@@ -919,7 +984,7 @@ export function EditProductForm({
                           value={variant.price_tier || String.fromCharCode(65 + idx)}
                           onChange={(e) => handleVariantChange(idx, "price_tier", e.target.value)}
                           className="w-full border rounded p-2 text-sm"
-                          disabled={isInactive}
+                          disabled={isInactive || isLocked}
                           required={!isInactive}
                         >
                           <option value="A">A</option>
@@ -942,13 +1007,16 @@ export function EditProductForm({
                           placeholder="60"
                           value={variant.price}
                           onChange={(e) => handleVariantChange(idx, "price", e.target.value)}
-                          disabled={isInactive}
+                          disabled={isInactive || isLocked}
                           required={!isInactive}
                         />
                       </div>
 
                       <div className="md:col-span-2">
-                        <Label className="text-xs">Stock Quantity <span className="text-red-600">*</span></Label>
+                        <Label className="text-xs">
+                          Stock Quantity <span className="text-red-600">*</span>
+                          {isLocked && <span className="text-green-600 ml-2">✓ Unlocked</span>}
+                        </Label>
                         <Input
                           type="number"
                           min="0"
@@ -982,17 +1050,8 @@ export function EditProductForm({
                             onClick={() => removeVariant(idx, variant.id)}
                             className="flex items-center gap-2"
                           >
-                            {hasOrders ? (
-                              <>
-                                <Trash2 className="h-4 w-4" />
-                                Delete
-                              </>
-                            ) : (
-                              <>
-                                <Trash2 className="h-4 w-4" />
-                                Delete
-                              </>
-                            )}
+                            <Trash2 className="h-4 w-4" />
+                            Delete
                           </Button>
                         )
                       )}
