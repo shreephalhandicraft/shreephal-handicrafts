@@ -43,6 +43,8 @@ import {
   RefreshCw,
   Archive,
   AlertTriangle,
+  Truck,
+  Clock,
 } from "lucide-react";
 
 import { useToast } from "@/hooks/use-toast";
@@ -53,15 +55,66 @@ export function ProductsPage() {
   const [variantsMap, setVariantsMap] = useState({}); // Variants keyed by product_id
   const [categories, setCategories] = useState([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState("all");
-  const [searchTerm, setSearchTerm] = useState(""); // ✅ FIXED: Added useState()
+  const [searchTerm, setSearchTerm] = useState("");
   const [viewMode, setViewMode] = useState("grid"); // grid or list
   const [deleteProduct, setDeleteProduct] = useState(null);
-  const [deleteWarning, setDeleteWarning] = useState(null); // ✅ NEW: Warning message
+  const [deleteWarning, setDeleteWarning] = useState(null);
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
-  // ✅ NEW: Fetch products including is_active status
+  // ✅ NEW: Helper to check order statuses for variants
+  const getOrderStatusForVariants = async (variants) => {
+    const variantIds = variants.map(v => v.id).filter(Boolean);
+    
+    if (variantIds.length === 0) {
+      return { pendingOrders: 0, deliveredOrders: 0, totalOrders: 0 };
+    }
+
+    try {
+      // Get all order_items for these variants with order status
+      const { data: orderItems, error } = await supabase
+        .from("order_items")
+        .select(`
+          id,
+          variant_id,
+          order_id,
+          orders!inner (
+            id,
+            status
+          )
+        `)
+        .in("variant_id", variantIds);
+      
+      if (error) throw error;
+      
+      let pendingOrders = 0;
+      let deliveredOrders = 0;
+      
+      for (const item of orderItems || []) {
+        const orderStatus = item.orders?.status?.toLowerCase();
+        
+        // ✅ Delivered orders can be deleted
+        if (orderStatus === 'delivered') {
+          deliveredOrders++;
+        } else {
+          // ✅ Pending/Processing/Shipped orders need to be preserved
+          pendingOrders++;
+        }
+      }
+      
+      return {
+        pendingOrders,
+        deliveredOrders,
+        totalOrders: pendingOrders + deliveredOrders
+      };
+    } catch (error) {
+      console.error("Error checking order status:", error);
+      return { pendingOrders: 0, deliveredOrders: 0, totalOrders: 0 };
+    }
+  };
+
+  // Fetch products including is_active status
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
@@ -73,17 +126,17 @@ export function ProductsPage() {
       if (catErr) throw catErr;
       setCategories(cats || []);
 
-      // ✅ Fetch products with is_active status
+      // Fetch products with is_active status
       const { data: prods, error: prodErr } = await supabase
         .from("products")
         .select("*, is_active")
-        .eq("is_active", true) // ✅ Only show active products
+        .eq("is_active", true)
         .order("created_at", { ascending: false });
       if (prodErr) throw prodErr;
 
       setProducts(prods || []);
 
-      // ✅ Fetch variants with is_active status and order count
+      // Fetch variants with is_active status and order count
       const productIds = prods?.map((p) => p.id) || [];
       if (productIds.length > 0) {
         const { data: vars, error: varErr } = await supabase
@@ -125,19 +178,19 @@ export function ProductsPage() {
     fetchData();
   }, [fetchData]);
 
-  // ✅ IMPROVED: Smart delete handler with soft delete logic
+  // ✅ IMPROVED: Smart delete based on order status
   const handleDelete = async () => {
     if (!deleteProduct) return;
     setLoading(true);
 
     try {
-      // ✅ Step 1: Check if ANY variant has orders
       const variants = variantsMap[deleteProduct.id] || [];
-      const hasOrders = variants.some(v => (v.order_count || 0) > 0);
-      const totalOrders = variants.reduce((sum, v) => sum + (v.order_count || 0), 0);
+      
+      // ✅ Check order statuses
+      const { pendingOrders, deliveredOrders, totalOrders } = await getOrderStatusForVariants(variants);
 
-      if (hasOrders) {
-        // ✅ SOFT DELETE: Deactivate product and all variants
+      if (pendingOrders > 0) {
+        // ✅ SOFT DELETE: Has pending/active orders
         
         // Deactivate all variants
         for (const variant of variants) {
@@ -165,10 +218,10 @@ export function ProductsPage() {
 
         toast({ 
           title: "Product deactivated", 
-          description: `"${deleteProduct.title}" has ${totalOrders} order(s) and was deactivated instead of deleted. It will no longer appear in your store.`,
+          description: `"${deleteProduct.title}" has ${pendingOrders} active order(s). Deactivated to preserve order data.`,
         });
       } else {
-        // ✅ HARD DELETE: No orders, safe to delete permanently
+        // ✅ HARD DELETE: No pending orders (either no orders or all delivered)
         
         // Delete variants first
         const { error: variantDelError } = await supabase
@@ -186,9 +239,13 @@ export function ProductsPage() {
 
         if (prodDelError) throw prodDelError;
 
+        const message = deliveredOrders > 0 
+          ? `"${deleteProduct.title}" had ${deliveredOrders} delivered order(s) and has been permanently deleted.`
+          : `"${deleteProduct.title}" and all its variants have been permanently deleted.`;
+        
         toast({ 
           title: "Product deleted", 
-          description: `"${deleteProduct.title}" and all its variants have been permanently deleted.` 
+          description: message
         });
       }
 
@@ -199,10 +256,9 @@ export function ProductsPage() {
     } catch (error) {
       console.error("Delete product error:", error);
       
-      // ✅ Fallback: If foreign key error, try soft delete
+      // Fallback: If foreign key error, try soft delete
       if (error.message.includes("foreign key constraint") || error.message.includes("violates")) {
         try {
-          // Deactivate all variants
           const variants = variantsMap[deleteProduct.id] || [];
           for (const variant of variants) {
             await supabase
@@ -214,7 +270,6 @@ export function ProductsPage() {
               .eq("id", variant.id);
           }
 
-          // Deactivate product
           await supabase
             .from("products")
             .update({ 
@@ -225,7 +280,7 @@ export function ProductsPage() {
 
           toast({
             title: "Product deactivated",
-            description: `"${deleteProduct.title}" has order history and was deactivated instead of deleted.`,
+            description: `"${deleteProduct.title}" has order history and was deactivated.`,
           });
 
           await fetchData();
@@ -249,21 +304,38 @@ export function ProductsPage() {
     setLoading(false);
   };
 
-  // ✅ NEW: Check for orders before showing delete dialog
-  const handleDeleteClick = (product) => {
+  // ✅ IMPROVED: Check order status before showing delete dialog
+  const handleDeleteClick = async (product) => {
     const variants = variantsMap[product.id] || [];
-    const hasOrders = variants.some(v => (v.order_count || 0) > 0);
-    const totalOrders = variants.reduce((sum, v) => sum + (v.order_count || 0), 0);
     
-    if (hasOrders) {
+    // ✅ Check order statuses
+    const { pendingOrders, deliveredOrders, totalOrders } = await getOrderStatusForVariants(variants);
+    
+    if (pendingOrders > 0) {
+      // Has active orders - will be soft deleted
       setDeleteWarning({
-        hasOrders: true,
+        hasActiveOrders: true,
+        pendingOrders,
+        deliveredOrders,
         totalOrders,
-        message: `This product has ${totalOrders} order(s). It will be deactivated instead of permanently deleted.`
+        message: `This product has ${pendingOrders} active order(s) ${deliveredOrders > 0 ? `and ${deliveredOrders} delivered order(s)` : ''}. It will be deactivated to preserve order data.`
+      });
+    } else if (deliveredOrders > 0) {
+      // Only delivered orders - can be hard deleted
+      setDeleteWarning({
+        hasActiveOrders: false,
+        pendingOrders: 0,
+        deliveredOrders,
+        totalOrders,
+        message: `This product has ${deliveredOrders} delivered order(s). Since all orders are complete, it can be permanently deleted.`
       });
     } else {
+      // No orders - can be hard deleted
       setDeleteWarning({
-        hasOrders: false,
+        hasActiveOrders: false,
+        pendingOrders: 0,
+        deliveredOrders: 0,
+        totalOrders: 0,
         message: "This product has no orders and will be permanently deleted."
       });
     }
@@ -533,7 +605,6 @@ export function ProductsPage() {
               }
             >
               {filteredProducts.map((product) => {
-                // ✅ Calculate if product has orders
                 const variants = variantsMap[product.id] || [];
                 const hasOrders = variants.some(v => (v.order_count || 0) > 0);
                 
@@ -589,7 +660,6 @@ export function ProductsPage() {
                               >
                                 {product.in_stock ? "In Stock" : "Out of Stock"}
                               </Badge>
-                              {/* ✅ NEW: Show if product has orders */}
                               {hasOrders && (
                                 <Badge variant="outline" className="border-blue-500 text-blue-700">
                                   Has Orders
@@ -603,7 +673,6 @@ export function ProductsPage() {
                             {product.description}
                           </p>
 
-                          {/* Display product variants (sizes) inside card */}
                           {variants.length > 0 && (
                             <div className="mb-4">
                               <h4 className="font-semibold mb-1 text-sm">
@@ -670,7 +739,7 @@ export function ProductsPage() {
                                 {hasOrders ? (
                                   <>
                                     <Archive className="h-4 w-4 mr-1" />
-                                    Deactivate
+                                    Delete
                                   </>
                                 ) : (
                                   <>
@@ -692,7 +761,7 @@ export function ProductsPage() {
         </CardContent>
       </Card>
 
-      {/* ✅ IMPROVED: Delete Confirmation Dialog with Warning */}
+      {/* ✅ IMPROVED: Delete Confirmation Dialog with Order Status */}
       <AlertDialog
         open={!!deleteProduct}
         onOpenChange={() => {
@@ -703,7 +772,7 @@ export function ProductsPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {deleteWarning?.hasOrders ? (
+              {deleteWarning?.hasActiveOrders ? (
                 <span className="flex items-center gap-2">
                   <Archive className="h-5 w-5 text-orange-500" />
                   Deactivate Product
@@ -717,18 +786,56 @@ export function ProductsPage() {
             </AlertDialogTitle>
             <AlertDialogDescription className="space-y-3">
               <p>
-                Are you sure you want to {deleteWarning?.hasOrders ? 'deactivate' : 'delete'} 
+                Are you sure you want to {deleteWarning?.hasActiveOrders ? 'deactivate' : 'delete'} 
                 <span className="font-semibold"> "{deleteProduct?.title}"</span>?
               </p>
               
-              {/* ✅ Warning message */}
-              {deleteWarning?.hasOrders ? (
+              {/* ✅ Order Status Breakdown */}
+              {deleteWarning?.totalOrders > 0 && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <div className="text-sm text-blue-900 space-y-1">
+                    <p className="font-medium flex items-center gap-2">
+                      <Truck className="h-4 w-4" />
+                      Order Status:
+                    </p>
+                    {deleteWarning.pendingOrders > 0 && (
+                      <p className="flex items-center gap-2 ml-6">
+                        <Clock className="h-3 w-3 text-orange-600" />
+                        <span className="text-orange-700 font-semibold">
+                          {deleteWarning.pendingOrders} active order(s)
+                        </span>
+                        <span className="text-xs">(pending/processing/shipped)</span>
+                      </p>
+                    )}
+                    {deleteWarning.deliveredOrders > 0 && (
+                      <p className="flex items-center gap-2 ml-6">
+                        <CheckCircle className="h-3 w-3 text-green-600" />
+                        <span className="text-green-700 font-semibold">
+                          {deleteWarning.deliveredOrders} delivered order(s)
+                        </span>
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+              
+              {/* ✅ Action Warning */}
+              {deleteWarning?.hasActiveOrders ? (
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 flex items-start gap-2">
                   <AlertTriangle className="h-5 w-5 text-yellow-600 mt-0.5 flex-shrink-0" />
                   <div className="text-sm text-yellow-800">
-                    <p className="font-medium mb-1">⚠️ This product has order history</p>
+                    <p className="font-medium mb-1">⚠️ Active orders detected</p>
                     <p>{deleteWarning.message}</p>
                     <p className="mt-2">The product will be hidden from your store but order history will be preserved.</p>
+                  </div>
+                </div>
+              ) : deleteWarning?.deliveredOrders > 0 ? (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-start gap-2">
+                  <CheckCircle className="h-5 w-5 text-green-600 mt-0.5 flex-shrink-0" />
+                  <div className="text-sm text-green-800">
+                    <p className="font-medium mb-1">✅ All orders delivered</p>
+                    <p>{deleteWarning.message}</p>
+                    <p className="mt-2 font-semibold">This action cannot be undone!</p>
                   </div>
                 </div>
               ) : (
@@ -747,12 +854,12 @@ export function ProductsPage() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
-              className={deleteWarning?.hasOrders 
+              className={deleteWarning?.hasActiveOrders 
                 ? "bg-orange-600 hover:bg-orange-700" 
                 : "bg-destructive text-destructive-foreground hover:bg-destructive/90"
               }
             >
-              {deleteWarning?.hasOrders ? (
+              {deleteWarning?.hasActiveOrders ? (
                 <>
                   <Archive className="h-4 w-4 mr-2" />
                   Deactivate Product
