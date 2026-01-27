@@ -41,6 +41,8 @@ import {
   CheckCircle,
   XCircle,
   RefreshCw,
+  Archive,
+  AlertTriangle,
 } from "lucide-react";
 
 import { useToast } from "@/hooks/use-toast";
@@ -51,14 +53,15 @@ export function ProductsPage() {
   const [variantsMap, setVariantsMap] = useState({}); // Variants keyed by product_id
   const [categories, setCategories] = useState([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState("all");
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm] = "");
   const [viewMode, setViewMode] = useState("grid"); // grid or list
   const [deleteProduct, setDeleteProduct] = useState(null);
+  const [deleteWarning, setDeleteWarning] = useState(null); // ✅ NEW: Warning message
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
-  // Fetch products, categories and variants - extracted into a reusable function
+  // ✅ NEW: Fetch products including is_active status
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
@@ -70,30 +73,39 @@ export function ProductsPage() {
       if (catErr) throw catErr;
       setCategories(cats || []);
 
-      // Fetch products ONLY (price and in_stock auto-computed by triggers)
+      // ✅ Fetch products with is_active status
       const { data: prods, error: prodErr } = await supabase
         .from("products")
-        .select("*")
+        .select("*, is_active")
+        .eq("is_active", true) // ✅ Only show active products
         .order("created_at", { ascending: false });
       if (prodErr) throw prodErr;
 
       setProducts(prods || []);
 
-      // Fetch variants with correct schema fields (no size_code!)
+      // ✅ Fetch variants with is_active status and order count
       const productIds = prods?.map((p) => p.id) || [];
       if (productIds.length > 0) {
         const { data: vars, error: varErr } = await supabase
           .from("product_variants")
-          .select("id, product_id, sku, size_display, size_numeric, size_unit, price_tier, price, stock_quantity")
+          .select("id, product_id, sku, size_display, size_numeric, size_unit, price_tier, price, stock_quantity, is_active")
           .in("product_id", productIds);
         if (varErr) throw varErr;
 
-        // Map variants by product_id
+        // Map variants by product_id with order count
         const map = {};
-        vars.forEach((v) => {
+        for (const v of vars) {
+          // Check order count for each variant
+          const { count } = await supabase
+            .from("order_items")
+            .select("*", { count: "exact", head: true })
+            .eq("variant_id", v.id);
+          
+          const variantWithCount = { ...v, order_count: count || 0 };
+          
           if (!map[v.product_id]) map[v.product_id] = [];
-          map[v.product_id].push(v);
-        });
+          map[v.product_id].push(variantWithCount);
+        }
         setVariantsMap(map);
       } else {
         setVariantsMap({});
@@ -113,44 +125,153 @@ export function ProductsPage() {
     fetchData();
   }, [fetchData]);
 
-  // Handler to delete product (and its variants)
+  // ✅ IMPROVED: Smart delete handler with soft delete logic
   const handleDelete = async () => {
     if (!deleteProduct) return;
     setLoading(true);
 
     try {
-      // Delete variants first
-      const { error: variantDelError } = await supabase
-        .from("product_variants")
-        .delete()
-        .eq("product_id", deleteProduct.id);
+      // ✅ Step 1: Check if ANY variant has orders
+      const variants = variantsMap[deleteProduct.id] || [];
+      const hasOrders = variants.some(v => (v.order_count || 0) > 0);
+      const totalOrders = variants.reduce((sum, v) => sum + (v.order_count || 0), 0);
 
-      if (variantDelError) throw variantDelError;
+      if (hasOrders) {
+        // ✅ SOFT DELETE: Deactivate product and all variants
+        
+        // Deactivate all variants
+        for (const variant of variants) {
+          const { error } = await supabase
+            .from("product_variants")
+            .update({ 
+              is_active: false,
+              updated_at: new Date().toISOString()
+            })
+            .eq("id", variant.id);
+          
+          if (error) throw error;
+        }
 
-      // Delete product
-      const { error: prodDelError } = await supabase
-        .from("products")
-        .delete()
-        .eq("id", deleteProduct.id);
+        // Deactivate product
+        const { error: prodError } = await supabase
+          .from("products")
+          .update({ 
+            is_active: false,
+            updated_at: new Date().toISOString()
+          })
+          .eq("id", deleteProduct.id);
 
-      if (prodDelError) throw prodDelError;
+        if (prodError) throw prodError;
 
-      // Refresh data (products + variants)
+        toast({ 
+          title: "Product deactivated", 
+          description: `"${deleteProduct.title}" has ${totalOrders} order(s) and was deactivated instead of deleted. It will no longer appear in your store.`,
+        });
+      } else {
+        // ✅ HARD DELETE: No orders, safe to delete permanently
+        
+        // Delete variants first
+        const { error: variantDelError } = await supabase
+          .from("product_variants")
+          .delete()
+          .eq("product_id", deleteProduct.id);
+
+        if (variantDelError) throw variantDelError;
+
+        // Delete product
+        const { error: prodDelError } = await supabase
+          .from("products")
+          .delete()
+          .eq("id", deleteProduct.id);
+
+        if (prodDelError) throw prodDelError;
+
+        toast({ 
+          title: "Product deleted", 
+          description: `"${deleteProduct.title}" and all its variants have been permanently deleted.` 
+        });
+      }
+
+      // Refresh data
       await fetchData();
-
       setDeleteProduct(null);
-      toast({ title: "Product and its variants deleted successfully" });
+      setDeleteWarning(null);
     } catch (error) {
-      toast({
-        title: "Failed to delete product",
-        description: error.message,
-        variant: "destructive",
-      });
+      console.error("Delete product error:", error);
+      
+      // ✅ Fallback: If foreign key error, try soft delete
+      if (error.message.includes("foreign key constraint") || error.message.includes("violates")) {
+        try {
+          // Deactivate all variants
+          const variants = variantsMap[deleteProduct.id] || [];
+          for (const variant of variants) {
+            await supabase
+              .from("product_variants")
+              .update({ 
+                is_active: false,
+                updated_at: new Date().toISOString()
+              })
+              .eq("id", variant.id);
+          }
+
+          // Deactivate product
+          await supabase
+            .from("products")
+            .update({ 
+              is_active: false,
+              updated_at: new Date().toISOString()
+            })
+            .eq("id", deleteProduct.id);
+
+          toast({
+            title: "Product deactivated",
+            description: `"${deleteProduct.title}" has order history and was deactivated instead of deleted.`,
+          });
+
+          await fetchData();
+          setDeleteProduct(null);
+          setDeleteWarning(null);
+        } catch (fallbackError) {
+          toast({
+            title: "Failed to deactivate product",
+            description: fallbackError.message,
+            variant: "destructive",
+          });
+        }
+      } else {
+        toast({
+          title: "Failed to delete product",
+          description: error.message,
+          variant: "destructive",
+        });
+      }
     }
     setLoading(false);
   };
 
-  // Refresh page (optional, reload data)
+  // ✅ NEW: Check for orders before showing delete dialog
+  const handleDeleteClick = (product) => {
+    const variants = variantsMap[product.id] || [];
+    const hasOrders = variants.some(v => (v.order_count || 0) > 0);
+    const totalOrders = variants.reduce((sum, v) => sum + (v.order_count || 0), 0);
+    
+    if (hasOrders) {
+      setDeleteWarning({
+        hasOrders: true,
+        totalOrders,
+        message: `This product has ${totalOrders} order(s). It will be deactivated instead of permanently deleted.`
+      });
+    } else {
+      setDeleteWarning({
+        hasOrders: false,
+        message: "This product has no orders and will be permanently deleted."
+      });
+    }
+    
+    setDeleteProduct(product);
+  };
+
+  // Refresh page
   const handleRefresh = () => {
     fetchData();
   };
@@ -411,75 +532,85 @@ export function ProductsPage() {
                   : "space-y-4"
               }
             >
-              {filteredProducts.map((product) => (
-                <Card
-                  key={product.id}
-                  className={`hover:shadow-lg transition-all duration-200 hover:scale-[1.02] ${
-                    viewMode === "list" ? "flex flex-row" : ""
-                  }`}
-                >
-                  <div className={viewMode === "list" ? "flex-1 flex" : ""}>
-                    {product.image_url && (
-                      <img
-                        src={product.image_url}
-                        alt={`Image of ${product.title}`}
-                        className={`rounded-md shadow-sm border object-cover ${
-                          viewMode === "list"
-                            ? "w-40 h-28 mr-4 flex-shrink-0"
-                            : "w-full h-48 mb-4"
-                        }`}
-                      />
-                    )}
+              {filteredProducts.map((product) => {
+                // ✅ Calculate if product has orders
+                const variants = variantsMap[product.id] || [];
+                const hasOrders = variants.some(v => (v.order_count || 0) > 0);
+                
+                return (
+                  <Card
+                    key={product.id}
+                    className={`hover:shadow-lg transition-all duration-200 hover:scale-[1.02] ${
+                      viewMode === "list" ? "flex flex-row" : ""
+                    }`}
+                  >
+                    <div className={viewMode === "list" ? "flex-1 flex" : ""}>
+                      {product.image_url && (
+                        <img
+                          src={product.image_url}
+                          alt={`Image of ${product.title}`}
+                          className={`rounded-md shadow-sm border object-cover ${
+                            viewMode === "list"
+                              ? "w-40 h-28 mr-4 flex-shrink-0"
+                              : "w-full h-48 mb-4"
+                          }`}
+                        />
+                      )}
 
-                    <div className="flex flex-col flex-1">
-                      <CardHeader
-                        className={`${viewMode === "list" ? "pb-2" : ""}`}
-                      >
-                        <div className="flex justify-between items-start">
-                          <div className="flex-1">
-                            <CardTitle className="text-lg">
-                              {product.title}
-                            </CardTitle>
-                            <CardDescription className="text-sm">
-                              {categories.find(
-                                (cat) => cat.id === product.category_id
-                              )?.name || "Uncategorized"}
-                            </CardDescription>
-                          </div>
-                          <div className="flex gap-1">
-                            {product.featured && (
+                      <div className="flex flex-col flex-1">
+                        <CardHeader
+                          className={`${viewMode === "list" ? "pb-2" : ""}`}
+                        >
+                          <div className="flex justify-between items-start">
+                            <div className="flex-1">
+                              <CardTitle className="text-lg">
+                                {product.title}
+                              </CardTitle>
+                              <CardDescription className="text-sm">
+                                {categories.find(
+                                  (cat) => cat.id === product.category_id
+                                )?.name || "Uncategorized"}
+                              </CardDescription>
+                            </div>
+                            <div className="flex gap-1 flex-wrap">
+                              {product.featured && (
+                                <Badge
+                                  variant="secondary"
+                                  className="bg-yellow-100 text-yellow-800 gap-1"
+                                >
+                                  <Star className="h-3 w-3" />
+                                  Featured
+                                </Badge>
+                              )}
                               <Badge
-                                variant="secondary"
-                                className="bg-yellow-100 text-yellow-800 gap-1"
+                                variant={
+                                  product.in_stock ? "default" : "destructive"
+                                }
                               >
-                                <Star className="h-3 w-3" />
-                                Featured
+                                {product.in_stock ? "In Stock" : "Out of Stock"}
                               </Badge>
-                            )}
-                            <Badge
-                              variant={
-                                product.in_stock ? "default" : "destructive"
-                              }
-                            >
-                              {product.in_stock ? "In Stock" : "Out of Stock"}
-                            </Badge>
+                              {/* ✅ NEW: Show if product has orders */}
+                              {hasOrders && (
+                                <Badge variant="outline" className="border-blue-500 text-blue-700">
+                                  Has Orders
+                                </Badge>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      </CardHeader>
-                      <CardContent>
-                        <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
-                          {product.description}
-                        </p>
+                        </CardHeader>
+                        <CardContent>
+                          <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
+                            {product.description}
+                          </p>
 
-                        {/* Display product variants (sizes) inside card */}
-                        {variantsMap[product.id] &&
-                          variantsMap[product.id].length > 0 && (
+                          {/* Display product variants (sizes) inside card */}
+                          {variants.length > 0 && (
                             <div className="mb-4">
                               <h4 className="font-semibold mb-1 text-sm">
                                 Available Sizes:
                               </h4>
                               <ul className="flex flex-wrap gap-2 text-sm">
-                                {variantsMap[product.id].map((variant) => (
+                                {variants.filter(v => v.is_active).map((variant) => (
                                   <li
                                     key={variant.id}
                                     className="bg-gray-100 px-3 py-1 rounded-full border border-gray-300 text-xs"
@@ -503,75 +634,135 @@ export function ProductsPage() {
                             </div>
                           )}
 
-                        <div
-                          className={`flex ${
-                            viewMode === "list" ? "flex-row" : "flex-col"
-                          } justify-between items-${
-                            viewMode === "list" ? "center" : "start"
-                          } gap-4`}
-                        >
-                          <div className="flex items-center gap-1">
-                            <IndianRupee className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-xl font-bold">
-                              {product.price ? Number(product.price).toFixed(2) : '0.00'}
-                            </span>
-                            <span className="text-xs text-gray-500">(base)</span>
-                          </div>
+                          <div
+                            className={`flex ${
+                              viewMode === "list" ? "flex-row" : "flex-col"
+                            } justify-between items-${
+                              viewMode === "list" ? "center" : "start"
+                            } gap-4`}
+                          >
+                            <div className="flex items-center gap-1">
+                              <IndianRupee className="h-4 w-4 text-muted-foreground" />
+                              <span className="text-xl font-bold">
+                                {product.price ? Number(product.price).toFixed(2) : '0.00'}
+                              </span>
+                              <span className="text-xs text-gray-500">(base)</span>
+                            </div>
 
-                          <div className="flex space-x-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() =>
-                                navigate(`/admin/products/edit/${product.id}`)
-                              }
-                              className="hover:bg-blue-50 hover:border-blue-300"
-                            >
-                              <Edit className="h-4 w-4 mr-1" />
-                              Edit
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="text-destructive hover:bg-red-50 hover:border-red-300"
-                              onClick={() => setDeleteProduct(product)}
-                            >
-                              <Trash2 className="h-4 w-4 mr-1" />
-                              Delete
-                            </Button>
+                            <div className="flex space-x-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  navigate(`/admin/products/edit/${product.id}`)
+                                }
+                                className="hover:bg-blue-50 hover:border-blue-300"
+                              >
+                                <Edit className="h-4 w-4 mr-1" />
+                                Edit
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-destructive hover:bg-red-50 hover:border-red-300"
+                                onClick={() => handleDeleteClick(product)}
+                              >
+                                {hasOrders ? (
+                                  <>
+                                    <Archive className="h-4 w-4 mr-1" />
+                                    Deactivate
+                                  </>
+                                ) : (
+                                  <>
+                                    <Trash2 className="h-4 w-4 mr-1" />
+                                    Delete
+                                  </>
+                                )}
+                              </Button>
+                            </div>
                           </div>
-                        </div>
-                      </CardContent>
+                        </CardContent>
+                      </div>
                     </div>
-                  </div>
-                </Card>
-              ))}
+                  </Card>
+                );
+              })}
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Delete Confirmation Dialog */}
+      {/* ✅ IMPROVED: Delete Confirmation Dialog with Warning */}
       <AlertDialog
         open={!!deleteProduct}
-        onOpenChange={() => setDeleteProduct(null)}
+        onOpenChange={() => {
+          setDeleteProduct(null);
+          setDeleteWarning(null);
+        }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Product</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete "{deleteProduct?.title}"? This
-              action cannot be undone and will remove the product and all
-              related variants.
+            <AlertDialogTitle>
+              {deleteWarning?.hasOrders ? (
+                <span className="flex items-center gap-2">
+                  <Archive className="h-5 w-5 text-orange-500" />
+                  Deactivate Product
+                </span>
+              ) : (
+                <span className="flex items-center gap-2">
+                  <Trash2 className="h-5 w-5 text-red-500" />
+                  Delete Product
+                </span>
+              )}
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3">
+              <p>
+                Are you sure you want to {deleteWarning?.hasOrders ? 'deactivate' : 'delete'} 
+                <span className="font-semibold"> "{deleteProduct?.title}"</span>?
+              </p>
+              
+              {/* ✅ Warning message */}
+              {deleteWarning?.hasOrders ? (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 flex items-start gap-2">
+                  <AlertTriangle className="h-5 w-5 text-yellow-600 mt-0.5 flex-shrink-0" />
+                  <div className="text-sm text-yellow-800">
+                    <p className="font-medium mb-1">⚠️ This product has order history</p>
+                    <p>{deleteWarning.message}</p>
+                    <p className="mt-2">The product will be hidden from your store but order history will be preserved.</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-2">
+                  <AlertTriangle className="h-5 w-5 text-red-600 mt-0.5 flex-shrink-0" />
+                  <div className="text-sm text-red-800">
+                    <p className="font-medium mb-1">⚠️ Permanent deletion</p>
+                    <p>This product has no orders and will be permanently deleted along with all its variants.</p>
+                    <p className="mt-2 font-semibold">This action cannot be undone!</p>
+                  </div>
+                </div>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className={deleteWarning?.hasOrders 
+                ? "bg-orange-600 hover:bg-orange-700" 
+                : "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              }
             >
-              Delete Product
+              {deleteWarning?.hasOrders ? (
+                <>
+                  <Archive className="h-4 w-4 mr-2" />
+                  Deactivate Product
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete Permanently
+                </>
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
