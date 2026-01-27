@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -48,6 +48,9 @@ export function EditProductForm({
   const [variants, setVariants] = useState([]);
   const [loadingVariants, setLoadingVariants] = useState(true);
   const [showInactive, setShowInactive] = useState(false);
+  
+  // ✅ NEW: Track original variants to detect changes
+  const originalVariantsRef = useRef([]);
 
   // Fetch categories & variants
   useEffect(() => {
@@ -100,6 +103,9 @@ export function EditProductForm({
           
           setVariants(variantsWithOrderCount);
           
+          // ✅ Store original variants for comparison
+          originalVariantsRef.current = JSON.parse(JSON.stringify(variantsWithOrderCount));
+          
           // Update price from ACTIVE variants only
           const activePrices = variantsWithOrderCount
             .filter(v => v.is_active)
@@ -111,6 +117,7 @@ export function EditProductForm({
           }
         } else {
           setVariants([]);
+          originalVariantsRef.current = [];
         }
       } catch (error) {
         console.error("Fetch variants error:", error);
@@ -359,6 +366,22 @@ export function EditProductForm({
     }
   }, [catalogNumber]);
 
+  // ✅ NEW: Helper to check if variant has changed
+  const hasVariantChanged = (current, original) => {
+    if (!original) return true; // New variant
+    
+    return (
+      current.size_display !== original.size_display ||
+      current.size_numeric !== original.size_numeric ||
+      current.size_unit !== original.size_unit ||
+      current.price_tier !== original.price_tier ||
+      current.sku !== original.sku ||
+      parseFloat(current.price) !== parseFloat(original.price) ||
+      Number(current.stock_quantity) !== Number(original.stock_quantity) ||
+      current.is_active !== original.is_active
+    );
+  };
+
   const validateAndSubmit = async (e) => {
     e.preventDefault();
 
@@ -471,8 +494,13 @@ export function EditProductForm({
       return;
     }
 
-    // ✅ Save ALL variants (including inactive ones)
-    for (const v of variants) {
+    // ✅ IMPROVED: Only update/insert variants that have CHANGED
+    let updatedCount = 0;
+    let insertedCount = 0;
+    
+    for (let i = 0; i < variants.length; i++) {
+      const v = variants[i];
+      
       if (!v.is_active && !v.id) continue; // Skip unsaved inactive variants
       
       const variantData = {
@@ -488,20 +516,41 @@ export function EditProductForm({
       };
 
       if (v.id) {
-        const { error } = await supabase
-          .from("product_variants")
-          .update(variantData)
-          .eq("id", v.id);
+        // ✅ EXISTING VARIANT: Check if it has changed
+        const originalVariant = originalVariantsRef.current.find(ov => ov.id === v.id);
         
-        if (error) {
-          console.error("Update variant error:", error);
-          toast({
-            title: "Failed to update size",
-            description: error.message,
-            variant: "destructive",
-          });
+        if (hasVariantChanged(v, originalVariant)) {
+          // ✅ Variant has changed - update it
+          const { error } = await supabase
+            .from("product_variants")
+            .update(variantData)
+            .eq("id", v.id);
+          
+          if (error) {
+            console.error("Update variant error:", error);
+            
+            // ✅ If FK constraint error and variant has orders, skip it
+            if (error.message.includes("foreign key constraint") && v.order_count > 0) {
+              toast({
+                title: "Skipped ordered variant",
+                description: `Size "${v.size_display}" has ${v.order_count} order(s) and cannot be modified.`,
+                variant: "default",
+              });
+              continue;
+            }
+            
+            toast({
+              title: "Failed to update size",
+              description: error.message,
+              variant: "destructive",
+            });
+          } else {
+            updatedCount++;
+          }
         }
+        // else: Variant unchanged, skip update
       } else {
+        // ✅ NEW VARIANT: Insert it
         const { error } = await supabase
           .from("product_variants")
           .insert([{
@@ -517,13 +566,20 @@ export function EditProductForm({
             description: error.message,
             variant: "destructive",
           });
+        } else {
+          insertedCount++;
         }
       }
     }
 
+    // ✅ Show summary message
+    const messages = [];
+    if (updatedCount > 0) messages.push(`${updatedCount} variant(s) updated`);
+    if (insertedCount > 0) messages.push(`${insertedCount} variant(s) added`);
+    
     toast({ 
       title: "Product saved successfully", 
-      description: "All changes applied" 
+      description: messages.length > 0 ? messages.join(", ") : "No changes to variants",
     });
   };
 
@@ -769,7 +825,7 @@ export function EditProductForm({
                             ⚠️ This variant has been ordered {variant.order_count} time(s)
                           </p>
                           <p className="text-xs text-yellow-700 mt-1">
-                            Cannot be permanently deleted, only deactivated
+                            Changes will be applied carefully to preserve order history
                           </p>
                         </div>
                       </div>
