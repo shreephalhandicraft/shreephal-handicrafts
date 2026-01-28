@@ -18,7 +18,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Edit, Trash2, Package } from "lucide-react";
+import { Plus, Edit, Trash2, Package, AlertCircle } from "lucide-react";
 import { AddCategoryForm, EditCategoryForm } from "../forms/CategoryForm";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabaseClient";
@@ -39,6 +39,10 @@ export function CategoriesPage() {
         id,
         name,
         slug,
+        image,
+        price,
+        rating,
+        featured,
         products:products(id)
       `);
 
@@ -52,6 +56,10 @@ export function CategoriesPage() {
         id: category.id,
         name: category.name,
         slug: category.slug,
+        image: category.image,
+        price: category.price,
+        rating: category.rating,
+        featured: category.featured,
         products: category.products ? category.products.length : 0,
       }));
 
@@ -63,6 +71,20 @@ export function CategoriesPage() {
 
   // Create category handler
   const handleCreate = async (data) => {
+    // Check for duplicate slug
+    const duplicateSlug = categories.find(
+      (cat) => cat.slug.toLowerCase() === data.slug.toLowerCase()
+    );
+
+    if (duplicateSlug) {
+      toast({
+        title: "Duplicate Slug",
+        description: "A category with this slug already exists",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const { error, data: newCategory } = await supabase
       .from("categories")
       .insert([data])
@@ -70,7 +92,11 @@ export function CategoriesPage() {
       .single();
 
     if (error) {
-      toast({ title: "Failed to create category", variant: "destructive" });
+      toast({
+        title: "Failed to create category",
+        description: error.message,
+        variant: "destructive",
+      });
       return;
     }
 
@@ -83,13 +109,33 @@ export function CategoriesPage() {
   const handleEdit = async (data) => {
     if (!editingCategory) return;
 
+    // Check for duplicate slug (excluding current category)
+    const duplicateSlug = categories.find(
+      (cat) =>
+        cat.slug.toLowerCase() === data.slug.toLowerCase() &&
+        cat.id !== editingCategory.id
+    );
+
+    if (duplicateSlug) {
+      toast({
+        title: "Duplicate Slug",
+        description: "A category with this slug already exists",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const { error } = await supabase
       .from("categories")
       .update(data)
       .eq("id", editingCategory.id);
 
     if (error) {
-      toast({ title: "Failed to update category", variant: "destructive" });
+      toast({
+        title: "Failed to update category",
+        description: error.message,
+        variant: "destructive",
+      });
       return;
     }
 
@@ -103,27 +149,23 @@ export function CategoriesPage() {
     toast({ title: "Category updated successfully" });
   };
 
-  // Delete category and all related products handler
+  // ✅ FIXED: Block deletion if category has products
   const handleDelete = async () => {
     if (!deleteCategory) return;
 
+    // ✅ Check if category has products
+    if (deleteCategory.products > 0) {
+      toast({
+        title: "Cannot Delete Category",
+        description: `This category has ${deleteCategory.products} product(s). Please reassign or delete them first.`,
+        variant: "destructive",
+      });
+      setDeleteCategory(null);
+      return;
+    }
+
     try {
-      // 1. Delete all products associated with the category
-      const { error: productDeleteError } = await supabase
-        .from("products")
-        .delete()
-        .eq("category_id", deleteCategory.id);
-
-      if (productDeleteError) {
-        toast({
-          title: "Failed to delete products",
-          description: productDeleteError.message,
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // 2. Delete the category
+      // ✅ Only delete category if it has NO products
       const { error: categoryDeleteError } = await supabase
         .from("categories")
         .delete()
@@ -141,7 +183,7 @@ export function CategoriesPage() {
       // Update local state to remove deleted category
       setCategories(categories.filter((c) => c.id !== deleteCategory.id));
       setDeleteCategory(null);
-      toast({ title: "Category and its products deleted successfully" });
+      toast({ title: "Category deleted successfully" });
     } catch (error) {
       toast({
         title: "Deletion error",
@@ -173,6 +215,19 @@ export function CategoriesPage() {
         </Button>
       </div>
 
+      {/* Info Banner */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start gap-3">
+        <AlertCircle className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+        <div className="text-sm text-blue-900">
+          <p className="font-medium mb-1">Category Management:</p>
+          <ul className="list-disc list-inside space-y-1 text-blue-800">
+            <li>Categories with products cannot be deleted</li>
+            <li>Reassign products to another category before deleting</li>
+            <li>Empty categories can be deleted safely</li>
+          </ul>
+        </div>
+      </div>
+
       {/* Categories list */}
       <Card className="bg-card border-border">
         <CardHeader>
@@ -184,6 +239,21 @@ export function CategoriesPage() {
         <CardContent>
           {loading ? (
             <p className="text-center py-10">Loading categories...</p>
+          ) : categories.length === 0 ? (
+            <div className="text-center py-10">
+              <Package className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+              <p className="text-gray-600 mb-4">No categories yet</p>
+              <Button
+                onClick={() => {
+                  setEditingCategory(null);
+                  setIsFormOpen(true);
+                }}
+                variant="outline"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Create Your First Category
+              </Button>
+            </div>
           ) : (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {categories.map((category) => (
@@ -193,11 +263,19 @@ export function CategoriesPage() {
                 >
                   <CardHeader className="pb-3">
                     <div className="flex items-center justify-between">
-                      <Package className="h-8 w-8 text-primary" />
+                      {category.image ? (
+                        <img
+                          src={category.image}
+                          alt={category.name}
+                          className="h-16 w-16 rounded object-cover"
+                        />
+                      ) : (
+                        <Package className="h-8 w-8 text-primary" />
+                      )}
                     </div>
                     <CardTitle className="text-lg">{category.name}</CardTitle>
                     <CardDescription>
-                      You have {category.products} products.
+                      {category.products} product{category.products !== 1 ? 's' : ''}
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -226,7 +304,19 @@ export function CategoriesPage() {
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8 text-destructive"
-                          onClick={() => setDeleteCategory(category)}
+                          onClick={() => {
+                            // ✅ Show warning if category has products
+                            if (category.products > 0) {
+                              toast({
+                                title: "Cannot Delete",
+                                description: `This category has ${category.products} product(s). Reassign them first.`,
+                                variant: "destructive",
+                              });
+                              return;
+                            }
+                            setDeleteCategory(category);
+                          }}
+                          disabled={category.products > 0}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -278,9 +368,17 @@ export function CategoriesPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Category</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete "{deleteCategory?.name}"? This
-              will also delete all products belonging to this category. This
-              action cannot be undone.
+              {/* ✅ Updated confirmation message */}
+              Are you sure you want to delete "{deleteCategory?.name}"?
+              {deleteCategory?.products > 0 ? (
+                <span className="block mt-2 text-red-600 font-medium">
+                  ⚠️ This category has {deleteCategory.products} product(s) and cannot be deleted.
+                </span>
+              ) : (
+                <span className="block mt-2">
+                  This action cannot be undone.
+                </span>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -288,6 +386,7 @@ export function CategoriesPage() {
             <AlertDialogAction
               onClick={handleDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteCategory?.products > 0}
             >
               Delete
             </AlertDialogAction>
