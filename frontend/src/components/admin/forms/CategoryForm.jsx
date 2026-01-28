@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
 import { DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import ImageUploadDirect from "@/components/ImageUploadDirect.jsx";
 import { useToast } from "@/hooks/use-toast";
@@ -17,6 +16,19 @@ function generateSlug(name) {
     .replace(/-+/g, '-'); // Replace multiple hyphens with single hyphen
 }
 
+// Custom Checkbox Component (no Radix UI dependency)
+function CustomCheckbox({ id, checked, onCheckedChange, className = "" }) {
+  return (
+    <input
+      type="checkbox"
+      id={id}
+      checked={checked}
+      onChange={(e) => onCheckedChange(e.target.checked)}
+      className={`h-4 w-4 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary cursor-pointer ${className}`}
+    />
+  );
+}
+
 // --- AddCategoryForm ---
 export function AddCategoryForm({ onSubmit, onCancel }) {
   const { toast } = useToast();
@@ -25,7 +37,7 @@ export function AddCategoryForm({ onSubmit, onCancel }) {
   const [price, setPrice] = useState("");
   const [rating, setRating] = useState("");
   const [featured, setFeatured] = useState(false);
-  const [image, setImage] = useState(""); // ✅ Match database field name
+  const [image, setImage] = useState("");
   const [uploading, setUploading] = useState(false);
   const [slugEdited, setSlugEdited] = useState(false);
 
@@ -61,11 +73,11 @@ export function AddCategoryForm({ onSubmit, onCancel }) {
       return;
     }
 
-    // ✅ Build data object matching database schema
+    // Build data object matching database schema
     const categoryData = {
       name: trimmedName,
       slug: trimmedSlug,
-      image: image || null, // ✅ Correct field name
+      image: image || null,
       price: price ? parseFloat(price) : null,
       rating: rating ? parseFloat(rating) : null,
       featured: featured,
@@ -143,7 +155,7 @@ export function AddCategoryForm({ onSubmit, onCancel }) {
         </div>
         
         <div className="flex items-center space-x-2">
-          <Checkbox
+          <CustomCheckbox
             id="featured"
             checked={featured}
             onCheckedChange={setFeatured}
@@ -194,7 +206,7 @@ export function EditCategoryForm({ category, onSubmit, onCancel }) {
   const [price, setPrice] = useState(category?.price || "");
   const [rating, setRating] = useState(category?.rating || "");
   const [featured, setFeatured] = useState(category?.featured || false);
-  const [image, setImage] = useState(category?.image || ""); // ✅ Match database field name
+  const [image, setImage] = useState(category?.image || "");
   const [uploading, setUploading] = useState(false);
   const [slugEdited, setSlugEdited] = useState(false);
 
@@ -234,11 +246,11 @@ export function EditCategoryForm({ category, onSubmit, onCancel }) {
       return;
     }
 
-    // ✅ Build data object matching database schema
+    // Build data object matching database schema
     const categoryData = {
       name: trimmedName,
       slug: trimmedSlug,
-      image: image || null, // ✅ Correct field name
+      image: image || null,
       price: price ? parseFloat(price) : null,
       rating: rating ? parseFloat(rating) : null,
       featured: featured,
@@ -316,7 +328,7 @@ export function EditCategoryForm({ category, onSubmit, onCancel }) {
         </div>
         
         <div className="flex items-center space-x-2">
-          <Checkbox
+          <CustomCheckbox
             id="featured"
             checked={featured}
             onCheckedChange={setFeatured}
