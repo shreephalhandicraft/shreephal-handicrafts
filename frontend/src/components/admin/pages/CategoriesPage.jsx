@@ -18,7 +18,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Edit, Trash2, Package, AlertCircle } from "lucide-react";
+import { Plus, Edit, Trash2, Package, AlertCircle, RefreshCw } from "lucide-react";
 import { AddCategoryForm, EditCategoryForm } from "../forms/CategoryForm";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabaseClient";
@@ -30,44 +30,59 @@ export function CategoriesPage() {
   const [deleteCategory, setDeleteCategory] = useState(null);
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(null);
 
   // Fetch categories and product counts
-  useEffect(() => {
-    async function fetchCategories() {
-      setLoading(true);
-      const { data, error } = await supabase.from("categories").select(`
-        id,
-        name,
-        slug,
-        image,
-        price,
-        rating,
-        featured,
-        products:products(id)
-      `);
+  const fetchCategories = async (showRefreshToast = false) => {
+    setRefreshing(true);
+    const { data, error } = await supabase.from("categories").select(`
+      id,
+      name,
+      slug,
+      image,
+      price,
+      rating,
+      featured,
+      products:products(id)
+    `);
 
-      if (error) {
-        toast({ title: "Failed to fetch categories", variant: "destructive" });
-        setLoading(false);
-        return;
-      }
-
-      const categoriesWithCount = data.map((category) => ({
-        id: category.id,
-        name: category.name,
-        slug: category.slug,
-        image: category.image,
-        price: category.price,
-        rating: category.rating,
-        featured: category.featured,
-        products: category.products ? category.products.length : 0,
-      }));
-
-      setCategories(categoriesWithCount);
+    if (error) {
+      toast({ title: "Failed to fetch categories", variant: "destructive" });
+      setRefreshing(false);
       setLoading(false);
+      return;
     }
+
+    const categoriesWithCount = data.map((category) => ({
+      id: category.id,
+      name: category.name,
+      slug: category.slug,
+      image: category.image,
+      price: category.price,
+      rating: category.rating,
+      featured: category.featured,
+      products: category.products ? category.products.length : 0,
+    }));
+
+    setCategories(categoriesWithCount);
+    setLastUpdated(new Date());
+    setRefreshing(false);
+    setLoading(false);
+    
+    if (showRefreshToast) {
+      toast({ title: "✅ Categories refreshed" });
+    }
+  };
+
+  useEffect(() => {
     fetchCategories();
-  }, [toast]);
+  }, []);
+
+  // Manual refresh
+  const handleRefresh = () => {
+    fetchCategories(true);
+  };
 
   // Create category handler
   const handleCreate = async (data) => {
@@ -100,9 +115,10 @@ export function CategoriesPage() {
       return;
     }
 
-    setCategories([...categories, { ...newCategory, products: 0 }]);
     setIsFormOpen(false);
     toast({ title: "Category created successfully" });
+    // ✅ Refetch to get accurate counts
+    fetchCategories();
   };
 
   // Edit category handler
@@ -139,17 +155,14 @@ export function CategoriesPage() {
       return;
     }
 
-    setCategories(
-      categories.map((c) =>
-        c.id === editingCategory.id ? { ...c, ...data } : c
-      )
-    );
     setEditingCategory(null);
     setIsFormOpen(false);
     toast({ title: "Category updated successfully" });
+    // ✅ Refetch to get accurate counts
+    fetchCategories();
   };
 
-  // ✅ FIXED: Block deletion if category has products
+  // Delete category handler
   const handleDelete = async () => {
     if (!deleteCategory) return;
 
@@ -165,7 +178,7 @@ export function CategoriesPage() {
     }
 
     try {
-      // ✅ Only delete category if it has NO products
+      // Only delete category if it has NO products
       const { error: categoryDeleteError } = await supabase
         .from("categories")
         .delete()
@@ -180,10 +193,10 @@ export function CategoriesPage() {
         return;
       }
 
-      // Update local state to remove deleted category
-      setCategories(categories.filter((c) => c.id !== deleteCategory.id));
       setDeleteCategory(null);
       toast({ title: "Category deleted successfully" });
+      // ✅ Refetch to get accurate counts
+      fetchCategories();
     } catch (error) {
       toast({
         title: "Deletion error",
@@ -191,6 +204,20 @@ export function CategoriesPage() {
         variant: "destructive",
       });
     }
+  };
+
+  // Format last updated time
+  const formatLastUpdated = () => {
+    if (!lastUpdated) return "";
+    const now = new Date();
+    const seconds = Math.floor((now - lastUpdated) / 1000);
+    
+    if (seconds < 10) return "Just now";
+    if (seconds < 60) return `${seconds}s ago`;
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    return `${hours}h ago`;
   };
 
   return (
@@ -203,17 +230,35 @@ export function CategoriesPage() {
             Organize your products into categories
           </p>
         </div>
-        <Button
-          onClick={() => {
-            setEditingCategory(null);
-            setIsFormOpen(true);
-          }}
-          className="bg-primary hover:bg-primary-hover text-primary-foreground"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Add Category
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            onClick={handleRefresh}
+            variant="outline"
+            disabled={refreshing}
+            className="flex items-center gap-2"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+          <Button
+            onClick={() => {
+              setEditingCategory(null);
+              setIsFormOpen(true);
+            }}
+            className="bg-primary hover:bg-primary-hover text-primary-foreground"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Add Category
+          </Button>
+        </div>
       </div>
+
+      {/* Last Updated Info */}
+      {lastUpdated && (
+        <div className="text-sm text-muted-foreground">
+          Last updated: {formatLastUpdated()}
+        </div>
+      )}
 
       {/* Info Banner */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start gap-3">
@@ -222,7 +267,7 @@ export function CategoriesPage() {
           <p className="font-medium mb-1">Category Management:</p>
           <ul className="list-disc list-inside space-y-1 text-blue-800">
             <li>Categories with products cannot be deleted</li>
-            <li>Reassign products to another category before deleting</li>
+            <li>Delete all products first, then click refresh to update count</li>
             <li>Empty categories can be deleted safely</li>
           </ul>
         </div>
@@ -259,8 +304,19 @@ export function CategoriesPage() {
               {categories.map((category) => (
                 <Card
                   key={category.id}
-                  className="bg-surface-light border-border"
+                  className="bg-surface-light border-border relative"
                 >
+                  {/* Product Count Badge */}
+                  <div className="absolute top-3 right-3">
+                    <div className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                      category.products === 0 
+                        ? 'bg-green-100 text-green-800' 
+                        : 'bg-blue-100 text-blue-800'
+                    }`}>
+                      {category.products} {category.products === 1 ? 'product' : 'products'}
+                    </div>
+                  </div>
+                  
                   <CardHeader className="pb-3">
                     <div className="flex items-center justify-between">
                       {category.image ? (
@@ -273,9 +329,9 @@ export function CategoriesPage() {
                         <Package className="h-8 w-8 text-primary" />
                       )}
                     </div>
-                    <CardTitle className="text-lg">{category.name}</CardTitle>
+                    <CardTitle className="text-lg mt-2">{category.name}</CardTitle>
                     <CardDescription>
-                      {category.products} product{category.products !== 1 ? 's' : ''}
+                      Slug: {category.slug}
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -305,11 +361,11 @@ export function CategoriesPage() {
                           size="icon"
                           className="h-8 w-8 text-destructive"
                           onClick={() => {
-                            // ✅ Show warning if category has products
+                            // Show warning if category has products
                             if (category.products > 0) {
                               toast({
                                 title: "Cannot Delete",
-                                description: `This category has ${category.products} product(s). Reassign them first.`,
+                                description: `This category has ${category.products} product(s). Delete them first, then click refresh.`,
                                 variant: "destructive",
                               });
                               return;
@@ -368,7 +424,6 @@ export function CategoriesPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Category</AlertDialogTitle>
             <AlertDialogDescription>
-              {/* ✅ Updated confirmation message */}
               Are you sure you want to delete "{deleteCategory?.name}"?
               {deleteCategory?.products > 0 ? (
                 <span className="block mt-2 text-red-600 font-medium">
