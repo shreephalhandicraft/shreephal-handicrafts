@@ -2,9 +2,20 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import ImageUploadDirect from "@/components/ImageUploadDirect.jsx";
 import { useToast } from "@/hooks/use-toast";
+
+// Helper function to generate slug from name
+function generateSlug(name) {
+  return name
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, '') // Remove special characters
+    .replace(/\s+/g, '-') // Replace spaces with hyphens
+    .replace(/-+/g, '-'); // Replace multiple hyphens with single hyphen
+}
 
 // --- AddCategoryForm ---
 export function AddCategoryForm({ onSubmit, onCancel }) {
@@ -12,11 +23,21 @@ export function AddCategoryForm({ onSubmit, onCancel }) {
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [price, setPrice] = useState("");
-  const [imageUrl, setImageUrl] = useState("");
+  const [rating, setRating] = useState("");
+  const [featured, setFeatured] = useState(false);
+  const [image, setImage] = useState(""); // ✅ Match database field name
   const [uploading, setUploading] = useState(false);
+  const [slugEdited, setSlugEdited] = useState(false);
+
+  // Auto-generate slug from name
+  useEffect(() => {
+    if (!slugEdited && name) {
+      setSlug(generateSlug(name));
+    }
+  }, [name, slugEdited]);
 
   const onUploadSuccess = (imgData) => {
-    setImageUrl(imgData.url || imgData.cloudinary_url || "");
+    setImage(imgData.url || imgData.cloudinary_url || "");
     toast({ title: "Image uploaded successfully" });
     setUploading(false);
   };
@@ -27,15 +48,30 @@ export function AddCategoryForm({ onSubmit, onCancel }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (name.trim() && slug.trim()) {
-      onSubmit({ name, slug, price, image: imageUrl }); // Fixed: use imageUrl
-    } else {
+    
+    const trimmedName = name.trim();
+    const trimmedSlug = slug.trim();
+
+    if (!trimmedName || !trimmedSlug) {
       toast({
         title: "Validation Error",
         description: "Name and Slug are required.",
         variant: "destructive",
       });
+      return;
     }
+
+    // ✅ Build data object matching database schema
+    const categoryData = {
+      name: trimmedName,
+      slug: trimmedSlug,
+      image: image || null, // ✅ Correct field name
+      price: price ? parseFloat(price) : null,
+      rating: rating ? parseFloat(rating) : null,
+      featured: featured,
+    };
+
+    onSubmit(categoryData);
   };
 
   return (
@@ -45,65 +81,104 @@ export function AddCategoryForm({ onSubmit, onCancel }) {
       </DialogHeader>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <Label htmlFor="name">Name</Label>
+          <Label htmlFor="name">
+            Name <span className="text-red-500">*</span>
+          </Label>
           <Input
             id="name"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Category name"
+            placeholder="e.g., Wood Crafts"
             required
           />
         </div>
+        
         <div>
-          <Label htmlFor="slug">Slug</Label>
+          <Label htmlFor="slug">
+            Slug <span className="text-red-500">*</span>
+          </Label>
           <Input
             id="slug"
             value={slug}
-            onChange={(e) => setSlug(e.target.value)}
-            placeholder="category-slug"
+            onChange={(e) => {
+              setSlug(e.target.value);
+              setSlugEdited(true);
+            }}
+            placeholder="wood-crafts"
             required
           />
+          <p className="text-xs text-muted-foreground mt-1">
+            Auto-generated from name. Used in URLs.
+          </p>
         </div>
+        
         <div>
-          <Label htmlFor="price">Price</Label>
+          <Label htmlFor="price">Price (Optional)</Label>
           <Input
             id="price"
             type="number"
             min="0"
+            step="0.01"
             value={price}
             onChange={(e) => setPrice(e.target.value)}
-            placeholder="Price"
+            placeholder="0.00"
           />
         </div>
+        
         <div>
-          <Label>Image</Label>
-          {imageUrl && ( // Fixed: use imageUrl
-            <img
-              src={imageUrl} // Fixed: use imageUrl
-              alt="Category image"
-              style={{
-                width: 100,
-                height: 100,
-                objectFit: "cover",
-                borderRadius: 6,
-                border: "1px solid #ccc",
-                marginBottom: 8,
-              }}
-            />
+          <Label htmlFor="rating">Rating (Optional)</Label>
+          <Input
+            id="rating"
+            type="number"
+            min="0"
+            max="5"
+            step="0.1"
+            value={rating}
+            onChange={(e) => setRating(e.target.value)}
+            placeholder="4.5"
+          />
+          <p className="text-xs text-muted-foreground mt-1">
+            Rating out of 5 (e.g., 4.5)
+          </p>
+        </div>
+        
+        <div className="flex items-center space-x-2">
+          <Checkbox
+            id="featured"
+            checked={featured}
+            onCheckedChange={setFeatured}
+          />
+          <Label htmlFor="featured" className="cursor-pointer">
+            Featured Category
+          </Label>
+        </div>
+        
+        <div>
+          <Label>Category Image</Label>
+          {image && (
+            <div className="mb-2">
+              <img
+                src={image}
+                alt="Category preview"
+                className="w-24 h-24 object-cover rounded border"
+              />
+            </div>
           )}
           <ImageUploadDirect
             onUploadSuccess={onUploadSuccess}
+            onUploadStart={handleUploadStart}
             maxFiles={1}
             folder="shreephal-handicrafts/categories"
           />
-          {uploading && <p>Uploading image...</p>}
+          {uploading && <p className="text-sm text-muted-foreground mt-1">Uploading image...</p>}
         </div>
+        
         <div className="flex justify-end space-x-2 pt-4">
           <Button type="button" variant="outline" onClick={onCancel}>
             Cancel
           </Button>
           <Button type="submit" disabled={uploading}>
-            Create
+            Create Category
           </Button>
         </div>
       </form>
@@ -117,20 +192,25 @@ export function EditCategoryForm({ category, onSubmit, onCancel }) {
   const [name, setName] = useState(category?.name || "");
   const [slug, setSlug] = useState(category?.slug || "");
   const [price, setPrice] = useState(category?.price || "");
-  const [imageUrl, setImageUrl] = useState(category?.image || "");
+  const [rating, setRating] = useState(category?.rating || "");
+  const [featured, setFeatured] = useState(category?.featured || false);
+  const [image, setImage] = useState(category?.image || ""); // ✅ Match database field name
   const [uploading, setUploading] = useState(false);
+  const [slugEdited, setSlugEdited] = useState(false);
 
   useEffect(() => {
     if (category) {
       setName(category.name || "");
       setSlug(category.slug || "");
       setPrice(category.price || "");
-      setImageUrl(category.image || "");
+      setRating(category.rating || "");
+      setFeatured(category.featured || false);
+      setImage(category.image || "");
     }
   }, [category]);
 
   const onUploadSuccess = (imgData) => {
-    setImageUrl(imgData.url || imgData.cloudinary_url || "");
+    setImage(imgData.url || imgData.cloudinary_url || "");
     toast({ title: "Image uploaded successfully" });
     setUploading(false);
   };
@@ -141,15 +221,30 @@ export function EditCategoryForm({ category, onSubmit, onCancel }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (name.trim() && slug.trim()) {
-      onSubmit({ name, slug, price, image: imageUrl }); // Fixed: use imageUrl
-    } else {
+    
+    const trimmedName = name.trim();
+    const trimmedSlug = slug.trim();
+
+    if (!trimmedName || !trimmedSlug) {
       toast({
         title: "Validation Error",
         description: "Name and Slug are required.",
         variant: "destructive",
       });
+      return;
     }
+
+    // ✅ Build data object matching database schema
+    const categoryData = {
+      name: trimmedName,
+      slug: trimmedSlug,
+      image: image || null, // ✅ Correct field name
+      price: price ? parseFloat(price) : null,
+      rating: rating ? parseFloat(rating) : null,
+      featured: featured,
+    };
+
+    onSubmit(categoryData);
   };
 
   return (
@@ -159,60 +254,98 @@ export function EditCategoryForm({ category, onSubmit, onCancel }) {
       </DialogHeader>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <Label htmlFor="name">Name</Label>
+          <Label htmlFor="name">
+            Name <span className="text-red-500">*</span>
+          </Label>
           <Input
             id="name"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Category name"
+            placeholder="e.g., Wood Crafts"
             required
           />
         </div>
+        
         <div>
-          <Label htmlFor="slug">Slug</Label>
+          <Label htmlFor="slug">
+            Slug <span className="text-red-500">*</span>
+          </Label>
           <Input
             id="slug"
             value={slug}
-            onChange={(e) => setSlug(e.target.value)}
-            placeholder="category-slug"
+            onChange={(e) => {
+              setSlug(e.target.value);
+              setSlugEdited(true);
+            }}
+            placeholder="wood-crafts"
             required
           />
+          <p className="text-xs text-muted-foreground mt-1">
+            Used in URLs. Change carefully.
+          </p>
         </div>
+        
         <div>
-          <Label htmlFor="price">Price</Label>
+          <Label htmlFor="price">Price (Optional)</Label>
           <Input
             id="price"
             type="number"
             min="0"
+            step="0.01"
             value={price}
             onChange={(e) => setPrice(e.target.value)}
-            placeholder="Price"
+            placeholder="0.00"
           />
         </div>
+        
         <div>
-          <Label>Current Image</Label>
-          {imageUrl ? (
-            <img
-              src={imageUrl}
-              alt={name}
-              style={{
-                width: 100,
-                height: 100,
-                objectFit: "cover",
-                borderRadius: 6,
-                border: "1px solid #ccc",
-                marginBottom: 8,
-              }}
-            />
+          <Label htmlFor="rating">Rating (Optional)</Label>
+          <Input
+            id="rating"
+            type="number"
+            min="0"
+            max="5"
+            step="0.1"
+            value={rating}
+            onChange={(e) => setRating(e.target.value)}
+            placeholder="4.5"
+          />
+          <p className="text-xs text-muted-foreground mt-1">
+            Rating out of 5 (e.g., 4.5)
+          </p>
+        </div>
+        
+        <div className="flex items-center space-x-2">
+          <Checkbox
+            id="featured"
+            checked={featured}
+            onCheckedChange={setFeatured}
+          />
+          <Label htmlFor="featured" className="cursor-pointer">
+            Featured Category
+          </Label>
+        </div>
+        
+        <div>
+          <Label>Category Image</Label>
+          {image ? (
+            <div className="mb-2">
+              <img
+                src={image}
+                alt={name}
+                className="w-24 h-24 object-cover rounded border"
+              />
+            </div>
           ) : (
-            <p>No image uploaded yet</p>
+            <p className="text-sm text-muted-foreground mb-2">No image uploaded yet</p>
           )}
           <ImageUploadDirect
             onUploadSuccess={onUploadSuccess}
+            onUploadStart={handleUploadStart}
             maxFiles={1}
             folder="shreephal-handicrafts/categories"
           />
-          {uploading && <p>Uploading image...</p>}
+          {uploading && <p className="text-sm text-muted-foreground mt-1">Uploading image...</p>}
         </div>
 
         <div className="flex justify-end space-x-2 pt-4">
@@ -220,7 +353,7 @@ export function EditCategoryForm({ category, onSubmit, onCancel }) {
             Cancel
           </Button>
           <Button type="submit" disabled={uploading}>
-            Update
+            Update Category
           </Button>
         </div>
       </form>
