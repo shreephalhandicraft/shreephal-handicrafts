@@ -26,7 +26,7 @@ SET
   variant_sku = pv.sku,
   variant_size_display = pv.size_display,
   variant_price_tier = pv.price_tier,
-  price_at_order = COALESCE(oi.price, pv.price),
+  price_at_order = pv.price,
   product_catalog_number = p.catalog_number
 FROM 
   product_variants pv
@@ -38,6 +38,14 @@ WHERE
 -- Step 4: Create function to auto-populate snapshots on new orders
 CREATE OR REPLACE FUNCTION populate_order_item_snapshot()
 RETURNS TRIGGER AS $$
+DECLARE
+  v_product_name TEXT;
+  v_product_image TEXT;
+  v_variant_sku TEXT;
+  v_variant_size TEXT;
+  v_variant_tier TEXT;
+  v_variant_price DECIMAL(10,2);
+  v_catalog_number TEXT;
 BEGIN
   -- If snapshot fields are not provided, fetch from product_variants
   IF NEW.product_name IS NULL OR NEW.variant_sku IS NULL THEN
@@ -47,29 +55,37 @@ BEGIN
       pv.sku,
       pv.size_display,
       pv.price_tier,
-      COALESCE(NEW.price, pv.price),
+      pv.price,
       p.catalog_number
     INTO 
-      NEW.product_name,
-      NEW.product_image_url,
-      NEW.variant_sku,
-      NEW.variant_size_display,
-      NEW.variant_price_tier,
-      NEW.price_at_order,
-      NEW.product_catalog_number
+      v_product_name,
+      v_product_image,
+      v_variant_sku,
+      v_variant_size,
+      v_variant_tier,
+      v_variant_price,
+      v_catalog_number
     FROM 
       product_variants pv
       INNER JOIN products p ON pv.product_id = p.id
     WHERE 
       pv.id = NEW.variant_id;
     
-    -- If variant not found (deleted product), keep what was provided
-    IF NOT FOUND THEN
-      -- Set reasonable defaults if product was deleted
+    -- If variant found, populate snapshot fields
+    IF FOUND THEN
+      NEW.product_name := COALESCE(NEW.product_name, v_product_name);
+      NEW.product_image_url := COALESCE(NEW.product_image_url, v_product_image);
+      NEW.variant_sku := COALESCE(NEW.variant_sku, v_variant_sku);
+      NEW.variant_size_display := COALESCE(NEW.variant_size_display, v_variant_size);
+      NEW.variant_price_tier := COALESCE(NEW.variant_price_tier, v_variant_tier);
+      NEW.price_at_order := COALESCE(NEW.price_at_order, v_variant_price);
+      NEW.product_catalog_number := COALESCE(NEW.product_catalog_number, v_catalog_number);
+    ELSE
+      -- If variant not found (deleted product), set reasonable defaults
       NEW.product_name := COALESCE(NEW.product_name, 'Product Unavailable');
       NEW.variant_sku := COALESCE(NEW.variant_sku, 'N/A');
       NEW.variant_size_display := COALESCE(NEW.variant_size_display, 'N/A');
-      NEW.price_at_order := COALESCE(NEW.price_at_order, NEW.price, 0);
+      NEW.price_at_order := COALESCE(NEW.price_at_order, 0);
     END IF;
   END IF;
   
@@ -113,7 +129,7 @@ SELECT
   COALESCE(oi.product_image_url, p.image_url) as display_image_url,
   COALESCE(oi.variant_sku, pv.sku) as display_sku,
   COALESCE(oi.variant_size_display, pv.size_display) as display_size,
-  COALESCE(oi.price_at_order, oi.price, pv.price) as display_price,
+  COALESCE(oi.price_at_order, pv.price) as display_price,
   -- Include current product data for reference (may be NULL if deleted)
   p.title as current_product_name,
   pv.sku as current_variant_sku,
