@@ -31,7 +31,7 @@ export function CategoriesPage() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
 
-  // Fetch categories and product counts
+  // Fetch categories and ACTIVE product counts only
   useEffect(() => {
     async function fetchCategories() {
       setLoading(true);
@@ -39,7 +39,7 @@ export function CategoriesPage() {
         id,
         name,
         slug,
-        products:products(id)
+        products:products!inner(id, is_active)
       `);
 
       if (error) {
@@ -52,7 +52,9 @@ export function CategoriesPage() {
         id: category.id,
         name: category.name,
         slug: category.slug,
-        products: category.products ? category.products.length : 0,
+        products: category.products 
+          ? category.products.filter(p => p.is_active).length 
+          : 0,
       }));
 
       setCategories(categoriesWithCount);
@@ -103,27 +105,31 @@ export function CategoriesPage() {
     toast({ title: "Category updated successfully" });
   };
 
-  // Delete category and all related products handler
+  // Delete category handler - check for active products first
   const handleDelete = async () => {
     if (!deleteCategory) return;
 
     try {
-      // 1. Delete all products associated with the category
-      const { error: productDeleteError } = await supabase
+      // Check if category has any ACTIVE products
+      const { data: activeProducts, error: checkError } = await supabase
         .from("products")
-        .delete()
-        .eq("category_id", deleteCategory.id);
+        .select("id")
+        .eq("category_id", deleteCategory.id)
+        .eq("is_active", true);
 
-      if (productDeleteError) {
+      if (checkError) throw checkError;
+
+      if (activeProducts && activeProducts.length > 0) {
         toast({
-          title: "Failed to delete products",
-          description: productDeleteError.message,
+          title: "Cannot delete category",
+          description: `This category has ${activeProducts.length} active product(s). Delete all products first or move them to another category.`,
           variant: "destructive",
         });
+        setDeleteCategory(null);
         return;
       }
 
-      // 2. Delete the category
+      // Delete the category (only if no active products)
       const { error: categoryDeleteError } = await supabase
         .from("categories")
         .delete()
@@ -141,7 +147,7 @@ export function CategoriesPage() {
       // Update local state to remove deleted category
       setCategories(categories.filter((c) => c.id !== deleteCategory.id));
       setDeleteCategory(null);
-      toast({ title: "Category and its products deleted successfully" });
+      toast({ title: "Category deleted successfully" });
     } catch (error) {
       toast({
         title: "Deletion error",
@@ -197,7 +203,7 @@ export function CategoriesPage() {
                     </div>
                     <CardTitle className="text-lg">{category.name}</CardTitle>
                     <CardDescription>
-                      You have {category.products} products.
+                      You have {category.products} active products.
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -207,7 +213,7 @@ export function CategoriesPage() {
                           {category.products}
                         </p>
                         <p className="text-sm text-muted-foreground">
-                          Products
+                          Active Products
                         </p>
                       </div>
                       <div className="flex space-x-2">
@@ -227,6 +233,8 @@ export function CategoriesPage() {
                           size="icon"
                           className="h-8 w-8 text-destructive"
                           onClick={() => setDeleteCategory(category)}
+                          disabled={category.products > 0}
+                          title={category.products > 0 ? "Cannot delete category with active products" : "Delete category"}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -278,19 +286,29 @@ export function CategoriesPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Category</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete "{deleteCategory?.name}"? This
-              will also delete all products belonging to this category. This
-              action cannot be undone.
+              {deleteCategory?.products > 0 ? (
+                <span className="text-destructive font-medium">
+                  Cannot delete "{deleteCategory?.name}" because it has {deleteCategory?.products} active product(s). 
+                  Please delete or move all products first.
+                </span>
+              ) : (
+                <span>
+                  Are you sure you want to delete "{deleteCategory?.name}"? 
+                  This action cannot be undone.
+                </span>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Delete
-            </AlertDialogAction>
+            {deleteCategory?.products === 0 && (
+              <AlertDialogAction
+                onClick={handleDelete}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Delete Category
+              </AlertDialogAction>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
