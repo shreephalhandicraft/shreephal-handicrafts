@@ -41,6 +41,7 @@ import {
   CheckCircle,
   XCircle,
   RefreshCw,
+  AlertTriangle,
 } from "lucide-react";
 
 import { useToast } from "@/hooks/use-toast";
@@ -48,17 +49,17 @@ import { supabase } from "@/lib/supabaseClient";
 
 export function ProductsPage() {
   const [products, setProducts] = useState([]);
-  const [variantsMap, setVariantsMap] = useState({}); // Variants keyed by product_id
+  const [variantsMap, setVariantsMap] = useState({});
   const [categories, setCategories] = useState([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
-  const [viewMode, setViewMode] = useState("grid"); // grid or list
+  const [viewMode, setViewMode] = useState("grid");
   const [deleteProduct, setDeleteProduct] = useState(null);
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
-  // Fetch products, categories and variants - extracted into a reusable function
+  // Fetch products, categories and variants
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
@@ -70,16 +71,17 @@ export function ProductsPage() {
       if (catErr) throw catErr;
       setCategories(cats || []);
 
-      // Fetch products ONLY (price and in_stock auto-computed by triggers)
+      // Fetch ONLY active products (filter out soft-deleted)
       const { data: prods, error: prodErr } = await supabase
         .from("products")
         .select("*")
+        .eq("is_active", true)
         .order("created_at", { ascending: false });
       if (prodErr) throw prodErr;
 
       setProducts(prods || []);
 
-      // Fetch variants with correct schema fields (no size_code!)
+      // Fetch variants
       const productIds = prods?.map((p) => p.id) || [];
       if (productIds.length > 0) {
         const { data: vars, error: varErr } = await supabase
@@ -88,7 +90,6 @@ export function ProductsPage() {
           .in("product_id", productIds);
         if (varErr) throw varErr;
 
-        // Map variants by product_id
         const map = {};
         vars.forEach((v) => {
           if (!map[v.product_id]) map[v.product_id] = [];
@@ -108,18 +109,47 @@ export function ProductsPage() {
     setLoading(false);
   }, [toast]);
 
-  // Initial fetch on mount
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  // Handler to delete product (and its variants)
+  // HARD DELETE: Permanently remove product from database
   const handleDelete = async () => {
     if (!deleteProduct) return;
     setLoading(true);
 
     try {
-      // Delete variants first
+      // Step 1: Check for related data in orders
+      const { data: orderItems, error: orderCheckError } = await supabase
+        .from("order_items")
+        .select("id")
+        .eq("product_id", deleteProduct.id)
+        .limit(1);
+
+      if (orderCheckError) throw orderCheckError;
+
+      if (orderItems && orderItems.length > 0) {
+        toast({
+          title: "Cannot delete product",
+          description: "This product is referenced in existing orders. Please deactivate instead of deleting.",
+          variant: "destructive",
+        });
+        setLoading(false);
+        setDeleteProduct(null);
+        return;
+      }
+
+      // Step 2: Delete cart items containing this product
+      const { error: cartDeleteError } = await supabase
+        .from("cart_items")
+        .delete()
+        .eq("product_id", deleteProduct.id);
+
+      if (cartDeleteError) {
+        console.warn("Cart delete error:", cartDeleteError);
+      }
+
+      // Step 3: Delete product variants (CASCADE should handle this)
       const { error: variantDelError } = await supabase
         .from("product_variants")
         .delete()
@@ -127,7 +157,22 @@ export function ProductsPage() {
 
       if (variantDelError) throw variantDelError;
 
-      // Delete product
+      // Step 4: Delete product image from storage (if exists)
+      if (deleteProduct.image_url) {
+        try {
+          const urlParts = deleteProduct.image_url.split('/');
+          const bucket = 'product-images';
+          const filePath = urlParts[urlParts.length - 1];
+          
+          await supabase.storage
+            .from(bucket)
+            .remove([filePath]);
+        } catch (imgError) {
+          console.warn("Image deletion warning:", imgError);
+        }
+      }
+
+      // Step 5: HARD DELETE the product
       const { error: prodDelError } = await supabase
         .from("products")
         .delete()
@@ -135,11 +180,13 @@ export function ProductsPage() {
 
       if (prodDelError) throw prodDelError;
 
-      // Refresh data (products + variants)
       await fetchData();
 
       setDeleteProduct(null);
-      toast({ title: "Product and its variants deleted successfully" });
+      toast({ 
+        title: "Product deleted successfully",
+        description: "The product and all related data have been permanently removed."
+      });
     } catch (error) {
       toast({
         title: "Failed to delete product",
@@ -150,12 +197,11 @@ export function ProductsPage() {
     setLoading(false);
   };
 
-  // Refresh page (optional, reload data)
   const handleRefresh = () => {
     fetchData();
   };
 
-  // Filter products by category and search term
+  // Filter products
   const filteredProducts = products.filter((product) => {
     const matchesCategory =
       selectedCategoryId && selectedCategoryId !== "all"
@@ -168,7 +214,7 @@ export function ProductsPage() {
     return matchesCategory && matchesSearch;
   });
 
-  // Stats for display
+  // Stats
   const totalProducts = products.length;
   const featuredProducts = products.filter((p) => p.featured).length;
   const inStockProducts = products.filter((p) => p.in_stock).length;
@@ -270,7 +316,6 @@ export function ProductsPage() {
         </CardHeader>
         <CardContent>
           <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
-            {/* Search */}
             <div className="flex-1 space-y-2">
               <label className="text-sm font-medium">Search Products</label>
               <div className="relative">
@@ -284,10 +329,8 @@ export function ProductsPage() {
               </div>
             </div>
 
-            {/* Category Filter */}
             <div className="space-y-2 min-w-[200px]">
               <label className="text-sm font-medium">Filter by Category</label>
-
               <Select
                 value={selectedCategoryId}
                 onValueChange={setSelectedCategoryId}
@@ -306,7 +349,6 @@ export function ProductsPage() {
               </Select>
             </div>
 
-            {/* View Mode Toggle */}
             <div className="space-y-2">
               <label className="text-sm font-medium">View</label>
               <div className="flex border rounded-lg">
@@ -330,9 +372,7 @@ export function ProductsPage() {
             </div>
           </div>
 
-          {/* Active Filters Display */}
-          {(selectedCategoryId && selectedCategoryId !== "all") ||
-          searchTerm ? (
+          {(selectedCategoryId && selectedCategoryId !== "all") || searchTerm ? (
             <div className="flex items-center gap-2 mt-4 pt-4 border-t">
               <span className="text-sm text-muted-foreground">
                 Active filters:
@@ -471,7 +511,6 @@ export function ProductsPage() {
                           {product.description}
                         </p>
 
-                        {/* Display product variants (sizes) inside card */}
                         {variantsMap[product.id] &&
                           variantsMap[product.id].length > 0 && (
                             <div className="mb-4">
@@ -558,11 +597,25 @@ export function ProductsPage() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Product</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete "{deleteProduct?.title}"? This
-              action cannot be undone and will remove the product and all
-              related variants.
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Permanently Delete Product
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <p className="font-semibold">
+                Are you sure you want to permanently delete "{deleteProduct?.title}"?
+              </p>
+              <div className="bg-destructive/10 p-3 rounded-md border border-destructive/20">
+                <p className="text-sm text-destructive font-medium mb-1">
+                  ⚠️ This action CANNOT be undone and will:
+                </p>
+                <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
+                  <li>Permanently delete the product from the database</li>
+                  <li>Delete all product variants and sizes</li>
+                  <li>Remove the product image from storage</li>
+                  <li>Remove from all user carts</li>
+                </ul>
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -571,7 +624,8 @@ export function ProductsPage() {
               onClick={handleDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete Product
+              <Trash2 className="h-4 w-4 mr-2" />
+              Permanently Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
