@@ -249,6 +249,9 @@ export function ProductsPage() {
         });
       }
 
+      // ✅ EMIT EVENT: Notify other components that products changed
+      window.dispatchEvent(new CustomEvent('productsChanged'));
+
       // Refresh data
       await fetchData();
       setDeleteProduct(null);
@@ -282,6 +285,9 @@ export function ProductsPage() {
             title: "Product deactivated",
             description: `"${deleteProduct.title}" has order history and was deactivated.`,
           });
+
+          // ✅ EMIT EVENT
+          window.dispatchEvent(new CustomEvent('productsChanged'));
 
           await fetchData();
           setDeleteProduct(null);

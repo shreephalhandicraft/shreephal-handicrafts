@@ -75,6 +75,19 @@ export function CategoriesPage() {
 
   useEffect(() => {
     fetchCategories();
+
+    // ✅ LISTEN FOR PRODUCT CHANGES: Refresh when products are deleted/created
+    const handleProductsChanged = () => {
+      console.log("Products changed, refreshing categories...");
+      fetchCategories();
+    };
+
+    window.addEventListener('productsChanged', handleProductsChanged);
+
+    // Cleanup listener on unmount
+    return () => {
+      window.removeEventListener('productsChanged', handleProductsChanged);
+    };
   }, []);
 
   // Create category handler
