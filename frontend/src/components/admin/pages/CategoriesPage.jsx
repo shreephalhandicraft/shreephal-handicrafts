@@ -36,6 +36,8 @@ export function CategoriesPage() {
   // Fetch categories and product counts
   const fetchCategories = async (showRefreshToast = false) => {
     setRefreshing(true);
+    
+    // ✅ FIX: Only count ACTIVE products
     const { data, error } = await supabase.from("categories").select(`
       id,
       name,
@@ -44,7 +46,7 @@ export function CategoriesPage() {
       price,
       rating,
       featured,
-      products:products(id)
+      products:products!inner(id).eq(is_active, true)
     `);
 
     if (error) {
@@ -117,7 +119,6 @@ export function CategoriesPage() {
 
     setIsFormOpen(false);
     toast({ title: "Category created successfully" });
-    // ✅ Refetch to get accurate counts
     fetchCategories();
   };
 
@@ -158,7 +159,6 @@ export function CategoriesPage() {
     setEditingCategory(null);
     setIsFormOpen(false);
     toast({ title: "Category updated successfully" });
-    // ✅ Refetch to get accurate counts
     fetchCategories();
   };
 
@@ -170,7 +170,7 @@ export function CategoriesPage() {
     if (deleteCategory.products > 0) {
       toast({
         title: "Cannot Delete Category",
-        description: `This category has ${deleteCategory.products} product(s). Please reassign or delete them first.`,
+        description: `This category has ${deleteCategory.products} active product(s). Please deactivate or delete them first.`,
         variant: "destructive",
       });
       setDeleteCategory(null);
@@ -178,7 +178,7 @@ export function CategoriesPage() {
     }
 
     try {
-      // Only delete category if it has NO products
+      // Only delete category if it has NO active products
       const { error: categoryDeleteError } = await supabase
         .from("categories")
         .delete()
@@ -195,7 +195,6 @@ export function CategoriesPage() {
 
       setDeleteCategory(null);
       toast({ title: "Category deleted successfully" });
-      // ✅ Refetch to get accurate counts
       fetchCategories();
     } catch (error) {
       toast({
@@ -266,8 +265,9 @@ export function CategoriesPage() {
         <div className="text-sm text-blue-900">
           <p className="font-medium mb-1">Category Management:</p>
           <ul className="list-disc list-inside space-y-1 text-blue-800">
-            <li>Categories with products cannot be deleted</li>
-            <li>Delete all products first, then click refresh to update count</li>
+            <li>Only active products are counted</li>
+            <li>Categories with active products cannot be deleted</li>
+            <li>Deactivate or delete products first, then refresh to update count</li>
             <li>Empty categories can be deleted safely</li>
           </ul>
         </div>
@@ -341,7 +341,7 @@ export function CategoriesPage() {
                           {category.products}
                         </p>
                         <p className="text-sm text-muted-foreground">
-                          Products
+                          Active Products
                         </p>
                       </div>
                       <div className="flex space-x-2">
@@ -365,7 +365,7 @@ export function CategoriesPage() {
                             if (category.products > 0) {
                               toast({
                                 title: "Cannot Delete",
-                                description: `This category has ${category.products} product(s). Delete them first, then click refresh.`,
+                                description: `This category has ${category.products} active product(s). Deactivate or delete them first, then refresh.`,
                                 variant: "destructive",
                               });
                               return;
@@ -427,7 +427,7 @@ export function CategoriesPage() {
               Are you sure you want to delete "{deleteCategory?.name}"?
               {deleteCategory?.products > 0 ? (
                 <span className="block mt-2 text-red-600 font-medium">
-                  ⚠️ This category has {deleteCategory.products} product(s) and cannot be deleted.
+                  ⚠️ This category has {deleteCategory.products} active product(s) and cannot be deleted.
                 </span>
               ) : (
                 <span className="block mt-2">
