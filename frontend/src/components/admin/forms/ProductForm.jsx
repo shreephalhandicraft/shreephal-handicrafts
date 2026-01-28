@@ -234,9 +234,9 @@ export function EditProductForm({
         
         const updated = { ...v, [field]: value };
         
-        if ((field === 'price_tier' || field === 'size_display') && catalogNumber) {
-          const tier = field === 'price_tier' ? value : (v.price_tier || String.fromCharCode(65 + idx));
-          updated.sku = `${catalogNumber}-${tier}`;
+        // ✅ Only update SKU when price_tier is MANUALLY changed
+        if (field === 'price_tier' && catalogNumber) {
+          updated.sku = `${catalogNumber}-${value}`;
         }
         
         return updated;
@@ -766,7 +766,8 @@ export function EditProductForm({
               alt="Product"
               className="mt-4 w-28 h-28 object-cover rounded shadow border"
             />
-          )}  
+          />  
+          )}
         </div>
 
         <div className={`border rounded-lg p-4 ${
