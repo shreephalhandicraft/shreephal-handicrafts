@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabaseClient";
 import { useStockReservation } from "@/hooks/useStockReservation";
+import { calculateOrderTotals } from "@/utils/billingUtils"; // ✅ Import billing utils
 
 const PHONEPE_PAY_URL = import.meta.env.VITE_BACKEND_URL
   ? `${import.meta.env.VITE_BACKEND_URL}/pay`
@@ -192,7 +193,7 @@ const parsePaymentError = (errorMessage) => {
 export const useCheckoutLogic = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { items, getTotalPrice, clearCart, getCartForCheckout } = useCart();
+  const { items, clearCart, getCartForCheckout } = useCart();
   const { user } = useAuth();
   const { toast } = useToast();
   const payFormRef = useRef(null);
@@ -214,10 +215,13 @@ export const useCheckoutLogic = () => {
     zipCode: "",
   });
 
-  // Computed values
-  const subtotal = getTotalPrice();
-  const tax = subtotal * 0.08;
-  const total = subtotal + tax;
+  // ✅ FIXED: Use product-wise GST calculation instead of hardcoded 8%
+  const cartItems = getCartForCheckout();
+  const orderTotals = calculateOrderTotals(cartItems);
+  
+  const subtotal = orderTotals.subtotal;        // Base price without GST
+  const tax = orderTotals.totalGST;             // Product-wise GST (5%/18%/none)
+  const total = orderTotals.grandTotal;         // subtotal + tax
 
   // Handle form input changes
   const handleChange = useCallback((e) => {
@@ -568,8 +572,17 @@ export const useCheckoutLogic = () => {
           customer = newCustomer;
         }
 
-        const totalPaise = Math.round(total * 100);
+        // ✅ FIXED: Use proper GST calculation
+        const orderTotals = calculateOrderTotals(cartItems);
+        const totalPaise = Math.round(orderTotals.grandTotal * 100);
         const customizationDetails = createCustomizationDetails(cartItems);
+
+        console.log("\n💰 ORDER TOTALS (Product-wise GST):");
+        console.log(`  Subtotal (Base): ₹${orderTotals.subtotal}`);
+        console.log(`  GST @5%: ₹${orderTotals.gst5Total}`);
+        console.log(`  GST @18%: ₹${orderTotals.gst18Total}`);
+        console.log(`  Total GST: ₹${orderTotals.totalGST}`);
+        console.log(`  Grand Total: ₹${orderTotals.grandTotal}`);
 
         console.log("\n📋 Fetching catalog numbers...");
         const productIds = cartItems.map(item => item.productId);
@@ -617,7 +630,7 @@ export const useCheckoutLogic = () => {
             estimatedDays: "3-5",
           },
           total_price: totalPaise,
-          amount: total,
+          amount: orderTotals.grandTotal, // ✅ Use correct total with product-wise GST
           status: "pending",
           payment_status: "pending",
           payment_method: paymentMethod || "PayNow",
@@ -862,7 +875,6 @@ export const useCheckoutLogic = () => {
     [
       user?.id, 
       formData, 
-      total, 
       getCartForCheckout, 
       createCustomizationDetails, 
       uploadCustomizationImage, 
@@ -893,6 +905,7 @@ export const useCheckoutLogic = () => {
 
       const order = await createOrder("PayNow");
 
+      // ✅ FIXED: Use correct total with product-wise GST
       const totalAmount = Math.round(total * 100);
 
       const requiredElements = [
@@ -1102,8 +1115,8 @@ export const useCheckoutLogic = () => {
         toast({
           title: parsedError.title,
           description: parsedError.action
-  ? `${parsedError.description}\n👉 ${parsedError.action}`
-  : parsedError.description,
+            ? `${parsedError.description}\n👉 ${parsedError.action}`
+            : parsedError.description,
           variant: "destructive",
           duration: 8000, // Longer duration for important error details
         });
