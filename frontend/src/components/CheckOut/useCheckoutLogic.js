@@ -5,7 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabaseClient";
 import { useStockReservation } from "@/hooks/useStockReservation";
-import { calculateOrderTotals } from "@/utils/billingUtils"; // ✅ Import billing utils
+import { calculateOrderTotals, calculateItemPricing, createItemSnapshot } from "@/utils/billingUtils";
 
 const PHONEPE_PAY_URL = import.meta.env.VITE_BACKEND_URL
   ? `${import.meta.env.VITE_BACKEND_URL}/pay`
@@ -167,22 +167,18 @@ const parsePaymentError = (errorMessage) => {
     };
   }
   
-  // Convert to uppercase for case-insensitive matching
   const upperMessage = errorMessage.toUpperCase();
   
-  // Try exact match first
   if (PAYMENT_ERROR_MESSAGES[upperMessage]) {
     return PAYMENT_ERROR_MESSAGES[upperMessage];
   }
   
-  // Try partial match (if error message contains key)
   for (const [key, value] of Object.entries(PAYMENT_ERROR_MESSAGES)) {
     if (upperMessage.includes(key)) {
       return value;
     }
   }
   
-  // Fallback: Return generic message but include original error for context
   return {
     title: "Payment Failed",
     description: `Your payment could not be completed: ${errorMessage}. Your money has NOT been deducted.`,
@@ -215,7 +211,7 @@ export const useCheckoutLogic = () => {
     zipCode: "",
   });
 
-  // ✅ FIXED: Use product-wise GST calculation instead of hardcoded 8%
+  // ✅ Calculate totals with product-wise GST
   const cartItems = getCartForCheckout();
   const orderTotals = calculateOrderTotals(cartItems);
   
@@ -223,7 +219,6 @@ export const useCheckoutLogic = () => {
   const tax = orderTotals.totalGST;             // Product-wise GST (5%/18%/none)
   const total = orderTotals.grandTotal;         // subtotal + tax
 
-  // Handle form input changes
   const handleChange = useCallback((e) => {
     setFormData((prev) => ({
       ...prev,
@@ -315,7 +310,6 @@ export const useCheckoutLogic = () => {
     }
   }, [user?.id, toast]);
 
-  // Form validation
   const validateForm = useCallback(() => {
     const required = [
       "firstName",
@@ -507,7 +501,7 @@ export const useCheckoutLogic = () => {
   const createOrder = useCallback(
     async (paymentMethod = "PayNow") => {
       try {
-        console.log("\n=== CREATING ORDER WITH ATOMIC STOCK RESERVATION ===");
+        console.log("\n=== CREATING ORDER WITH BILLING SNAPSHOT ===");
 
         if (!user?.id) {
           throw new Error("User not authenticated");
@@ -572,36 +566,41 @@ export const useCheckoutLogic = () => {
           customer = newCustomer;
         }
 
-        // ✅ FIXED: Use proper GST calculation
+        // 💰 CALCULATE TOTALS ONCE (will be frozen in DB)
         const orderTotals = calculateOrderTotals(cartItems);
-        const totalPaise = Math.round(orderTotals.grandTotal * 100);
+        const shippingCost = 0; // TODO: Implement shipping calculation
+        const finalTotal = orderTotals.grandTotal + shippingCost;
+        const totalPaise = Math.round(finalTotal * 100);
         const customizationDetails = createCustomizationDetails(cartItems);
 
-        console.log("\n💰 ORDER TOTALS (Product-wise GST):");
+        console.log("\n💰 ORDER TOTALS (Product-wise GST - WILL BE SAVED TO DB):");
         console.log(`  Subtotal (Base): ₹${orderTotals.subtotal}`);
         console.log(`  GST @5%: ₹${orderTotals.gst5Total}`);
         console.log(`  GST @18%: ₹${orderTotals.gst18Total}`);
         console.log(`  Total GST: ₹${orderTotals.totalGST}`);
-        console.log(`  Grand Total: ₹${orderTotals.grandTotal}`);
+        console.log(`  Shipping: ₹${shippingCost}`);
+        console.log(`  Grand Total: ₹${finalTotal}`);
+        console.log(`  Total (paise): ${totalPaise}`);
 
-        console.log("\n📋 Fetching catalog numbers...");
+        console.log("\n📋 Fetching product data for GST snapshot...");
         const productIds = cartItems.map(item => item.productId);
         const { data: productsData, error: productsError } = await supabase
           .from('products')
-          .select('id, catalog_number')
+          .select('id, catalog_number, gst_5pct, gst_18pct, price')
           .in('id', productIds);
 
         if (productsError) {
-          console.warn('⚠️ Could not fetch catalog numbers:', productsError);
+          console.warn('⚠️ Could not fetch product data:', productsError);
         }
 
-        const catalogNumberMap = {};
+        const productDataMap = {};
         if (productsData) {
           productsData.forEach(p => {
-            catalogNumberMap[p.id] = p.catalog_number;
+            productDataMap[p.id] = p;
           });
         }
 
+        // ✅ CREATE ORDER WITH CALCULATED TOTALS
         const orderData = {
           user_id: authUser.id,
           customer_id: customer.id,
@@ -629,8 +628,19 @@ export const useCheckoutLogic = () => {
             method: "standard",
             estimatedDays: "3-5",
           },
+          
+          // 💰 BILLING SNAPSHOT (frozen at order time)
+          subtotal: orderTotals.subtotal,
+          total_gst: orderTotals.totalGST,
+          gst_5_total: orderTotals.gst5Total,
+          gst_18_total: orderTotals.gst18Total,
+          shipping_cost: shippingCost,
+          order_total: finalTotal,
+          
+          // Legacy fields (for compatibility)
           total_price: totalPaise,
-          amount: orderTotals.grandTotal, // ✅ Use correct total with product-wise GST
+          amount: finalTotal,
+          
           status: "pending",
           payment_status: "pending",
           payment_method: paymentMethod || "PayNow",
@@ -652,7 +662,7 @@ export const useCheckoutLogic = () => {
           throw new Error(`Database error: ${orderError.message}`);
         }
 
-        console.log("✅ Order created:", order.id);
+        console.log("✅ Order created with billing snapshot:", order.id);
 
         console.log("\n📤 UPLOADING CUSTOMIZATION IMAGES...");
         const processedCartItems = [];
@@ -709,20 +719,37 @@ export const useCheckoutLogic = () => {
           });
         }
 
-        console.log("\n📝 Inserting into order_items table...");
+        console.log("\n📝 Inserting order_items with pricing snapshot...");
         
-        const orderItemsData = processedCartItems.map(item => ({
-          order_id: order.id,
-          product_id: item.productId,
-          variant_id: item.variantId,
-          catalog_number: catalogNumberMap[item.productId] || null,
-          quantity: item.quantity,
-          unit_price: Math.round(item.price * 100),
-          total_price: Math.round(item.price * item.quantity * 100),
-          customization_data: item.processedCustomization
-        }));
+        // ✅ CREATE ORDER ITEMS WITH PRICING SNAPSHOT
+        const orderItemsData = processedCartItems.map(item => {
+          const productData = productDataMap[item.productId] || item;
+          const pricing = calculateItemPricing(item, productData);
+          
+          return {
+            order_id: order.id,
+            product_id: item.productId,
+            variant_id: item.variantId,
+            catalog_number: productData.catalog_number || null,
+            quantity: pricing.quantity,
+            
+            // 💰 PRICING SNAPSHOT (frozen at order time)
+            base_price: pricing.basePrice,
+            gst_rate: pricing.gstRate,
+            gst_amount: pricing.gstAmount,
+            item_subtotal: pricing.subtotal,
+            item_gst_total: pricing.itemGSTTotal,
+            item_total: pricing.itemTotal,
+            
+            // Legacy fields (for compatibility)
+            unit_price: Math.round(pricing.priceWithGST * 100),
+            total_price: Math.round(pricing.itemTotal * 100),
+            
+            customization_data: item.processedCustomization
+          };
+        });
 
-        console.log("  Order items to insert:", JSON.stringify(orderItemsData, null, 2));
+        console.log("  Order items with pricing snapshot:", JSON.stringify(orderItemsData, null, 2));
 
         const { data: insertedItems, error: itemsError } = await supabase
           .from('order_items')
@@ -737,7 +764,7 @@ export const useCheckoutLogic = () => {
           );
         }
 
-        console.log("✅ Order items inserted:", insertedItems.length);
+        console.log("✅ Order items inserted with pricing snapshot:", insertedItems.length);
 
         console.log("\n🎨 CREATING CUSTOMIZATION REQUESTS...");
         const customizationRequests = [];
@@ -860,11 +887,11 @@ export const useCheckoutLogic = () => {
           throw new Error(userMessage);
         }
 
-        console.log("\n✅ STOCK RESERVATION COMPLETE (BUG #2 FIXED)");
-        console.log("   - Atomic operation: All-or-nothing");
-        console.log("   - No race conditions possible");
-        console.log("   - Automatic rollback on failure");
-        console.log("\n🎉 ORDER CREATION COMPLETE WITH CUSTOMIZATIONS\n");
+        console.log("\n✅ ORDER CREATION COMPLETE WITH BILLING SNAPSHOT");
+        console.log("   💰 Billing totals saved to database (immutable)");
+        console.log("   📸 Per-item pricing snapshot saved");
+        console.log("   🔒 Stock reserved atomically");
+        console.log("\n🎉 ORDER READY FOR PAYMENT\n");
         
         return order;
       } catch (error) {
@@ -905,7 +932,6 @@ export const useCheckoutLogic = () => {
 
       const order = await createOrder("PayNow");
 
-      // ✅ FIXED: Use correct total with product-wise GST
       const totalAmount = Math.round(total * 100);
 
       const requiredElements = [
@@ -1085,17 +1111,14 @@ export const useCheckoutLogic = () => {
     [clearCart, toast, navigate, clearUrlParams]
   );
 
-  // ✨ UX #2 FIX: Enhanced payment failure handler with user-friendly messages
   const handlePaymentFailure = useCallback(
     async (orderId, message = null) => {
       try {
         setPaymentProcessed(true);
         clearUrlParams();
 
-        // ✨ Parse error message for user-friendly display
         const parsedError = parsePaymentError(message);
         
-        // Log technical details for debugging
         console.error('🚨 Payment failed:', {
           orderId,
           rawMessage: message,
@@ -1111,14 +1134,13 @@ export const useCheckoutLogic = () => {
           })
           .eq("id", orderId);
 
-        // ✨ Show user-friendly message with specific guidance
         toast({
           title: parsedError.title,
           description: parsedError.action
             ? `${parsedError.description}\n👉 ${parsedError.action}`
             : parsedError.description,
           variant: "destructive",
-          duration: 8000, // Longer duration for important error details
+          duration: 8000,
         });
 
         setTimeout(() => {
