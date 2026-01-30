@@ -26,16 +26,6 @@ const generateSlug = (text) => {
     .replace(/^-+|-+$/g, '');
 };
 
-// Helper function to generate slug from name
-function generateSlug(name) {
-  return name
-    .toLowerCase()
-    .trim()
-    .replace(/[^\w\s-]/g, '') // Remove special characters
-    .replace(/\s+/g, '-') // Replace spaces with hyphens
-    .replace(/-+/g, '-'); // Replace multiple hyphens with single hyphen
-}
-
 // Custom Checkbox Component (no Radix UI dependency)
 function CustomCheckbox({ id, checked, onCheckedChange, className = "" }) {
   return (
@@ -62,9 +52,13 @@ export function AddCategoryForm({ onSubmit, onCancel }) {
   const [isCheckingSlug, setIsCheckingSlug] = useState(false);
 
   const onUploadSuccess = (imgData) => {
-    setImage(imgData.url || imgData.cloudinary_url || "");
+    setImageUrl(imgData.url || imgData.cloudinary_url || "");
     toast({ title: "Image uploaded successfully" });
     setUploading(false);
+  };
+
+  const handleUploadStart = () => {
+    setUploading(true);
   };
 
   const handleNameChange = (e) => {
@@ -276,9 +270,13 @@ export function EditCategoryForm({ category, onSubmit, onCancel }) {
   }, [category]);
 
   const onUploadSuccess = (imgData) => {
-    setImage(imgData.url || imgData.cloudinary_url || "");
+    setImageUrl(imgData.url || imgData.cloudinary_url || "");
     toast({ title: "Image uploaded successfully" });
     setUploading(false);
+  };
+
+  const handleUploadStart = () => {
+    setUploading(true);
   };
 
   const handleNameChange = (e) => {
@@ -397,9 +395,6 @@ export function EditCategoryForm({ category, onSubmit, onCancel }) {
             onChange={(e) => setPrice(e.target.value)}
             placeholder="0.00"
           />
-          <Label htmlFor="featured" className="cursor-pointer">
-            Featured Category
-          </Label>
         </div>
 
         <div>
