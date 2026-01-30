@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { calculateItemPricing, calculateOrderTotals, formatCurrency, getGSTDescription } from "@/utils/billingUtils";
+import { formatCurrency } from "@/utils/billingUtils";
 import {
   Download,
   Loader2,
@@ -70,8 +70,22 @@ const InvoiceGenerator = ({ order, onClose }) => {
 
   const allItems = [...(order.items || []), ...(order.catalog_items || [])];
   
-  // ✅ Use centralized billing calculation
-  const totals = calculateOrderTotals(allItems);
+  // ✅ Use database values directly - NO RECALCULATION
+  const subtotal = parseFloat(order.subtotal) || 0;
+  const gst5Total = parseFloat(order.gst_5_total) || 0;
+  const gst18Total = parseFloat(order.gst_18_total) || 0;
+  const totalGST = parseFloat(order.total_gst) || 0;
+  const shippingCost = parseFloat(order.shipping_cost) || 0;
+  const grandTotal = parseFloat(order.order_total) || 0;
+
+  console.log("📄 Invoice totals (from DB):", {
+    subtotal,
+    gst5Total,
+    gst18Total,
+    totalGST,
+    shippingCost,
+    grandTotal
+  });
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4">
@@ -276,7 +290,13 @@ const InvoiceGenerator = ({ order, onClose }) => {
                 {/* Items */}
                 <div className="divide-y divide-gray-200">
                   {allItems.map((item, index) => {
-                    const pricing = calculateItemPricing(item);
+                    // ✅ Use database values directly - NO CALCULATION
+                    const quantity = item.quantity || 1;
+                    const basePrice = parseFloat(item.base_price) || 0;
+                    const gstRate = parseFloat(item.gst_rate) || 0;
+                    const gstAmount = parseFloat(item.gst_amount) || 0;
+                    const itemTotal = parseFloat(item.item_total) || 0;
+                    const itemGSTTotal = gstAmount * quantity;
                     
                     return (
                       <div key={index} className="p-3 sm:p-4">
@@ -294,29 +314,29 @@ const InvoiceGenerator = ({ order, onClose }) => {
                           <div className="grid grid-cols-2 gap-2 text-xs">
                             <div>
                               <span className="text-gray-600">Qty: </span>
-                              <span className="font-medium">{pricing.quantity}</span>
+                              <span className="font-medium">{quantity}</span>
                             </div>
                             <div className="text-right">
                               <span className="text-gray-600">Base: </span>
                               <span className="font-medium">
-                                {formatCurrency(pricing.basePrice)}
+                                {formatCurrency(basePrice)}
                               </span>
                             </div>
                             <div>
                               <span className="text-gray-600">GST: </span>
                               <span className="font-medium text-orange-600">
-                                {pricing.gstPercentage}%
+                                {gstRate}%
                               </span>
                             </div>
                             <div className="text-right">
                               <span className="font-medium text-orange-600">
-                                +{formatCurrency(pricing.itemGSTTotal)}
+                                +{formatCurrency(itemGSTTotal)}
                               </span>
                             </div>
                             <div className="col-span-2 text-right pt-2 border-t">
                               <span className="text-gray-600">Total: </span>
                               <span className="font-bold text-gray-900">
-                                {formatCurrency(pricing.itemTotal)}
+                                {formatCurrency(itemTotal)}
                               </span>
                             </div>
                           </div>
@@ -336,18 +356,18 @@ const InvoiceGenerator = ({ order, onClose }) => {
                               )}
                           </div>
                           <div className="col-span-1 text-center text-gray-700">
-                            {pricing.quantity}
+                            {quantity}
                           </div>
                           <div className="col-span-2 text-right text-gray-700">
-                            {formatCurrency(pricing.basePrice)}
+                            {formatCurrency(basePrice)}
                           </div>
                           <div className="col-span-2 text-right">
                             <div className="text-orange-600 font-medium">
-                              {pricing.gstPercentage > 0 ? (
+                              {gstRate > 0 ? (
                                 <>
-                                  {pricing.gstPercentage}%
+                                  {gstRate}%
                                   <div className="text-xs">
-                                    +{formatCurrency(pricing.itemGSTTotal)}
+                                    +{formatCurrency(itemGSTTotal)}
                                   </div>
                                 </>
                               ) : (
@@ -356,7 +376,7 @@ const InvoiceGenerator = ({ order, onClose }) => {
                             </div>
                           </div>
                           <div className="col-span-2 text-right font-bold text-gray-900">
-                            {formatCurrency(pricing.itemTotal)}
+                            {formatCurrency(itemTotal)}
                           </div>
                         </div>
                       </div>
@@ -372,41 +392,41 @@ const InvoiceGenerator = ({ order, onClose }) => {
                 <div className="space-y-2 text-xs sm:text-sm bg-gray-50 p-4 rounded-lg">
                   <div className="flex justify-between">
                     <span className="text-gray-600">Subtotal (Base):</span>
-                    <span className="font-medium">{formatCurrency(totals.subtotal)}</span>
+                    <span className="font-medium">{formatCurrency(subtotal)}</span>
                   </div>
                   
                   {/* GST Breakdown */}
-                  {totals.gst5Total > 0 && (
+                  {gst5Total > 0 && (
                     <div className="flex justify-between text-orange-600">
                       <span>GST @5%:</span>
-                      <span className="font-medium">+{formatCurrency(totals.gst5Total)}</span>
+                      <span className="font-medium">+{formatCurrency(gst5Total)}</span>
                     </div>
                   )}
-                  {totals.gst18Total > 0 && (
+                  {gst18Total > 0 && (
                     <div className="flex justify-between text-orange-600">
                       <span>GST @18%:</span>
-                      <span className="font-medium">+{formatCurrency(totals.gst18Total)}</span>
+                      <span className="font-medium">+{formatCurrency(gst18Total)}</span>
                     </div>
                   )}
-                  {totals.totalGST === 0 && (
+                  {totalGST === 0 && (
                     <div className="flex justify-between text-gray-500">
                       <span>GST:</span>
                       <span className="font-medium">No Tax</span>
                     </div>
                   )}
                   
-                  {totals.totalGST > 0 && (
+                  {totalGST > 0 && (
                     <div className="flex justify-between text-orange-600 font-semibold">
                       <span>Total GST:</span>
-                      <span>+{formatCurrency(totals.totalGST)}</span>
+                      <span>+{formatCurrency(totalGST)}</span>
                     </div>
                   )}
                   
-                  {order.shipping_cost && Number(order.shipping_cost) > 0 && (
+                  {shippingCost > 0 && (
                     <div className="flex justify-between">
                       <span className="text-gray-600">Shipping:</span>
                       <span className="font-medium">
-                        {formatCurrency(order.shipping_cost)}
+                        {formatCurrency(shippingCost)}
                       </span>
                     </div>
                   )}
@@ -415,7 +435,7 @@ const InvoiceGenerator = ({ order, onClose }) => {
                     <div className="flex justify-between text-base sm:text-lg font-bold">
                       <span>Grand Total:</span>
                       <span className="text-primary">
-                        {formatCurrency(totals.grandTotal + Number(order.shipping_cost || 0))}
+                        {formatCurrency(grandTotal)}
                       </span>
                     </div>
                   </div>
