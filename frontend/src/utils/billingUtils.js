@@ -44,6 +44,18 @@ export const getGSTRate = (category) => {
 };
 
 /**
+ * Get GST description for display
+ * @param {number} gstRate - GST rate
+ * @returns {string} Description
+ */
+export const getGSTDescription = (gstRate) => {
+  if (gstRate === 5) return 'GST @5%';
+  if (gstRate === 18) return 'GST @18%';
+  if (gstRate === 0) return 'No GST';
+  return `GST @${gstRate}%`;
+};
+
+/**
  * Extract base price from a price that may or may not include GST
  * This handles backward compatibility
  * 
@@ -106,6 +118,61 @@ export const calculateItemBilling = ({
 };
 
 /**
+ * BACKWARD COMPATIBILITY: Calculate item pricing (old function name)
+ * Used by InvoiceGenerator and other legacy components
+ * 
+ * @param {Object} item - Order item object
+ * @returns {Object} Pricing details
+ */
+export const calculateItemPricing = (item) => {
+  // Determine quantity
+  const quantity = item.quantity || 1;
+  
+  // Determine GST rate
+  const gstRate = item.gst_rate || item.gstRate || getGSTRate(item.category);
+  
+  // Determine price (try various field names for backward compatibility)
+  let price = item.price || item.base_price || item.unit_price_with_gst || 0;
+  let priceIncludesGST = false;
+  
+  // If price_at_order exists, use it (this is the price WITH GST)
+  if (item.price_at_order) {
+    price = item.price_at_order;
+    priceIncludesGST = true;
+  }
+  // If priceWithGst exists, use it
+  else if (item.priceWithGst) {
+    price = item.priceWithGst;
+    priceIncludesGST = true;
+  }
+  // If unit_price exists (in paise), convert it
+  else if (item.unit_price) {
+    price = item.unit_price / 100;
+    priceIncludesGST = true;
+  }
+  
+  // Calculate billing
+  const billing = calculateItemBilling({
+    price,
+    quantity,
+    gstRate,
+    priceIncludesGST
+  });
+  
+  // Return in format expected by legacy code
+  return {
+    quantity: quantity,
+    basePrice: billing.base_price,
+    gstPercentage: billing.gst_rate,
+    gstAmount: billing.gst_amount,
+    itemSubtotal: billing.item_subtotal,
+    itemGSTTotal: billing.item_gst_total,
+    itemTotal: billing.item_total,
+    unitPriceWithGST: billing.unit_price_with_gst
+  };
+};
+
+/**
  * Calculate order-level billing from order items
  * 
  * @param {Array} orderItems - Array of items with billing details
@@ -148,6 +215,30 @@ export const calculateOrderBilling = (orderItems, shippingCost = 0) => {
     grand_total: roundTo2Decimals(orderTotal),
     amount: roundTo2Decimals(orderTotal),
     total_price: Math.round(orderTotal * 100)
+  };
+};
+
+/**
+ * BACKWARD COMPATIBILITY: Calculate order totals (old function name)
+ * Used by InvoiceGenerator and other legacy components
+ * 
+ * @param {Array} items - Order items
+ * @param {number} shippingCost - Shipping cost
+ * @returns {Object} Totals in legacy format
+ */
+export const calculateOrderTotals = (items, shippingCost = 0) => {
+  const billing = calculateOrderBilling(items, shippingCost);
+  
+  // Return in format expected by legacy code
+  return {
+    subtotal: billing.subtotal,
+    gst5Total: billing.gst_5_total,
+    gst18Total: billing.gst_18_total,
+    totalGST: billing.total_gst,
+    shippingCost: billing.shipping_cost,
+    grandTotal: billing.order_total,
+    total: billing.order_total,
+    orderTotal: billing.order_total
   };
 };
 
@@ -210,7 +301,10 @@ export const roundTo2Decimals = (value) => {
  * Format currency for display
  */
 export const formatCurrency = (amount, showSymbol = true) => {
-  const formatted = roundTo2Decimals(amount).toFixed(2);
+  const formatted = roundTo2Decimals(amount).toLocaleString('en-IN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
   return showSymbol ? `₹${formatted}` : formatted;
 };
 
@@ -286,9 +380,12 @@ export const autoFixBilling = (orderBilling) => {
 
 export default {
   getGSTRate,
+  getGSTDescription,
   extractBasePrice,
   calculateItemBilling,
+  calculateItemPricing,  // Backward compatibility
   calculateOrderBilling,
+  calculateOrderTotals,  // Backward compatibility
   recalculateOrderBilling,
   paiseToRupees,
   rupeesToPaise,
