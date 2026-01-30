@@ -122,6 +122,11 @@ export function ProductsPage() {
     fetchData();
   }, [fetchData]);
 
+  // ✅ FIX: Add missing handleDeleteClick function
+  const handleDeleteClick = (product) => {
+    setDeleteProduct(product);
+  };
+
   // HARD DELETE: Permanently remove product from database
   const handleDelete = async () => {
     if (!deleteProduct) return;
@@ -488,9 +493,7 @@ export function ProductsPage() {
                       )}
 
                       <div className="flex flex-col flex-1">
-                        <CardHeader
-                          className={`${viewMode === "list" ? "pb-2" : ""}`}
-                        >
+                        <CardHeader className={`${viewMode === "list" ? "pb-2" : ""}`}>
                           <div className="flex justify-between items-start">
                             <div className="flex-1">
                               <CardTitle className="text-lg">
@@ -526,43 +529,42 @@ export function ProductsPage() {
                               )}
                             </div>
                           </div>
-                        </div>
-                      </CardHeader>
-                      <CardContent>
-                        <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
-                          {product.description}
-                        </p>
+                        </CardHeader>
+                        <CardContent>
+                          <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
+                            {product.description}
+                          </p>
 
-                        {variantsMap[product.id] &&
-                          variantsMap[product.id].length > 0 && (
-                            <div className="mb-4">
-                              <h4 className="font-semibold mb-1 text-sm">
-                                Available Sizes:
-                              </h4>
-                              <ul className="flex flex-wrap gap-2 text-sm">
-                                {variants.map((variant) => (
-                                  <li
-                                    key={variant.id}
-                                    className="bg-gray-100 px-3 py-1 rounded-full border border-gray-300 text-xs"
-                                  >
-                                    <span className="font-medium">
-                                      {variant.size_display}
-                                    </span>
-                                    {variant.price && (
-                                      <span className="ml-1 text-gray-600">
-                                        — ₹{Number(variant.price).toFixed(2)}
+                          {variantsMap[product.id] &&
+                            variantsMap[product.id].length > 0 && (
+                              <div className="mb-4">
+                                <h4 className="font-semibold mb-1 text-sm">
+                                  Available Sizes:
+                                </h4>
+                                <ul className="flex flex-wrap gap-2 text-sm">
+                                  {variants.map((variant) => (
+                                    <li
+                                      key={variant.id}
+                                      className="bg-gray-100 px-3 py-1 rounded-full border border-gray-300 text-xs"
+                                    >
+                                      <span className="font-medium">
+                                        {variant.size_display}
                                       </span>
-                                    )}
-                                    {variant.sku && (
-                                      <span className="ml-1 text-gray-500 text-xs">
-                                        ({variant.sku})
-                                      </span>
-                                    )}
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
+                                      {variant.price && (
+                                        <span className="ml-1 text-gray-600">
+                                          — ₹{Number(variant.price).toFixed(2)}
+                                        </span>
+                                      )}
+                                      {variant.sku && (
+                                        <span className="ml-1 text-gray-500 text-xs">
+                                          ({variant.sku})
+                                        </span>
+                                      )}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
 
                           <div
                             className={`flex ${
