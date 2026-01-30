@@ -444,20 +444,22 @@ export function ProductsPage() {
                 return (
                   <Card
                     key={product.id}
-                    className={`hover:shadow-lg transition-all duration-200 ${
-                      viewMode === "list" ? "flex flex-row" : ""
-                    }`}
+                    className={
+                      "hover:shadow-lg transition-all duration-200" +
+                      (viewMode === "list" ? " flex flex-row" : "")
+                    }
                   >
                     <div className={viewMode === "list" ? "flex-1 flex" : ""}>
                       {product.image_url && (
                         <img
                           src={product.image_url}
                           alt={"Image of " + product.title}
-                          className={"rounded-md border object-cover " + (
-                            viewMode === "list"
-                              ? "w-40 h-28 mr-4 flex-shrink-0"
-                              : "w-full h-48 mb-4"
-                          )}
+                          className={
+                            "rounded-md border object-cover" +
+                            (viewMode === "list"
+                              ? " w-40 h-28 mr-4 flex-shrink-0"
+                              : " w-full h-48 mb-4")
+                          }
                         />
                       )}
 
@@ -508,11 +510,12 @@ export function ProductsPage() {
                           </p>
 
                           <div
-                            className={"flex justify-between gap-4 " + (
-                              viewMode === "list"
-                                ? "flex-row items-center"
-                                : "flex-col items-start"
-                            )}
+                            className={
+                              "flex justify-between gap-4" +
+                              (viewMode === "list"
+                                ? " flex-row items-center"
+                                : " flex-col items-start")
+                            }
                           >
                             <div className="flex items-center gap-1">
                               <IndianRupee className="h-4 w-4" />
