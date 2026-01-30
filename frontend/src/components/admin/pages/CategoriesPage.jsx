@@ -32,35 +32,36 @@ export function CategoriesPage() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
 
-  // ✅ Fetch categories with product counts (NO is_active filter - hard delete only)
+  // Fetch categories with ALL fields and ACTIVE product counts only
   const fetchCategories = async () => {
     setLoading(true);
     try {
-      // ✅ Get all categories
-      const { data: categoriesData, error: catError } = await supabase
-        .from("categories")
-        .select("id, name, slug, price, image, rating, featured");
+      // Use left join (no !inner) to include categories with 0 products
+      const { data, error } = await supabase.from("categories").select(`
+        id,
+        name,
+        slug,
+        price,
+        image,
+        rating,
+        featured,
+        products(id, is_active)
+      `);
 
-      if (catError) throw catError;
+      if (error) throw error;
 
-      // ✅ For each category, count ALL products (no is_active filter)
-      const categoriesWithCount = await Promise.all(
-        categoriesData.map(async (category) => {
-          const { count, error: countError } = await supabase
-            .from("products")
-            .select("id", { count: "exact", head: true })
-            .eq("category_id", category.id);
-
-          if (countError) {
-            console.error(`Error counting products for category ${category.id}:`, countError);
-          }
-
-          return {
-            ...category,
-            products: count || 0,
-          };
-        })
-      );
+      const categoriesWithCount = data.map((category) => ({
+        id: category.id,
+        name: category.name,
+        slug: category.slug,
+        price: category.price,
+        image: category.image,
+        rating: category.rating,
+        featured: category.featured,
+        products: category.products 
+          ? category.products.filter(p => p.is_active).length 
+          : 0,
+      }));
 
       setCategories(categoriesWithCount);
     } catch (error) {
@@ -76,19 +77,6 @@ export function CategoriesPage() {
 
   useEffect(() => {
     fetchCategories();
-
-    // ✅ LISTEN FOR PRODUCT CHANGES: Refresh when products are deleted/created
-    const handleProductsChanged = () => {
-      console.log("Products changed, refreshing categories...");
-      fetchCategories();
-    };
-
-    window.addEventListener('productsChanged', handleProductsChanged);
-
-    // Cleanup listener on unmount
-    return () => {
-      window.removeEventListener('productsChanged', handleProductsChanged);
-    };
   }, []);
 
   // Create category handler
@@ -147,30 +135,31 @@ export function CategoriesPage() {
     }
   };
 
-  // Delete category handler - check for products first
+  // Delete category handler - check for active products first
   const handleDelete = async () => {
     if (!deleteCategory) return;
 
     try {
-      // ✅ Check if category has any products (no is_active filter)
-      const { data: products, error: checkError } = await supabase
+      // Check if category has any ACTIVE products
+      const { data: activeProducts, error: checkError } = await supabase
         .from("products")
         .select("id")
-        .eq("category_id", deleteCategory.id);
+        .eq("category_id", deleteCategory.id)
+        .eq("is_active", true);
 
       if (checkError) throw checkError;
 
-      if (products && products.length > 0) {
+      if (activeProducts && activeProducts.length > 0) {
         toast({
           title: "Cannot delete category",
-          description: `This category has ${products.length} product(s). Delete all products first or move them to another category.`,
+          description: `This category has ${activeProducts.length} active product(s). Delete all products first or move them to another category.`,
           variant: "destructive",
         });
         setDeleteCategory(null);
         return;
       }
 
-      // Delete the category (only if no products)
+      // Delete the category (only if no active products)
       const { error: categoryDeleteError } = await supabase
         .from("categories")
         .delete()
@@ -365,7 +354,7 @@ export function CategoriesPage() {
                           {category.products}
                         </p>
                         <p className="text-sm text-muted-foreground">
-                          Products
+                          Active Products
                         </p>
                       </div>
 
@@ -388,7 +377,7 @@ export function CategoriesPage() {
                           className="text-destructive hover:bg-red-50"
                           onClick={() => setDeleteCategory(category)}
                           disabled={category.products > 0}
-                          title={category.products > 0 ? "Cannot delete category with products" : "Delete category"}
+                          title={category.products > 0 ? "Cannot delete category with active products" : "Delete category"}
                         >
                           <Trash2 className="h-4 w-4 mr-1" />
                           Delete
@@ -443,7 +432,7 @@ export function CategoriesPage() {
             <AlertDialogDescription>
               {deleteCategory?.products > 0 ? (
                 <span className="text-destructive font-medium">
-                  Cannot delete "{deleteCategory?.name}" because it has {deleteCategory?.products} product(s). 
+                  Cannot delete "{deleteCategory?.name}" because it has {deleteCategory?.products} active product(s). 
                   Please delete or move all products first.
                 </span>
               ) : (

@@ -49,18 +49,18 @@ import { supabase } from "@/lib/supabaseClient";
 
 export function ProductsPage() {
   const [products, setProducts] = useState([]);
-  const [variantsMap, setVariantsMap] = useState({}); // Variants keyed by product_id
+  const [variantsMap, setVariantsMap] = useState({});
   const [categories, setCategories] = useState([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
-  const [viewMode, setViewMode] = useState("grid"); // grid or list
+  const [viewMode, setViewMode] = useState("grid");
   const [deleteProduct, setDeleteProduct] = useState(null);
   const [deleteWarning, setDeleteWarning] = useState(null);
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
-  // ✅ Fetch ALL products (NO is_active filter - hard delete only)
+  // Fetch products, categories and variants
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
@@ -72,16 +72,17 @@ export function ProductsPage() {
       if (catErr) throw catErr;
       setCategories(cats || []);
 
-      // ✅ Fetch ALL products (no is_active filter)
+      // Fetch ONLY active products (filter out soft-deleted)
       const { data: prods, error: prodErr } = await supabase
         .from("products")
         .select("*")
+        .eq("is_active", true)
         .order("created_at", { ascending: false });
       if (prodErr) throw prodErr;
 
       setProducts(prods || []);
 
-      // Fetch variants with order count
+      // Fetch variants
       const productIds = prods?.map((p) => p.id) || [];
       if (productIds.length > 0) {
         const { data: vars, error: varErr } = await supabase
@@ -90,7 +91,6 @@ export function ProductsPage() {
           .in("product_id", productIds);
         if (varErr) throw varErr;
 
-        // Map variants by product_id with order count
         const map = {};
         for (const v of vars) {
           // Check order count for each variant
@@ -118,37 +118,47 @@ export function ProductsPage() {
     setLoading(false);
   }, [toast]);
 
-  // Initial fetch on mount
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  // ✅ HARD DELETE ONLY: Check if product has any orders
+  // HARD DELETE: Permanently remove product from database
   const handleDelete = async () => {
     if (!deleteProduct) return;
     setLoading(true);
 
     try {
-      const variants = variantsMap[deleteProduct.id] || [];
-      const hasOrders = variants.some(v => (v.order_count || 0) > 0);
+      // Step 1: Check for related data in orders
+      const { data: orderItems, error: orderCheckError } = await supabase
+        .from("order_items")
+        .select("id")
+        .eq("product_id", deleteProduct.id)
+        .limit(1);
 
-      if (hasOrders) {
-        // ❌ BLOCK DELETE: Product has orders
-        const totalOrders = variants.reduce((sum, v) => sum + (v.order_count || 0), 0);
+      if (orderCheckError) throw orderCheckError;
+
+      if (orderItems && orderItems.length > 0) {
         toast({
           title: "Cannot delete product",
-          description: `"${deleteProduct.title}" has ${totalOrders} order(s). Products with order history cannot be deleted.`,
+          description: "This product is referenced in existing orders. Please deactivate instead of deleting.",
           variant: "destructive",
         });
-        setDeleteProduct(null);
-        setDeleteWarning(null);
         setLoading(false);
+        setDeleteProduct(null);
         return;
       }
 
-      // ✅ HARD DELETE: No orders, safe to delete
-      
-      // Delete variants first
+      // Step 2: Delete cart items containing this product
+      const { error: cartDeleteError } = await supabase
+        .from("cart_items")
+        .delete()
+        .eq("product_id", deleteProduct.id);
+
+      if (cartDeleteError) {
+        console.warn("Cart delete error:", cartDeleteError);
+      }
+
+      // Step 3: Delete product variants (CASCADE should handle this)
       const { error: variantDelError } = await supabase
         .from("product_variants")
         .delete()
@@ -156,7 +166,22 @@ export function ProductsPage() {
 
       if (variantDelError) throw variantDelError;
 
-      // Delete product
+      // Step 4: Delete product image from storage (if exists)
+      if (deleteProduct.image_url) {
+        try {
+          const urlParts = deleteProduct.image_url.split('/');
+          const bucket = 'product-images';
+          const filePath = urlParts[urlParts.length - 1];
+          
+          await supabase.storage
+            .from(bucket)
+            .remove([filePath]);
+        } catch (imgError) {
+          console.warn("Image deletion warning:", imgError);
+        }
+      }
+
+      // Step 5: HARD DELETE the product
       const { error: prodDelError } = await supabase
         .from("products")
         .delete()
@@ -164,18 +189,15 @@ export function ProductsPage() {
 
       if (prodDelError) throw prodDelError;
 
-      toast({ 
-        title: "Product deleted", 
-        description: `"${deleteProduct.title}" and all its variants have been permanently deleted.`
-      });
-
-      // ✅ EMIT EVENT: Notify other components that products changed
-      window.dispatchEvent(new CustomEvent('productsChanged'));
+      await fetchData();
 
       // Refresh data
       await fetchData();
       setDeleteProduct(null);
-      setDeleteWarning(null);
+      toast({ 
+        title: "Product deleted successfully",
+        description: "The product and all related data have been permanently removed."
+      });
     } catch (error) {
       console.error("Delete product error:", error);
       toast({
@@ -187,37 +209,11 @@ export function ProductsPage() {
     setLoading(false);
   };
 
-  // Check if product can be deleted
-  const handleDeleteClick = async (product) => {
-    const variants = variantsMap[product.id] || [];
-    const hasOrders = variants.some(v => (v.order_count || 0) > 0);
-    const totalOrders = variants.reduce((sum, v) => sum + (v.order_count || 0), 0);
-    
-    if (hasOrders) {
-      // Has orders - cannot delete
-      setDeleteWarning({
-        canDelete: false,
-        totalOrders,
-        message: `This product has ${totalOrders} order(s) and cannot be deleted. Order history must be preserved.`
-      });
-    } else {
-      // No orders - can delete
-      setDeleteWarning({
-        canDelete: true,
-        totalOrders: 0,
-        message: "This product has no orders and will be permanently deleted."
-      });
-    }
-    
-    setDeleteProduct(product);
-  };
-
-  // Refresh page
   const handleRefresh = () => {
     fetchData();
   };
 
-  // Filter products by category and search term
+  // Filter products
   const filteredProducts = products.filter((product) => {
     const matchesCategory =
       selectedCategoryId && selectedCategoryId !== "all"
@@ -230,7 +226,7 @@ export function ProductsPage() {
     return matchesCategory && matchesSearch;
   });
 
-  // Stats for display
+  // Stats
   const totalProducts = products.length;
   const featuredProducts = products.filter((p) => p.featured).length;
   const inStockProducts = products.filter((p) => p.in_stock).length;
@@ -332,7 +328,6 @@ export function ProductsPage() {
         </CardHeader>
         <CardContent>
           <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
-            {/* Search */}
             <div className="flex-1 space-y-2">
               <label className="text-sm font-medium">Search Products</label>
               <div className="relative">
@@ -346,10 +341,8 @@ export function ProductsPage() {
               </div>
             </div>
 
-            {/* Category Filter */}
             <div className="space-y-2 min-w-[200px]">
               <label className="text-sm font-medium">Filter by Category</label>
-
               <Select
                 value={selectedCategoryId}
                 onValueChange={setSelectedCategoryId}
@@ -368,7 +361,6 @@ export function ProductsPage() {
               </Select>
             </div>
 
-            {/* View Mode Toggle */}
             <div className="space-y-2">
               <label className="text-sm font-medium">View</label>
               <div className="flex border rounded-lg">
@@ -392,9 +384,7 @@ export function ProductsPage() {
             </div>
           </div>
 
-          {/* Active Filters Display */}
-          {(selectedCategoryId && selectedCategoryId !== "all") ||
-          searchTerm ? (
+          {(selectedCategoryId && selectedCategoryId !== "all") || searchTerm ? (
             <div className="flex items-center gap-2 mt-4 pt-4 border-t">
               <span className="text-sm text-muted-foreground">
                 Active filters:
@@ -536,13 +526,15 @@ export function ProductsPage() {
                               )}
                             </div>
                           </div>
-                        </CardHeader>
-                        <CardContent>
-                          <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
-                            {product.description}
-                          </p>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
+                          {product.description}
+                        </p>
 
-                          {variants.length > 0 && (
+                        {variantsMap[product.id] &&
+                          variantsMap[product.id].length > 0 && (
                             <div className="mb-4">
                               <h4 className="font-semibold mb-1 text-sm">
                                 Available Sizes:
@@ -633,51 +625,36 @@ export function ProductsPage() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              <span className="flex items-center gap-2">
-                <Trash2 className="h-5 w-5 text-red-500" />
-                Delete Product
-              </span>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Permanently Delete Product
             </AlertDialogTitle>
-            <AlertDialogDescription className="space-y-3">
-              <p>
-                Are you sure you want to delete
-                <span className="font-semibold"> "{deleteProduct?.title}"</span>?
+            <AlertDialogDescription className="space-y-2">
+              <p className="font-semibold">
+                Are you sure you want to permanently delete "{deleteProduct?.title}"?
               </p>
-              
-              {/* Warning */}
-              {deleteWarning?.canDelete ? (
-                <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-2">
-                  <AlertTriangle className="h-5 w-5 text-red-600 mt-0.5 flex-shrink-0" />
-                  <div className="text-sm text-red-800">
-                    <p className="font-medium mb-1">⚠️ Permanent deletion</p>
-                    <p>{deleteWarning.message}</p>
-                    <p className="mt-2 font-semibold">This action cannot be undone!</p>
-                  </div>
-                </div>
-              ) : (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 flex items-start gap-2">
-                  <AlertTriangle className="h-5 w-5 text-yellow-600 mt-0.5 flex-shrink-0" />
-                  <div className="text-sm text-yellow-800">
-                    <p className="font-medium mb-1">❌ Cannot delete</p>
-                    <p>{deleteWarning?.message}</p>
-                    <p className="mt-2">Products with order history must be preserved for record-keeping.</p>
-                  </div>
-                </div>
-              )}
+              <div className="bg-destructive/10 p-3 rounded-md border border-destructive/20">
+                <p className="text-sm text-destructive font-medium mb-1">
+                  ⚠️ This action CANNOT be undone and will:
+                </p>
+                <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
+                  <li>Permanently delete the product from the database</li>
+                  <li>Delete all product variants and sizes</li>
+                  <li>Remove the product image from storage</li>
+                  <li>Remove from all user carts</li>
+                </ul>
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            {deleteWarning?.canDelete && (
-              <AlertDialogAction
-                onClick={handleDelete}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                Delete Permanently
-              </AlertDialogAction>
-            )}
+            <AlertDialogAction
+              onClick={handleDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Permanently Delete
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

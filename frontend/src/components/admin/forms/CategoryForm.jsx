@@ -2,9 +2,29 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import ImageUploadDirect from "@/components/ImageUploadDirect.jsx";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/lib/supabaseClient";
+import { Star } from "lucide-react";
+
+// Helper function to generate slug from name
+const generateSlug = (text) => {
+  return text
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/[\s_-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+};
 
 // Helper function to generate slug from name
 function generateSlug(name) {
@@ -35,18 +55,11 @@ export function AddCategoryForm({ onSubmit, onCancel }) {
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [price, setPrice] = useState("");
-  const [rating, setRating] = useState("");
+  const [rating, setRating] = useState("0");
   const [featured, setFeatured] = useState(false);
-  const [image, setImage] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
   const [uploading, setUploading] = useState(false);
-  const [slugEdited, setSlugEdited] = useState(false);
-
-  // Auto-generate slug from name
-  useEffect(() => {
-    if (!slugEdited && name) {
-      setSlug(generateSlug(name));
-    }
-  }, [name, slugEdited]);
+  const [isCheckingSlug, setIsCheckingSlug] = useState(false);
 
   const onUploadSuccess = (imgData) => {
     setImage(imgData.url || imgData.cloudinary_url || "");
@@ -54,17 +67,42 @@ export function AddCategoryForm({ onSubmit, onCancel }) {
     setUploading(false);
   };
 
-  const handleUploadStart = () => {
-    setUploading(true);
+  const handleNameChange = (e) => {
+    const newName = e.target.value;
+    setName(newName);
+    // Auto-generate slug from name
+    const autoSlug = generateSlug(newName);
+    setSlug(autoSlug);
   };
 
-  const handleSubmit = (e) => {
+  const handleSlugChange = (e) => {
+    // Allow manual override but sanitize
+    const sanitized = generateSlug(e.target.value);
+    setSlug(sanitized);
+  };
+
+  // Check if slug already exists
+  const checkSlugExists = async (slugToCheck) => {
+    if (!slugToCheck) return false;
+    
+    const { data, error } = await supabase
+      .from("categories")
+      .select("id")
+      .eq("slug", slugToCheck)
+      .limit(1);
+    
+    if (error) {
+      console.error("Error checking slug:", error);
+      return false;
+    }
+    
+    return data && data.length > 0;
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     
-    const trimmedName = name.trim();
-    const trimmedSlug = slug.trim();
-
-    if (!trimmedName || !trimmedSlug) {
+    if (!name.trim() || !slug.trim()) {
       toast({
         title: "Validation Error",
         description: "Name and Slug are required.",
@@ -73,13 +111,26 @@ export function AddCategoryForm({ onSubmit, onCancel }) {
       return;
     }
 
-    // Build data object matching database schema
+    // Check for duplicate slug
+    setIsCheckingSlug(true);
+    const slugExists = await checkSlugExists(slug);
+    setIsCheckingSlug(false);
+
+    if (slugExists) {
+      toast({
+        title: "Duplicate Slug",
+        description: "This slug already exists. Please use a different one.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const categoryData = {
-      name: trimmedName,
-      slug: trimmedSlug,
-      image: image || null,
+      name: name.trim(),
+      slug: slug.trim(),
       price: price ? parseFloat(price) : null,
-      rating: rating ? parseFloat(rating) : null,
+      image: imageUrl || null,
+      rating: parseFloat(rating),
       featured: featured,
     };
 
@@ -93,34 +144,27 @@ export function AddCategoryForm({ onSubmit, onCancel }) {
       </DialogHeader>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <Label htmlFor="name">
-            Name <span className="text-red-500">*</span>
-          </Label>
+          <Label htmlFor="name">Name *</Label>
           <Input
             id="name"
             value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g., Wood Crafts"
+            onChange={handleNameChange}
+            placeholder="Category name"
             required
           />
         </div>
         
         <div>
-          <Label htmlFor="slug">
-            Slug <span className="text-red-500">*</span>
-          </Label>
+          <Label htmlFor="slug">Slug *</Label>
           <Input
             id="slug"
             value={slug}
-            onChange={(e) => {
-              setSlug(e.target.value);
-              setSlugEdited(true);
-            }}
-            placeholder="wood-crafts"
+            onChange={handleSlugChange}
+            placeholder="category-slug"
             required
           />
           <p className="text-xs text-muted-foreground mt-1">
-            Auto-generated from name. Used in URLs.
+            Auto-generated from name. You can edit manually.
           </p>
         </div>
         
@@ -136,45 +180,55 @@ export function AddCategoryForm({ onSubmit, onCancel }) {
             placeholder="0.00"
           />
         </div>
-        
+
         <div>
-          <Label htmlFor="rating">Rating (Optional)</Label>
-          <Input
-            id="rating"
-            type="number"
-            min="0"
-            max="5"
-            step="0.1"
-            value={rating}
-            onChange={(e) => setRating(e.target.value)}
-            placeholder="4.5"
-          />
-          <p className="text-xs text-muted-foreground mt-1">
-            Rating out of 5 (e.g., 4.5)
-          </p>
+          <Label htmlFor="rating">Rating</Label>
+          <Select value={rating} onValueChange={setRating}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select rating" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="0">0 Stars</SelectItem>
+              <SelectItem value="1">1 Star</SelectItem>
+              <SelectItem value="2">2 Stars</SelectItem>
+              <SelectItem value="3">3 Stars</SelectItem>
+              <SelectItem value="4">4 Stars</SelectItem>
+              <SelectItem value="5">5 Stars</SelectItem>
+            </SelectContent>
+          </Select>
+          <div className="flex items-center gap-1 mt-1">
+            {[...Array(5)].map((_, i) => (
+              <Star
+                key={i}
+                className={`h-4 w-4 ${
+                  i < parseFloat(rating)
+                    ? "fill-yellow-400 text-yellow-400"
+                    : "text-gray-300"
+                }`}
+              />
+            ))}
+          </div>
         </div>
-        
+
         <div className="flex items-center space-x-2">
-          <CustomCheckbox
+          <Checkbox
             id="featured"
             checked={featured}
             onCheckedChange={setFeatured}
           />
           <Label htmlFor="featured" className="cursor-pointer">
-            Featured Category
+            Feature this category
           </Label>
         </div>
         
         <div>
           <Label>Category Image</Label>
-          {image && (
-            <div className="mb-2">
-              <img
-                src={image}
-                alt="Category preview"
-                className="w-24 h-24 object-cover rounded border"
-              />
-            </div>
+          {imageUrl && (
+            <img
+              src={imageUrl}
+              alt="Category preview"
+              className="w-24 h-24 object-cover rounded-md border border-gray-300 mb-2"
+            />
           )}
           <ImageUploadDirect
             onUploadSuccess={onUploadSuccess}
@@ -189,8 +243,8 @@ export function AddCategoryForm({ onSubmit, onCancel }) {
           <Button type="button" variant="outline" onClick={onCancel}>
             Cancel
           </Button>
-          <Button type="submit" disabled={uploading}>
-            Create Category
+          <Button type="submit" disabled={uploading || isCheckingSlug}>
+            {isCheckingSlug ? "Checking..." : "Create Category"}
           </Button>
         </div>
       </form>
@@ -203,21 +257,21 @@ export function EditCategoryForm({ category, onSubmit, onCancel }) {
   const { toast } = useToast();
   const [name, setName] = useState(category?.name || "");
   const [slug, setSlug] = useState(category?.slug || "");
-  const [price, setPrice] = useState(category?.price || "");
-  const [rating, setRating] = useState(category?.rating || "");
+  const [price, setPrice] = useState(category?.price?.toString() || "");
+  const [rating, setRating] = useState(category?.rating?.toString() || "0");
   const [featured, setFeatured] = useState(category?.featured || false);
-  const [image, setImage] = useState(category?.image || "");
+  const [imageUrl, setImageUrl] = useState(category?.image || "");
   const [uploading, setUploading] = useState(false);
-  const [slugEdited, setSlugEdited] = useState(false);
+  const [isCheckingSlug, setIsCheckingSlug] = useState(false);
 
   useEffect(() => {
     if (category) {
       setName(category.name || "");
       setSlug(category.slug || "");
-      setPrice(category.price || "");
-      setRating(category.rating || "");
+      setPrice(category.price?.toString() || "");
+      setRating(category.rating?.toString() || "0");
       setFeatured(category.featured || false);
-      setImage(category.image || "");
+      setImageUrl(category.image || "");
     }
   }, [category]);
 
@@ -227,17 +281,44 @@ export function EditCategoryForm({ category, onSubmit, onCancel }) {
     setUploading(false);
   };
 
-  const handleUploadStart = () => {
-    setUploading(true);
+  const handleNameChange = (e) => {
+    const newName = e.target.value;
+    setName(newName);
+    // Auto-generate slug from name (only if slug wasn't manually edited)
+    if (slug === generateSlug(name)) {
+      const autoSlug = generateSlug(newName);
+      setSlug(autoSlug);
+    }
   };
 
-  const handleSubmit = (e) => {
+  const handleSlugChange = (e) => {
+    const sanitized = generateSlug(e.target.value);
+    setSlug(sanitized);
+  };
+
+  // Check if slug already exists (excluding current category)
+  const checkSlugExists = async (slugToCheck) => {
+    if (!slugToCheck) return false;
+    
+    const { data, error } = await supabase
+      .from("categories")
+      .select("id")
+      .eq("slug", slugToCheck)
+      .neq("id", category.id) // Exclude current category
+      .limit(1);
+    
+    if (error) {
+      console.error("Error checking slug:", error);
+      return false;
+    }
+    
+    return data && data.length > 0;
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     
-    const trimmedName = name.trim();
-    const trimmedSlug = slug.trim();
-
-    if (!trimmedName || !trimmedSlug) {
+    if (!name.trim() || !slug.trim()) {
       toast({
         title: "Validation Error",
         description: "Name and Slug are required.",
@@ -246,13 +327,28 @@ export function EditCategoryForm({ category, onSubmit, onCancel }) {
       return;
     }
 
-    // Build data object matching database schema
+    // Check for duplicate slug only if it changed
+    if (slug !== category.slug) {
+      setIsCheckingSlug(true);
+      const slugExists = await checkSlugExists(slug);
+      setIsCheckingSlug(false);
+
+      if (slugExists) {
+        toast({
+          title: "Duplicate Slug",
+          description: "This slug already exists. Please use a different one.",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
     const categoryData = {
-      name: trimmedName,
-      slug: trimmedSlug,
-      image: image || null,
+      name: name.trim(),
+      slug: slug.trim(),
       price: price ? parseFloat(price) : null,
-      rating: rating ? parseFloat(rating) : null,
+      image: imageUrl || null,
+      rating: parseFloat(rating),
       featured: featured,
     };
 
@@ -266,34 +362,27 @@ export function EditCategoryForm({ category, onSubmit, onCancel }) {
       </DialogHeader>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <Label htmlFor="name">
-            Name <span className="text-red-500">*</span>
-          </Label>
+          <Label htmlFor="name">Name *</Label>
           <Input
             id="name"
             value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g., Wood Crafts"
+            onChange={handleNameChange}
+            placeholder="Category name"
             required
           />
         </div>
         
         <div>
-          <Label htmlFor="slug">
-            Slug <span className="text-red-500">*</span>
-          </Label>
+          <Label htmlFor="slug">Slug *</Label>
           <Input
             id="slug"
             value={slug}
-            onChange={(e) => {
-              setSlug(e.target.value);
-              setSlugEdited(true);
-            }}
-            placeholder="wood-crafts"
+            onChange={handleSlugChange}
+            placeholder="category-slug"
             required
           />
           <p className="text-xs text-muted-foreground mt-1">
-            Used in URLs. Change carefully.
+            URL-friendly identifier for this category
           </p>
         </div>
         
@@ -308,46 +397,59 @@ export function EditCategoryForm({ category, onSubmit, onCancel }) {
             onChange={(e) => setPrice(e.target.value)}
             placeholder="0.00"
           />
+          <Label htmlFor="featured" className="cursor-pointer">
+            Featured Category
+          </Label>
         </div>
-        
+
         <div>
-          <Label htmlFor="rating">Rating (Optional)</Label>
-          <Input
-            id="rating"
-            type="number"
-            min="0"
-            max="5"
-            step="0.1"
-            value={rating}
-            onChange={(e) => setRating(e.target.value)}
-            placeholder="4.5"
-          />
-          <p className="text-xs text-muted-foreground mt-1">
-            Rating out of 5 (e.g., 4.5)
-          </p>
+          <Label htmlFor="rating">Rating</Label>
+          <Select value={rating} onValueChange={setRating}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select rating" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="0">0 Stars</SelectItem>
+              <SelectItem value="1">1 Star</SelectItem>
+              <SelectItem value="2">2 Stars</SelectItem>
+              <SelectItem value="3">3 Stars</SelectItem>
+              <SelectItem value="4">4 Stars</SelectItem>
+              <SelectItem value="5">5 Stars</SelectItem>
+            </SelectContent>
+          </Select>
+          <div className="flex items-center gap-1 mt-1">
+            {[...Array(5)].map((_, i) => (
+              <Star
+                key={i}
+                className={`h-4 w-4 ${
+                  i < parseFloat(rating)
+                    ? "fill-yellow-400 text-yellow-400"
+                    : "text-gray-300"
+                }`}
+              />
+            ))}
+          </div>
         </div>
-        
+
         <div className="flex items-center space-x-2">
-          <CustomCheckbox
+          <Checkbox
             id="featured"
             checked={featured}
             onCheckedChange={setFeatured}
           />
           <Label htmlFor="featured" className="cursor-pointer">
-            Featured Category
+            Feature this category
           </Label>
         </div>
-        
+
         <div>
           <Label>Category Image</Label>
-          {image ? (
-            <div className="mb-2">
-              <img
-                src={image}
-                alt={name}
-                className="w-24 h-24 object-cover rounded border"
-              />
-            </div>
+          {imageUrl ? (
+            <img
+              src={imageUrl}
+              alt={name}
+              className="w-24 h-24 object-cover rounded-md border border-gray-300 mb-2"
+            />
           ) : (
             <p className="text-sm text-muted-foreground mb-2">No image uploaded yet</p>
           )}
@@ -364,8 +466,8 @@ export function EditCategoryForm({ category, onSubmit, onCancel }) {
           <Button type="button" variant="outline" onClick={onCancel}>
             Cancel
           </Button>
-          <Button type="submit" disabled={uploading}>
-            Update Category
+          <Button type="submit" disabled={uploading || isCheckingSlug}>
+            {isCheckingSlug ? "Checking..." : "Update Category"}
           </Button>
         </div>
       </form>
