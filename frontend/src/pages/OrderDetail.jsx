@@ -296,36 +296,44 @@ export default function OrderDetail() {
         };
 
         // Map order items with all billing fields
-        const orderItems = data.map((row) => ({
-          id: row.product_id,
-          product_id: row.product_id,
-          quantity: row.quantity,
-          // All price fields for billing utilities to use
-          item_total: row.item_total,
-          total_price: row.total_price,
-          unit_price: row.unit_price,
-          unit_price_with_gst: row.unit_price_with_gst,
-          base_price: row.base_price,
-          gst_amount: row.gst_amount,
-          gst_rate: row.gst_rate,
-          price: row.base_price,  // For calculateItemPricing
-          price_at_order: row.unit_price_with_gst, // Price WITH GST
-          // Product details
-          name: row.product_name,
-          title: row.product_name,
-          image: row.product_image,
-          catalog_number: row.catalog_number,
-          material_type: null,
-          weight_grams: null,
-          item_id: row.item_id,
-          item_created_at: null,
-          customization: row.customization_data,
-          variant: {
-            sizeDisplay: row.size_display,
-            sizeNumeric: row.size_numeric,
-            sizeUnit: row.size_unit,
-          },
-        }));
+        const orderItems = data.map((row) => {
+          // ✅ FIX: Convert numeric gst_rate to boolean flags for billingUtils
+          const gstRate = parseFloat(row.gst_rate) || 0;
+          
+          return {
+            id: row.product_id,
+            product_id: row.product_id,
+            quantity: row.quantity,
+            // All price fields for billing utilities to use
+            item_total: row.item_total,
+            total_price: row.total_price,
+            unit_price: row.unit_price,
+            unit_price_with_gst: row.unit_price_with_gst,
+            base_price: row.base_price,
+            gst_amount: row.gst_amount,
+            gst_rate: gstRate,
+            // ✅ NEW: Add GST flags for billingUtils compatibility
+            gst_5pct: gstRate === 5,
+            gst_18pct: gstRate === 18,
+            price: row.base_price,  // For calculateItemPricing
+            price_at_order: row.unit_price_with_gst, // Price WITH GST
+            // Product details
+            name: row.product_name,
+            title: row.product_name,
+            image: row.product_image,
+            catalog_number: row.catalog_number,
+            material_type: null,
+            weight_grams: null,
+            item_id: row.item_id,
+            item_created_at: null,
+            customization: row.customization_data,
+            variant: {
+              sizeDisplay: row.size_display,
+              sizeNumeric: row.size_numeric,
+              sizeUnit: row.size_unit,
+            },
+          };
+        });
 
         setOrder(orderData);
         setItems(orderItems);
@@ -333,6 +341,11 @@ export default function OrderDetail() {
         console.log("✅ Order loaded (BILLING FIX):");
         console.log("  - Order Data:", orderData);
         console.log("  - Items:", orderItems.length);
+        console.log("  - First item GST data:", {
+          gst_rate: orderItems[0]?.gst_rate,
+          gst_5pct: orderItems[0]?.gst_5pct,
+          gst_18pct: orderItems[0]?.gst_18pct
+        });
       } else {
         console.warn("⚠️ No order data found");
         setOrder(null);
@@ -496,6 +509,8 @@ export default function OrderDetail() {
 
   // ✅ Calculate totals using billing utilities
   const totals = calculateOrderTotals(items, order.shipping_cost || 0);
+  
+  console.log("💰 Calculated totals:", totals);
 
   return (
     <Layout>
@@ -640,6 +655,18 @@ export default function OrderDetail() {
                       {items.map((item, index) => {
                         // ✅ Use billing utilities for pricing
                         const pricing = calculateItemPricing(item);
+                        
+                        console.log(`📦 Item ${index + 1} pricing:`, {
+                          name: item.name,
+                          input: {
+                            price: item.price,
+                            gst_rate: item.gst_rate,
+                            gst_5pct: item.gst_5pct,
+                            gst_18pct: item.gst_18pct,
+                            quantity: item.quantity
+                          },
+                          output: pricing
+                        });
 
                         return (
                           <div key={item.item_id || index}>
@@ -679,6 +706,12 @@ export default function OrderDetail() {
                                   )}
                                   <span>•</span>
                                   <span>Qty: {pricing.quantity}</span>
+                                  {pricing.gstRate > 0 && (
+                                    <>
+                                      <span>•</span>
+                                      <span className="text-orange-600">GST @{pricing.gstRate}%</span>
+                                    </>
+                                  )}
                                 </div>
 
                                 <div className="flex items-baseline gap-2">
