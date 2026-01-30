@@ -703,7 +703,6 @@ export const useCheckoutLogic = () => {
         // ✅ CHANGED: Use already calculated orderTotals from useMemo
         const shippingCost = 0; // TODO: Implement shipping calculation
         const finalTotal = orderTotals.grandTotal + shippingCost;
-        const totalPaise = Math.round(finalTotal * 100);
         const customizationDetails = createCustomizationDetails(cartItems);
 
         console.log("\n💰 ORDER TOTALS (Product-wise GST from checkboxes):");
@@ -713,7 +712,6 @@ export const useCheckoutLogic = () => {
         console.log(`  Total GST: ₹${orderTotals.totalGST}`);
         console.log(`  Shipping: ₹${shippingCost}`);
         console.log(`  Grand Total: ₹${finalTotal}`);
-        console.log(`  Total (paise): ${totalPaise}`);
 
         console.log("\n📋 Fetching product data for order snapshot...");
         const productIds = cartItems.map(item => item.productId);
@@ -733,7 +731,7 @@ export const useCheckoutLogic = () => {
           });
         }
 
-        // ✅ CREATE ORDER WITH CALCULATED TOTALS
+        // ✅ CREATE ORDER WITH CALCULATED TOTALS (all in rupees)
         const orderData = {
           user_id: authUser.id,
           customer_id: customer.id,
@@ -762,7 +760,7 @@ export const useCheckoutLogic = () => {
             estimatedDays: "3-5",
           },
           
-          // 💰 BILLING SNAPSHOT (frozen at order time)
+          // 💰 BILLING SNAPSHOT (frozen at order time) - ALL IN RUPEES
           subtotal: orderTotals.subtotal,
           total_gst: orderTotals.totalGST,
           gst_5_total: orderTotals.gst5Total,
@@ -770,8 +768,8 @@ export const useCheckoutLogic = () => {
           shipping_cost: shippingCost,
           order_total: finalTotal,
           
-          // Legacy fields (for compatibility)
-          total_price: totalPaise,
+          // 🐛 FIX: Store in RUPEES not paise (consistency with other fields)
+          total_price: finalTotal,  // ✅ Changed from totalPaise
           amount: finalTotal,
           
           status: "pending",
@@ -854,7 +852,7 @@ export const useCheckoutLogic = () => {
 
         console.log("\n📝 Inserting order_items with pricing snapshot...");
         
-        // ✅ CREATE ORDER ITEMS WITH PRICING SNAPSHOT
+        // ✅ CREATE ORDER ITEMS WITH PRICING SNAPSHOT (all in rupees)
         const orderItemsData = processedCartItems.map(item => {
           const productData = productDataMap[item.productId] || item;
           const pricing = calculateItemPricing(item, productData);
@@ -866,7 +864,7 @@ export const useCheckoutLogic = () => {
             catalog_number: productData.catalog_number || null,
             quantity: pricing.quantity,
             
-            // 💰 PRICING SNAPSHOT (frozen at order time)
+            // 💰 PRICING SNAPSHOT (frozen at order time) - ALL IN RUPEES
             base_price: pricing.basePrice,
             gst_rate: pricing.gstRate,
             gst_amount: pricing.gstAmount,
@@ -874,9 +872,9 @@ export const useCheckoutLogic = () => {
             item_gst_total: pricing.itemGSTTotal,
             item_total: pricing.itemTotal,
             
-            // Legacy fields (for compatibility)
-            unit_price: Math.round(pricing.priceWithGST * 100),
-            total_price: Math.round(pricing.itemTotal * 100),
+            // 🐛 FIX: Store in RUPEES not paise (consistency)
+            unit_price: pricing.priceWithGST,  // ✅ Changed from paise
+            total_price: pricing.itemTotal,     // ✅ Changed from paise
             
             customization_data: item.processedCustomization
           };
@@ -1024,6 +1022,7 @@ export const useCheckoutLogic = () => {
         console.log("   💰 Billing totals saved to database (immutable)");
         console.log("   📸 Per-item pricing snapshot saved with correct GST");
         console.log("   🔒 Stock decremented atomically ✅");
+        console.log("   🐛 FIX: All prices stored in RUPEES (not paise) ✅");
         console.log("\n🎉 ORDER READY FOR PAYMENT\n");
         
         return order;
@@ -1072,11 +1071,11 @@ export const useCheckoutLogic = () => {
 
       const order = await createOrder("PayNow");
 
-      // ✅ Use `total` which is grandTotal
+      // 💳 PAYMENT GATEWAY: Amount MUST be in paise (external requirement)
       const totalAmount = Math.round(total * 100);
       
       console.log('💳 PAYMENT AMOUNT:', {
-        total: total,
+        totalRupees: total,
         totalPaise: totalAmount,
         orderTotal: order.order_total
       });
@@ -1099,7 +1098,7 @@ export const useCheckoutLogic = () => {
       }
 
       document.getElementById("pp-order-id").value = order.id;
-      document.getElementById("pp-amount").value = totalAmount;
+      document.getElementById("pp-amount").value = totalAmount;  // ✅ Still in paise for PhonePe
       document.getElementById("pp-customer-email").value = formData.email;
       document.getElementById("pp-customer-phone").value = formData.phone;
       document.getElementById(
