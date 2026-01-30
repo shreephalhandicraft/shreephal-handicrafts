@@ -452,19 +452,12 @@ export const useCheckoutLogic = () => {
         }
       });
       
+      // ✅ FIX: Use string instead of JSX
+      const descriptionText = `Some items in your cart are no longer available:\n\n${issueMessages.join('\n')}\n\nPlease update your cart and try again.`;
+      
       toast({
         title: "Stock Unavailable",
-        description: (
-          <div>
-            <p className="mb-2">Some items in your cart are no longer available:</p>
-            <div className="text-sm space-y-1">
-              {issueMessages.map((msg, idx) => (
-                <div key={idx}>{msg}</div>
-              ))}
-            </div>
-            <p className="mt-3 text-sm">Please update your cart and try again.</p>
-          </div>
-        ),
+        description: descriptionText,
         variant: "destructive",
         duration: 10000,
       });
