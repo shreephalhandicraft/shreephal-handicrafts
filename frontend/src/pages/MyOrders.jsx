@@ -136,19 +136,19 @@ const getEstimatedArrival = (createdAt, status, estimatedDays = 7) => {
   }
 };
 
-// ✅ BILLING HELPER: Get order total consistently
+// ✅ FIX: Get order total - all fields now in RUPEES (not paise)
 const getOrderTotal = (order) => {
-  // Priority: order_total (snapshot) > amount > total_price (paise)
+  // Priority: order_total (snapshot) > amount > total_price
+  // 🐛 FIX: All values are now stored in RUPEES, no conversion needed
   if (order.order_total != null) {
     return Number(order.order_total);
   }
-  // Fallback for old orders
   if (order.amount != null) {
     return Number(order.amount);
   }
-  // Legacy: convert paise to rupees
   if (order.total_price != null) {
-    return Number(order.total_price) / 100;
+    // 🐛 FIX: No longer divide by 100 - values are in rupees
+    return Number(order.total_price);
   }
   return 0;
 };
@@ -199,9 +199,9 @@ export default function MyOrders() {
         ordersData.slice(0, 3).forEach(order => {
           console.log(`  Order #${order.order_id.slice(0, 8)}:`);
           console.log(`    order_total (snapshot): ₹${order.order_total}`);
-          console.log(`    total_price (legacy paise): ${order.total_price}`);
-          console.log(`    amount (legacy rupees): ₹${order.amount}`);
-          console.log(`    ✅ Using: ₹${getOrderTotal(order)}`);
+          console.log(`    total_price (all in rupees): ₹${order.total_price}`);
+          console.log(`    amount (all in rupees): ₹${order.amount}`);
+          console.log(`    ✅ Display: ₹${getOrderTotal(order)}`);
         });
       }
 
@@ -226,15 +226,15 @@ export default function MyOrders() {
     setProcessingPayments((prev) => new Set(prev).add(order.order_id));
 
     try {
-      // ✅ FIX: Use billing helper to get correct amount
+      // ✅ Get order total in rupees
       const orderTotal = getOrderTotal(order);
-      const totalAmount = Math.round(orderTotal * 100); // Convert to paise
+      // Convert to paise for payment gateway (PhonePe requires paise)
+      const totalAmount = Math.round(orderTotal * 100);
 
       console.log('💳 PAYMENT:', {
         order_id: order.order_id.slice(0, 8),
-        order_total: order.order_total,
-        calculated: orderTotal,
-        paise: totalAmount
+        order_total_rupees: orderTotal,
+        payment_gateway_paise: totalAmount
       });
 
       const form = document.createElement("form");
@@ -244,7 +244,7 @@ export default function MyOrders() {
 
       const fields = {
         orderId: order.order_id,
-        amount: totalAmount,
+        amount: totalAmount,  // PhonePe expects paise
         customerEmail: order.customer_email || user.email,
         customerPhone: order.customer_phone || "",
         customerName: order.customer_name || user.name,
@@ -464,7 +464,6 @@ export default function MyOrders() {
                             ) : (
                               <>
                                 <CreditCard className="h-3 w-3 mr-1" />
-                                {/* ✅ FIX: Use billing helper */}
                                 Pay ₹{orderTotal.toFixed(2)}
                               </>
                             )}
@@ -544,7 +543,6 @@ export default function MyOrders() {
                         </div>
 
                         <div className="text-left sm:text-right space-y-2">
-                          {/* ✅ FIX: Use billing helper */}
                           <p className="text-lg sm:text-xl font-bold text-gray-900">
                             ₹{orderTotal.toFixed(2)}
                           </p>
@@ -618,7 +616,6 @@ export default function MyOrders() {
                             ) : (
                               <>
                                 <CreditCard className="h-4 w-4 mr-2" />
-                                {/* ✅ FIX: Use billing helper */}
                                 Pay Now - ₹{orderTotal.toFixed(2)}
                               </>
                             )}
