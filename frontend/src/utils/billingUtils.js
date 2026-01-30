@@ -16,31 +16,22 @@
  */
 
 /**
- * Get GST rate for a product category
- * @param {string} category - Product category
- * @returns {number} GST rate (5 or 18)
+ * ✅ FIXED: Get GST rate for a product based on product flags
+ * @param {Object} product - Product object with gst_5pct and gst_18pct flags
+ * @returns {number} GST rate (0, 5, or 18)
  */
-export const getGSTRate = (category) => {
-  // Handicraft items typically have 5% GST
-  const lowGSTCategories = [
-    'handicrafts', 
-    'handmade', 
-    'hand-made',
-    'art', 
-    'craft',
-    'decor',
-    'home-decor',
-    'traditional'
-  ];
-  
-  if (category) {
-    const categoryLower = category.toLowerCase();
-    if (lowGSTCategories.some(cat => categoryLower.includes(cat))) {
-      return 5;
-    }
+export const getGSTRate = (product) => {
+  // ✅ NEW: Check actual product GST flags from database
+  if (product?.gst_18pct === true) {
+    return 18;
+  }
+  if (product?.gst_5pct === true) {
+    return 5;
   }
   
-  return 18; // Default GST rate
+  // ✅ CHANGED: Default to 0% (no GST) instead of 18%
+  // If neither checkbox is checked, no GST should be applied
+  return 0;
 };
 
 /**
@@ -67,7 +58,7 @@ export const getGSTDescription = (gstRate) => {
 export const extractBasePrice = (price, gstRate, includesGST = false) => {
   const numPrice = parseFloat(price) || 0;
   
-  if (includesGST) {
+  if (includesGST && gstRate > 0) {
     // Reverse calculate: base_price = price_with_gst / (1 + gst_rate/100)
     return roundTo2Decimals(numPrice / (1 + gstRate / 100));
   }
@@ -82,14 +73,14 @@ export const extractBasePrice = (price, gstRate, includesGST = false) => {
  * @param {Object} params - Calculation parameters
  * @param {number} params.price - Price (can be with or without GST)
  * @param {number} params.quantity - Quantity
- * @param {number} params.gstRate - GST rate (5 or 18)
+ * @param {number} params.gstRate - GST rate (0, 5 or 18)
  * @param {boolean} params.priceIncludesGST - Whether price includes GST (default: false)
  * @returns {Object} Item billing details
  */
 export const calculateItemBilling = ({ 
   price, 
   quantity, 
-  gstRate = 18, 
+  gstRate = 0,  // ✅ CHANGED: Default to 0% instead of 18%
   priceIncludesGST = false 
 }) => {
   // Extract base price (without GST)
@@ -122,14 +113,36 @@ export const calculateItemBilling = ({
  * Used by InvoiceGenerator and other legacy components
  * 
  * @param {Object} item - Order item object
+ * @param {Object} productData - Optional product data with GST flags
  * @returns {Object} Pricing details
  */
-export const calculateItemPricing = (item) => {
+export const calculateItemPricing = (item, productData = null) => {
   // Determine quantity
   const quantity = item.quantity || 1;
   
-  // Determine GST rate
-  const gstRate = item.gst_rate || item.gstRate || getGSTRate(item.category);
+  // ✅ FIXED: Determine GST rate from product flags
+  let gstRate = 0;
+  
+  // Priority 1: Check if item already has gst_rate stored (from database)
+  if (typeof item.gst_rate === 'number') {
+    gstRate = item.gst_rate;
+  }
+  // Priority 2: Check productData for GST flags
+  else if (productData) {
+    gstRate = getGSTRate(productData);
+  }
+  // Priority 3: Check item itself for GST flags
+  else if (item.gst_18pct === true) {
+    gstRate = 18;
+  }
+  else if (item.gst_5pct === true) {
+    gstRate = 5;
+  }
+  // Priority 4: Legacy gstRate field
+  else if (item.gstRate) {
+    gstRate = item.gstRate;
+  }
+  // Default: 0% (no GST)
   
   // Determine price (try various field names for backward compatibility)
   let price = item.price || item.base_price || item.unit_price_with_gst || 0;
@@ -163,11 +176,14 @@ export const calculateItemPricing = (item) => {
   return {
     quantity: quantity,
     basePrice: billing.base_price,
+    gstRate: billing.gst_rate,  // ✅ ADDED: Return actual GST rate used
     gstPercentage: billing.gst_rate,
     gstAmount: billing.gst_amount,
+    subtotal: billing.item_subtotal,  // ✅ ADDED: Alias for consistency
     itemSubtotal: billing.item_subtotal,
     itemGSTTotal: billing.item_gst_total,
     itemTotal: billing.item_total,
+    priceWithGST: billing.unit_price_with_gst,  // ✅ ADDED: Alias for consistency
     unitPriceWithGST: billing.unit_price_with_gst
   };
 };
@@ -188,18 +204,20 @@ export const calculateOrderBilling = (orderItems, shippingCost = 0) => {
     const itemBilling = item.billing || calculateItemBilling({
       price: item.price || item.basePrice || item.unit_price_with_gst,
       quantity: item.quantity,
-      gstRate: item.gstRate || item.gst_rate || 18,
+      gstRate: item.gstRate || item.gst_rate || 0,  // ✅ CHANGED: Default to 0
       priceIncludesGST: item.priceIncludesGST || false
     });
     
     subtotal += itemBilling.item_subtotal;
     
     // Separate GST by rate
-    if ((item.gstRate || item.gst_rate || itemBilling.gst_rate) === 5) {
+    const itemGstRate = item.gstRate || item.gst_rate || itemBilling.gst_rate || 0;
+    if (itemGstRate === 5) {
       gst5Total += itemBilling.item_gst_total;
-    } else {
+    } else if (itemGstRate === 18) {
       gst18Total += itemBilling.item_gst_total;
     }
+    // ✅ ADDED: If gstRate is 0, GST total is 0 (no addition needed)
   });
   
   const totalGst = gst5Total + gst18Total;
@@ -378,6 +396,41 @@ export const autoFixBilling = (orderBilling) => {
   };
 };
 
+/**
+ * ✅ NEW HELPER: Create item snapshot for order creation
+ * Captures all necessary data at checkout time
+ * 
+ * @param {Object} cartItem - Cart item object
+ * @param {Object} productData - Product data from database
+ * @returns {Object} Item snapshot for database
+ */
+export const createItemSnapshot = (cartItem, productData) => {
+  const gstRate = getGSTRate(productData);
+  const pricing = calculateItemPricing(cartItem, productData);
+  
+  return {
+    product_id: cartItem.productId,
+    variant_id: cartItem.variantId,
+    catalog_number: productData.catalog_number || null,
+    quantity: pricing.quantity,
+    
+    // Pricing snapshot
+    base_price: pricing.basePrice,
+    gst_rate: gstRate,
+    gst_amount: pricing.gstAmount,
+    item_subtotal: pricing.itemSubtotal,
+    item_gst_total: pricing.itemGSTTotal,
+    item_total: pricing.itemTotal,
+    
+    // Legacy fields for compatibility
+    unit_price: Math.round(pricing.unitPriceWithGST * 100),
+    total_price: Math.round(pricing.itemTotal * 100),
+    
+    // Customization data
+    customization_data: cartItem.customization || null
+  };
+};
+
 export default {
   getGSTRate,
   getGSTDescription,
@@ -392,5 +445,6 @@ export default {
   roundTo2Decimals,
   formatCurrency,
   validateBilling,
-  autoFixBilling
+  autoFixBilling,
+  createItemSnapshot
 };
