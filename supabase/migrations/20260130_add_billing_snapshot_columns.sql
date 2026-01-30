@@ -1,6 +1,7 @@
 -- Migration: Add billing snapshot columns to orders table
 -- Purpose: Store immutable pricing snapshot at order time (prevents price changes from affecting past orders)
 -- Date: 2026-01-30
+-- Fix: GST should be ADDED to subtotal, not subtracted
 
 -- Add new billing snapshot columns to orders table
 ALTER TABLE orders
@@ -19,16 +20,17 @@ COMMENT ON COLUMN orders.gst_18_total IS 'Total GST @18% (frozen at order time)'
 COMMENT ON COLUMN orders.shipping_cost IS 'Shipping cost (frozen at order time)';
 COMMENT ON COLUMN orders.order_total IS 'Grand total: subtotal + total_gst + shipping_cost (frozen at order time)';
 
--- Backfill existing orders with calculated values from total_price (if any exist)
--- Note: This is a best-effort migration. Existing orders may not have accurate GST breakdown.
+-- ✅ FIX: Correct GST calculation for existing orders
+-- If total_price exists (in paise), convert to rupees
+-- Assume base price is the amount, GST is calculated on top
 UPDATE orders
 SET 
-  order_total = COALESCE(amount, total_price / 100.0),
-  subtotal = COALESCE(amount, total_price / 100.0) * 0.85, -- Estimate: assume ~15% avg GST
-  total_gst = COALESCE(amount, total_price / 100.0) * 0.15,
-  gst_5_total = 0,
-  gst_18_total = COALESCE(amount, total_price / 100.0) * 0.15,
-  shipping_cost = 0
+  subtotal = COALESCE(amount, total_price / 100.0),  -- Base price
+  total_gst = ROUND(COALESCE(amount, total_price / 100.0) * 0.05, 2),  -- 5% GST on base
+  gst_5_total = ROUND(COALESCE(amount, total_price / 100.0) * 0.05, 2),  -- All GST is 5% for now
+  gst_18_total = 0,  -- No 18% GST for existing orders (we don't know the breakdown)
+  shipping_cost = 0,  -- Assume no shipping for old orders
+  order_total = ROUND(COALESCE(amount, total_price / 100.0) * 1.05, 2)  -- Base + 5% GST
 WHERE order_total IS NULL;
 
 -- Add index for faster queries on order_total
@@ -45,4 +47,6 @@ BEGIN
   END IF;
   
   RAISE NOTICE 'Migration successful: Billing snapshot columns added to orders table';
+  RAISE NOTICE 'Formula: order_total = subtotal + total_gst + shipping_cost';
+  RAISE NOTICE 'Example: ₹210 (subtotal) + ₹10.50 (5%% GST) = ₹220.50 (order_total)';
 END $$;
