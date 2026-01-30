@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useCart } from "@/contexts/CartContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -200,6 +200,7 @@ export const useCheckoutLogic = () => {
   const [loading, setLoading] = useState(true);
   const [processingPayment, setProcessingPayment] = useState(false);
   const [paymentProcessed, setPaymentProcessed] = useState(false);
+  const [productGSTData, setProductGSTData] = useState({});  // ✅ NEW: Store product GST flags
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -211,21 +212,74 @@ export const useCheckoutLogic = () => {
     zipCode: "",
   });
 
-  // ✅ Calculate totals with product-wise GST
-  const cartItems = getCartForCheckout();
-  const orderTotals = calculateOrderTotals(cartItems);
-  
-  // 🐛 FIX: Console log to debug what values we're getting
-  console.log('💰 CHECKOUT TOTALS DEBUG:', {
-    subtotal: orderTotals.subtotal,
-    totalGST: orderTotals.totalGST,
-    grandTotal: orderTotals.grandTotal,
-    cartItemsCount: cartItems.length
-  });
-  
-  const subtotal = orderTotals.subtotal;        // Base price without GST
-  const tax = orderTotals.totalGST;             // Product-wise GST (5%/18%/none)
-  const total = orderTotals.grandTotal;         // ✅ CORRECT: subtotal + tax (₹214.50)
+  // ✅ NEW: Fetch product GST data when cart changes
+  useEffect(() => {
+    const fetchProductGSTData = async () => {
+      const cartItems = getCartForCheckout();
+      if (cartItems.length === 0) return;
+      
+      const productIds = [...new Set(cartItems.map(item => item.productId))];
+      
+      try {
+        const { data: productsData, error } = await supabase
+          .from('products')
+          .select('id, gst_5pct, gst_18pct')
+          .in('id', productIds);
+        
+        if (error) {
+          console.warn('⚠️ Could not fetch product GST data:', error);
+          return;
+        }
+        
+        const gstDataMap = {};
+        productsData.forEach(p => {
+          gstDataMap[p.id] = {
+            gst_5pct: p.gst_5pct,
+            gst_18pct: p.gst_18pct
+          };
+        });
+        
+        setProductGSTData(gstDataMap);
+        console.log('✅ Product GST data loaded:', gstDataMap);
+      } catch (error) {
+        console.error('❌ Failed to fetch product GST data:', error);
+      }
+    };
+    
+    fetchProductGSTData();
+  }, [items.length, getCartForCheckout]);
+
+  // ✅ FIXED: Calculate totals with enriched cart items (including GST flags)
+  const { enrichedCartItems, orderTotals, subtotal, tax, total } = useMemo(() => {
+    const cartItems = getCartForCheckout();
+    
+    // ✅ Enrich cart items with product GST flags
+    const enrichedItems = cartItems.map(item => ({
+      ...item,
+      gst_5pct: productGSTData[item.productId]?.gst_5pct || false,
+      gst_18pct: productGSTData[item.productId]?.gst_18pct || false
+    }));
+    
+    const totals = calculateOrderTotals(enrichedItems);
+    
+    console.log('💰 CHECKOUT TOTALS (with GST flags):', {
+      subtotal: totals.subtotal,
+      gst5Total: totals.gst5Total,
+      gst18Total: totals.gst18Total,
+      totalGST: totals.totalGST,
+      grandTotal: totals.grandTotal,
+      cartItemsCount: enrichedItems.length,
+      productGSTData: productGSTData
+    });
+    
+    return {
+      enrichedCartItems: enrichedItems,
+      orderTotals: totals,
+      subtotal: totals.subtotal,
+      tax: totals.totalGST,
+      total: totals.grandTotal
+    };
+  }, [getCartForCheckout, productGSTData]);
 
   const handleChange = useCallback((e) => {
     setFormData((prev) => ({
@@ -594,8 +648,9 @@ export const useCheckoutLogic = () => {
           throw new Error("Authentication failed");
         }
 
-        const cartItems = getCartForCheckout();
-        console.log("\n📦 CART ITEMS:", JSON.stringify(cartItems, null, 2));
+        // ✅ CHANGED: Use enrichedCartItems which include GST flags
+        const cartItems = enrichedCartItems;
+        console.log("\n📦 CART ITEMS (with GST flags):", JSON.stringify(cartItems, null, 2));
 
         const itemsWithoutVariant = cartItems.filter(item => !item.variantId);
         if (itemsWithoutVariant.length > 0) {
@@ -645,13 +700,13 @@ export const useCheckoutLogic = () => {
         }
 
         // 💰 CALCULATE TOTALS ONCE (will be frozen in DB)
-        const orderTotals = calculateOrderTotals(cartItems);
+        // ✅ CHANGED: Use already calculated orderTotals from useMemo
         const shippingCost = 0; // TODO: Implement shipping calculation
         const finalTotal = orderTotals.grandTotal + shippingCost;
         const totalPaise = Math.round(finalTotal * 100);
         const customizationDetails = createCustomizationDetails(cartItems);
 
-        console.log("\n💰 ORDER TOTALS (Product-wise GST - WILL BE SAVED TO DB):");
+        console.log("\n💰 ORDER TOTALS (Product-wise GST from checkboxes):");
         console.log(`  Subtotal (Base): ₹${orderTotals.subtotal}`);
         console.log(`  GST @5%: ₹${orderTotals.gst5Total}`);
         console.log(`  GST @18%: ₹${orderTotals.gst18Total}`);
@@ -660,7 +715,7 @@ export const useCheckoutLogic = () => {
         console.log(`  Grand Total: ₹${finalTotal}`);
         console.log(`  Total (paise): ${totalPaise}`);
 
-        console.log("\n📋 Fetching product data for GST snapshot...");
+        console.log("\n📋 Fetching product data for order snapshot...");
         const productIds = cartItems.map(item => item.productId);
         const { data: productsData, error: productsError } = await supabase
           .from('products')
@@ -967,7 +1022,7 @@ export const useCheckoutLogic = () => {
 
         console.log("\n✅ ORDER CREATION COMPLETE WITH BILLING SNAPSHOT");
         console.log("   💰 Billing totals saved to database (immutable)");
-        console.log("   📸 Per-item pricing snapshot saved");
+        console.log("   📸 Per-item pricing snapshot saved with correct GST");
         console.log("   🔒 Stock decremented atomically ✅");
         console.log("\n🎉 ORDER READY FOR PAYMENT\n");
         
@@ -980,7 +1035,8 @@ export const useCheckoutLogic = () => {
     [
       user?.id, 
       formData, 
-      getCartForCheckout, 
+      enrichedCartItems,  // ✅ CHANGED: Use enrichedCartItems
+      orderTotals,  // ✅ CHANGED: Use memoized orderTotals
       createCustomizationDetails, 
       uploadCustomizationImage, 
       reserveStock,
@@ -1016,7 +1072,7 @@ export const useCheckoutLogic = () => {
 
       const order = await createOrder("PayNow");
 
-      // ✅ FIX: Use `total` which is grandTotal (₹214.50), not subtotal (₹210)
+      // ✅ Use `total` which is grandTotal
       const totalAmount = Math.round(total * 100);
       
       console.log('💳 PAYMENT AMOUNT:', {
