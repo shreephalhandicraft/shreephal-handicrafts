@@ -215,9 +215,17 @@ export const useCheckoutLogic = () => {
   const cartItems = getCartForCheckout();
   const orderTotals = calculateOrderTotals(cartItems);
   
+  // 🐛 FIX: Console log to debug what values we're getting
+  console.log('💰 CHECKOUT TOTALS DEBUG:', {
+    subtotal: orderTotals.subtotal,
+    totalGST: orderTotals.totalGST,
+    grandTotal: orderTotals.grandTotal,
+    cartItemsCount: cartItems.length
+  });
+  
   const subtotal = orderTotals.subtotal;        // Base price without GST
   const tax = orderTotals.totalGST;             // Product-wise GST (5%/18%/none)
-  const total = orderTotals.grandTotal;         // subtotal + tax
+  const total = orderTotals.grandTotal;         // ✅ CORRECT: subtotal + tax (₹214.50)
 
   const handleChange = useCallback((e) => {
     setFormData((prev) => ({
@@ -932,7 +940,14 @@ export const useCheckoutLogic = () => {
 
       const order = await createOrder("PayNow");
 
+      // ✅ FIX: Use `total` which is grandTotal (₹214.50), not subtotal (₹210)
       const totalAmount = Math.round(total * 100);
+      
+      console.log('💳 PAYMENT AMOUNT:', {
+        total: total,
+        totalPaise: totalAmount,
+        orderTotal: order.order_total
+      });
 
       const requiredElements = [
         "pp-order-id",
