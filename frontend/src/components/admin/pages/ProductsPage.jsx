@@ -60,11 +60,9 @@ export function ProductsPage() {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
-  // Fetch products, categories and variants
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      // Fetch categories
       const { data: cats, error: catErr } = await supabase
         .from("categories")
         .select("id, name")
@@ -72,35 +70,32 @@ export function ProductsPage() {
       if (catErr) throw catErr;
       setCategories(cats || []);
 
-      // Fetch ONLY active products (filter out soft-deleted)
       const { data: prods, error: prodErr } = await supabase
         .from("products")
         .select("*")
-        .eq("is_active", true)
         .order("created_at", { ascending: false });
       if (prodErr) throw prodErr;
 
       setProducts(prods || []);
 
-      // Fetch variants with order count
       const productIds = prods?.map((p) => p.id) || [];
       if (productIds.length > 0) {
         const { data: vars, error: varErr } = await supabase
           .from("product_variants")
-          .select("id, product_id, sku, size_display, size_numeric, size_unit, price_tier, price, stock_quantity")
+          .select(
+            "id, product_id, sku, size_display, size_numeric, size_unit, price_tier, price, stock_quantity"
+          )
           .in("product_id", productIds);
         if (varErr) throw varErr;
 
         const map = {};
         for (const v of vars) {
-          // Check order count for each variant
           const { count } = await supabase
             .from("order_items")
             .select("*", { count: "exact", head: true })
             .eq("variant_id", v.id);
-          
+
           const variantWithCount = { ...v, order_count: count || 0 };
-          
           if (!map[v.product_id]) map[v.product_id] = [];
           map[v.product_id].push(variantWithCount);
         }
@@ -122,17 +117,18 @@ export function ProductsPage() {
     fetchData();
   }, [fetchData]);
 
-  // Handle delete with order check
   const handleDelete = async () => {
     if (!deleteProduct) return;
     setLoading(true);
-
     try {
       const variants = variantsMap[deleteProduct.id] || [];
-      const hasOrders = variants.some(v => (v.order_count || 0) > 0);
+      const hasOrders = variants.some((v) => (v.order_count || 0) > 0);
 
       if (hasOrders) {
-        const totalOrders = variants.reduce((sum, v) => sum + (v.order_count || 0), 0);
+        const totalOrders = variants.reduce(
+          (sum, v) => sum + (v.order_count || 0),
+          0
+        );
         toast({
           title: "Cannot delete product",
           description: `"${deleteProduct.title}" has ${totalOrders} order(s). Products with order history cannot be deleted.`,
@@ -144,48 +140,23 @@ export function ProductsPage() {
         return;
       }
 
-      // Delete cart items first
-      const { error: cartError } = await supabase
-        .from("cart_items")
-        .delete()
-        .eq("product_id", deleteProduct.id);
-      if (cartError) console.warn("Cart delete:", cartError);
-
-      // Delete variants
-      const { error: variantError } = await supabase
+      await supabase
         .from("product_variants")
         .delete()
         .eq("product_id", deleteProduct.id);
-      if (variantError) throw variantError;
 
-      // Delete product image
-      if (deleteProduct.image_url) {
-        try {
-          const urlParts = deleteProduct.image_url.split('/');
-          const filePath = urlParts[urlParts.length - 1];
-          await supabase.storage.from('product-images').remove([filePath]);
-        } catch (imgError) {
-          console.warn("Image delete:", imgError);
-        }
-      }
+      await supabase.from("products").delete().eq("id", deleteProduct.id);
 
-      // Delete product
-      const { error: prodError } = await supabase
-        .from("products")
-        .delete()
-        .eq("id", deleteProduct.id);
-      if (prodError) throw prodError;
-
-      toast({ 
-        title: "Product deleted", 
-        description: `"${deleteProduct.title}" has been permanently deleted.`
+      toast({
+        title: "Product deleted",
+        description: `"${deleteProduct.title}" and all its variants have been permanently deleted.`,
       });
 
+      window.dispatchEvent(new CustomEvent("productsChanged"));
       await fetchData();
       setDeleteProduct(null);
       setDeleteWarning(null);
     } catch (error) {
-      console.error("Delete error:", error);
       toast({
         title: "Failed to delete product",
         description: error.message,
@@ -197,23 +168,25 @@ export function ProductsPage() {
 
   const handleDeleteClick = (product) => {
     const variants = variantsMap[product.id] || [];
-    const hasOrders = variants.some(v => (v.order_count || 0) > 0);
-    const totalOrders = variants.reduce((sum, v) => sum + (v.order_count || 0), 0);
-    
-    if (hasOrders) {
-      setDeleteWarning({
-        canDelete: false,
-        totalOrders,
-        message: `This product has ${totalOrders} order(s) and cannot be deleted.`
-      });
-    } else {
-      setDeleteWarning({
-        canDelete: true,
-        totalOrders: 0,
-        message: "This product has no orders and will be permanently deleted."
-      });
-    }
-    
+    const hasOrders = variants.some((v) => (v.order_count || 0) > 0);
+    const totalOrders = variants.reduce(
+      (sum, v) => sum + (v.order_count || 0),
+      0
+    );
+
+    setDeleteWarning(
+      hasOrders
+        ? {
+            canDelete: false,
+            totalOrders,
+            message: `This product has ${totalOrders} order(s) and cannot be deleted.`,
+          }
+        : {
+            canDelete: true,
+            totalOrders: 0,
+            message: "This product has no orders and will be permanently deleted.",
+          }
+    );
     setDeleteProduct(product);
   };
 
@@ -221,10 +194,9 @@ export function ProductsPage() {
     fetchData();
   };
 
-  // Filter products
   const filteredProducts = products.filter((product) => {
     const matchesCategory =
-      selectedCategoryId && selectedCategoryId !== "all"
+      selectedCategoryId !== "all"
         ? product.category_id === selectedCategoryId
         : true;
     const matchesSearch = searchTerm
@@ -234,7 +206,6 @@ export function ProductsPage() {
     return matchesCategory && matchesSearch;
   });
 
-  // Stats
   const totalProducts = products.length;
   const featuredProducts = products.filter((p) => p.featured).length;
   const inStockProducts = products.filter((p) => p.in_stock).length;
@@ -243,10 +214,7 @@ export function ProductsPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="text-center space-y-4">
-          <RefreshCw className="h-8 w-8 animate-spin mx-auto text-primary" />
-          <div className="text-lg font-medium">Loading products...</div>
-        </div>
+        <RefreshCw className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
