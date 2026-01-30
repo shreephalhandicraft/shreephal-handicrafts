@@ -194,7 +194,7 @@ export const useCheckoutLogic = () => {
   const { toast } = useToast();
   const payFormRef = useRef(null);
   
-  const { reserveStock, confirmMultipleReservations } = useStockReservation();
+  const { reserveStock, confirmMultipleReservations, getAvailableStock } = useStockReservation();
 
   // State
   const [loading, setLoading] = useState(true);
@@ -398,6 +398,83 @@ export const useCheckoutLogic = () => {
     console.log('✅ Cart validation passed - All items have variantId');
     return true;
   }, [getCartForCheckout, toast]);
+
+  // ✅ NEW: Stock re-validation before checkout
+  const validateStockAvailability = useCallback(async () => {
+    console.log('\n🔍 RE-VALIDATING STOCK BEFORE CHECKOUT...');
+    
+    const cartItems = getCartForCheckout();
+    const stockIssues = [];
+    
+    for (const item of cartItems) {
+      if (!item.variantId) {
+        stockIssues.push({
+          item: item.name,
+          issue: 'Missing variant ID',
+        });
+        continue;
+      }
+      
+      try {
+        // Get real-time available stock (total - active reservations)
+        const availableStock = await getAvailableStock(item.variantId);
+        
+        console.log(`  📦 ${item.name}: Requested ${item.quantity}, Available ${availableStock}`);
+        
+        if (availableStock < item.quantity) {
+          stockIssues.push({
+            item: item.name,
+            requested: item.quantity,
+            available: availableStock,
+            issue: availableStock === 0 ? 'Out of stock' : 'Insufficient stock',
+          });
+        }
+      } catch (error) {
+        console.error(`  ❌ Failed to check stock for ${item.name}:`, error);
+        stockIssues.push({
+          item: item.name,
+          issue: 'Could not verify stock availability',
+        });
+      }
+    }
+    
+    if (stockIssues.length > 0) {
+      console.error('❌ STOCK VALIDATION FAILED:', stockIssues);
+      
+      // Build detailed error message
+      const issueMessages = stockIssues.map(issue => {
+        if (issue.issue === 'Out of stock') {
+          return `• ${issue.item}: Out of stock`;
+        } else if (issue.issue === 'Insufficient stock') {
+          return `• ${issue.item}: Only ${issue.available} available (you have ${issue.requested} in cart)`;
+        } else {
+          return `• ${issue.item}: ${issue.issue}`;
+        }
+      });
+      
+      toast({
+        title: "Stock Unavailable",
+        description: (
+          <div>
+            <p className="mb-2">Some items in your cart are no longer available:</p>
+            <div className="text-sm space-y-1">
+              {issueMessages.map((msg, idx) => (
+                <div key={idx}>{msg}</div>
+              ))}
+            </div>
+            <p className="mt-3 text-sm">Please update your cart and try again.</p>
+          </div>
+        ),
+        variant: "destructive",
+        duration: 10000,
+      });
+      
+      return false;
+    }
+    
+    console.log('✅ Stock validation passed - All items available');
+    return true;
+  }, [getCartForCheckout, getAvailableStock, toast]);
 
   const createCustomizationDetails = useCallback((cartItems) => {
     const customizationDetails = {};
@@ -862,16 +939,16 @@ export const useCheckoutLogic = () => {
 
           console.log(`  ✅ All reservations created: ${stockReservations.length} items`);
 
-          console.log("\n  🎯 Step 2: Batch confirming reservations (atomic)...");
+          console.log("\n  🎯 Step 2: Batch confirming reservations (atomic stock decrement)...");
           const reservationIds = stockReservations.map(r => r.reservationId);
           
           const confirmResult = await confirmMultipleReservations(reservationIds);
           
           console.log(`  ✅ ATOMIC CONFIRMATION SUCCESS: ${confirmResult.confirmedCount} items`);
-          console.log(`     All stock decremented in single transaction`);
+          console.log(`     Stock decremented in database via single transaction ✅`);
           
           stockReservations.forEach(r => {
-            console.log(`    ✅ ${r.item}: ${r.quantity} units confirmed`);
+            console.log(`    ✅ ${r.item}: -${r.quantity} units (stock updated)`);
           });
 
         } catch (error) {
@@ -898,7 +975,7 @@ export const useCheckoutLogic = () => {
         console.log("\n✅ ORDER CREATION COMPLETE WITH BILLING SNAPSHOT");
         console.log("   💰 Billing totals saved to database (immutable)");
         console.log("   📸 Per-item pricing snapshot saved");
-        console.log("   🔒 Stock reserved atomically");
+        console.log("   🔒 Stock decremented atomically ✅");
         console.log("\n🎉 ORDER READY FOR PAYMENT\n");
         
         return order;
@@ -923,6 +1000,12 @@ export const useCheckoutLogic = () => {
     if (!validateForm()) return;
     
     if (!validateCartItems()) {
+      return;
+    }
+
+    // ✅ NEW: Re-validate stock before payment
+    const stockAvailable = await validateStockAvailability();
+    if (!stockAvailable) {
       return;
     }
 
@@ -999,12 +1082,18 @@ export const useCheckoutLogic = () => {
       });
       setProcessingPayment(false);
     }
-  }, [validateForm, validateCartItems, items, total, formData, createOrder, toast]);
+  }, [validateForm, validateCartItems, validateStockAvailability, items, total, formData, createOrder, toast]);
 
   const handleCODPayment = useCallback(async () => {
     if (!validateForm()) return;
     
     if (!validateCartItems()) {
+      return;
+    }
+
+    // ✅ NEW: Re-validate stock before COD order
+    const stockAvailable = await validateStockAvailability();
+    if (!stockAvailable) {
       return;
     }
 
@@ -1046,7 +1135,7 @@ export const useCheckoutLogic = () => {
     } finally {
       setProcessingPayment(false);
     }
-  }, [validateForm, validateCartItems, createOrder, clearCart, toast, navigate]);
+  }, [validateForm, validateCartItems, validateStockAvailability, createOrder, clearCart, toast, navigate]);
 
   const clearUrlParams = useCallback(() => {
     const newSearchParams = new URLSearchParams(searchParams);
