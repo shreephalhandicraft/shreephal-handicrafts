@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useCart } from "@/contexts/CartContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabaseClient";
 import { useStockReservation } from "@/hooks/useStockReservation";
+import { calculateOrderTotals, calculateItemPricing, createItemSnapshot } from "@/utils/billingUtils";
 
 const PHONEPE_PAY_URL = import.meta.env.VITE_BACKEND_URL
   ? `${import.meta.env.VITE_BACKEND_URL}/pay`
@@ -166,22 +167,18 @@ const parsePaymentError = (errorMessage) => {
     };
   }
   
-  // Convert to uppercase for case-insensitive matching
   const upperMessage = errorMessage.toUpperCase();
   
-  // Try exact match first
   if (PAYMENT_ERROR_MESSAGES[upperMessage]) {
     return PAYMENT_ERROR_MESSAGES[upperMessage];
   }
   
-  // Try partial match (if error message contains key)
   for (const [key, value] of Object.entries(PAYMENT_ERROR_MESSAGES)) {
     if (upperMessage.includes(key)) {
       return value;
     }
   }
   
-  // Fallback: Return generic message but include original error for context
   return {
     title: "Payment Failed",
     description: `Your payment could not be completed: ${errorMessage}. Your money has NOT been deducted.`,
@@ -192,17 +189,18 @@ const parsePaymentError = (errorMessage) => {
 export const useCheckoutLogic = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { items, getTotalPrice, clearCart, getCartForCheckout } = useCart();
+  const { items, clearCart, getCartForCheckout } = useCart();
   const { user } = useAuth();
   const { toast } = useToast();
   const payFormRef = useRef(null);
   
-  const { reserveStock, confirmMultipleReservations } = useStockReservation();
+  const { reserveStock, confirmMultipleReservations, getAvailableStock } = useStockReservation();
 
   // State
   const [loading, setLoading] = useState(true);
   const [processingPayment, setProcessingPayment] = useState(false);
   const [paymentProcessed, setPaymentProcessed] = useState(false);
+  const [productGSTData, setProductGSTData] = useState({});  // ✅ NEW: Store product GST flags
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -214,12 +212,75 @@ export const useCheckoutLogic = () => {
     zipCode: "",
   });
 
-  // Computed values
-  const subtotal = getTotalPrice();
-  const tax = subtotal * 0.08;
-  const total = subtotal + tax;
+  // ✅ NEW: Fetch product GST data when cart changes
+  useEffect(() => {
+    const fetchProductGSTData = async () => {
+      const cartItems = getCartForCheckout();
+      if (cartItems.length === 0) return;
+      
+      const productIds = [...new Set(cartItems.map(item => item.productId))];
+      
+      try {
+        const { data: productsData, error } = await supabase
+          .from('products')
+          .select('id, gst_5pct, gst_18pct')
+          .in('id', productIds);
+        
+        if (error) {
+          console.warn('⚠️ Could not fetch product GST data:', error);
+          return;
+        }
+        
+        const gstDataMap = {};
+        productsData.forEach(p => {
+          gstDataMap[p.id] = {
+            gst_5pct: p.gst_5pct,
+            gst_18pct: p.gst_18pct
+          };
+        });
+        
+        setProductGSTData(gstDataMap);
+        console.log('✅ Product GST data loaded:', gstDataMap);
+      } catch (error) {
+        console.error('❌ Failed to fetch product GST data:', error);
+      }
+    };
+    
+    fetchProductGSTData();
+  }, [items.length, getCartForCheckout]);
 
-  // Handle form input changes
+  // ✅ FIXED: Calculate totals with enriched cart items (including GST flags)
+  const { enrichedCartItems, orderTotals, subtotal, tax, total } = useMemo(() => {
+    const cartItems = getCartForCheckout();
+    
+    // ✅ Enrich cart items with product GST flags
+    const enrichedItems = cartItems.map(item => ({
+      ...item,
+      gst_5pct: productGSTData[item.productId]?.gst_5pct || false,
+      gst_18pct: productGSTData[item.productId]?.gst_18pct || false
+    }));
+    
+    const totals = calculateOrderTotals(enrichedItems);
+    
+    console.log('💰 CHECKOUT TOTALS (with GST flags):', {
+      subtotal: totals.subtotal,
+      gst5Total: totals.gst5Total,
+      gst18Total: totals.gst18Total,
+      totalGST: totals.totalGST,
+      grandTotal: totals.grandTotal,
+      cartItemsCount: enrichedItems.length,
+      productGSTData: productGSTData
+    });
+    
+    return {
+      enrichedCartItems: enrichedItems,
+      orderTotals: totals,
+      subtotal: totals.subtotal,
+      tax: totals.totalGST,
+      total: totals.grandTotal
+    };
+  }, [getCartForCheckout, productGSTData]);
+
   const handleChange = useCallback((e) => {
     setFormData((prev) => ({
       ...prev,
@@ -311,7 +372,6 @@ export const useCheckoutLogic = () => {
     }
   }, [user?.id, toast]);
 
-  // Form validation
   const validateForm = useCallback(() => {
     const required = [
       "firstName",
@@ -392,6 +452,76 @@ export const useCheckoutLogic = () => {
     console.log('✅ Cart validation passed - All items have variantId');
     return true;
   }, [getCartForCheckout, toast]);
+
+  // ✅ NEW: Stock re-validation before checkout
+  const validateStockAvailability = useCallback(async () => {
+    console.log('\n🔍 RE-VALIDATING STOCK BEFORE CHECKOUT...');
+    
+    const cartItems = getCartForCheckout();
+    const stockIssues = [];
+    
+    for (const item of cartItems) {
+      if (!item.variantId) {
+        stockIssues.push({
+          item: item.name,
+          issue: 'Missing variant ID',
+        });
+        continue;
+      }
+      
+      try {
+        // Get real-time available stock (total - active reservations)
+        const availableStock = await getAvailableStock(item.variantId);
+        
+        console.log(`  📦 ${item.name}: Requested ${item.quantity}, Available ${availableStock}`);
+        
+        if (availableStock < item.quantity) {
+          stockIssues.push({
+            item: item.name,
+            requested: item.quantity,
+            available: availableStock,
+            issue: availableStock === 0 ? 'Out of stock' : 'Insufficient stock',
+          });
+        }
+      } catch (error) {
+        console.error(`  ❌ Failed to check stock for ${item.name}:`, error);
+        stockIssues.push({
+          item: item.name,
+          issue: 'Could not verify stock availability',
+        });
+      }
+    }
+    
+    if (stockIssues.length > 0) {
+      console.error('❌ STOCK VALIDATION FAILED:', stockIssues);
+      
+      // Build detailed error message
+      const issueMessages = stockIssues.map(issue => {
+        if (issue.issue === 'Out of stock') {
+          return `• ${issue.item}: Out of stock`;
+        } else if (issue.issue === 'Insufficient stock') {
+          return `• ${issue.item}: Only ${issue.available} available (you have ${issue.requested} in cart)`;
+        } else {
+          return `• ${issue.item}: ${issue.issue}`;
+        }
+      });
+      
+      // ✅ FIX: Use string instead of JSX
+      const descriptionText = `Some items in your cart are no longer available:\n\n${issueMessages.join('\n')}\n\nPlease update your cart and try again.`;
+      
+      toast({
+        title: "Stock Unavailable",
+        description: descriptionText,
+        variant: "destructive",
+        duration: 10000,
+      });
+      
+      return false;
+    }
+    
+    console.log('✅ Stock validation passed - All items available');
+    return true;
+  }, [getCartForCheckout, getAvailableStock, toast]);
 
   const createCustomizationDetails = useCallback((cartItems) => {
     const customizationDetails = {};
@@ -503,7 +633,7 @@ export const useCheckoutLogic = () => {
   const createOrder = useCallback(
     async (paymentMethod = "PayNow") => {
       try {
-        console.log("\n=== CREATING ORDER WITH ATOMIC STOCK RESERVATION ===");
+        console.log("\n=== CREATING ORDER WITH BILLING SNAPSHOT ===");
 
         if (!user?.id) {
           throw new Error("User not authenticated");
@@ -518,8 +648,9 @@ export const useCheckoutLogic = () => {
           throw new Error("Authentication failed");
         }
 
-        const cartItems = getCartForCheckout();
-        console.log("\n📦 CART ITEMS:", JSON.stringify(cartItems, null, 2));
+        // ✅ CHANGED: Use enrichedCartItems which include GST flags
+        const cartItems = enrichedCartItems;
+        console.log("\n📦 CART ITEMS (with GST flags):", JSON.stringify(cartItems, null, 2));
 
         const itemsWithoutVariant = cartItems.filter(item => !item.variantId);
         if (itemsWithoutVariant.length > 0) {
@@ -568,27 +699,39 @@ export const useCheckoutLogic = () => {
           customer = newCustomer;
         }
 
-        const totalPaise = Math.round(total * 100);
+        // 💰 CALCULATE TOTALS ONCE (will be frozen in DB)
+        // ✅ CHANGED: Use already calculated orderTotals from useMemo
+        const shippingCost = 0; // TODO: Implement shipping calculation
+        const finalTotal = orderTotals.grandTotal + shippingCost;
         const customizationDetails = createCustomizationDetails(cartItems);
 
-        console.log("\n📋 Fetching catalog numbers...");
+        console.log("\n💰 ORDER TOTALS (Product-wise GST from checkboxes):");
+        console.log(`  Subtotal (Base): ₹${orderTotals.subtotal}`);
+        console.log(`  GST @5%: ₹${orderTotals.gst5Total}`);
+        console.log(`  GST @18%: ₹${orderTotals.gst18Total}`);
+        console.log(`  Total GST: ₹${orderTotals.totalGST}`);
+        console.log(`  Shipping: ₹${shippingCost}`);
+        console.log(`  Grand Total: ₹${finalTotal}`);
+
+        console.log("\n📋 Fetching product data for order snapshot...");
         const productIds = cartItems.map(item => item.productId);
         const { data: productsData, error: productsError } = await supabase
           .from('products')
-          .select('id, catalog_number')
+          .select('id, catalog_number, gst_5pct, gst_18pct, price')
           .in('id', productIds);
 
         if (productsError) {
-          console.warn('⚠️ Could not fetch catalog numbers:', productsError);
+          console.warn('⚠️ Could not fetch product data:', productsError);
         }
 
-        const catalogNumberMap = {};
+        const productDataMap = {};
         if (productsData) {
           productsData.forEach(p => {
-            catalogNumberMap[p.id] = p.catalog_number;
+            productDataMap[p.id] = p;
           });
         }
 
+        // ✅ CREATE ORDER WITH CALCULATED TOTALS (all in rupees)
         const orderData = {
           user_id: authUser.id,
           customer_id: customer.id,
@@ -616,8 +759,19 @@ export const useCheckoutLogic = () => {
             method: "standard",
             estimatedDays: "3-5",
           },
-          total_price: totalPaise,
-          amount: total,
+          
+          // 💰 BILLING SNAPSHOT (frozen at order time) - ALL IN RUPEES
+          subtotal: orderTotals.subtotal,
+          total_gst: orderTotals.totalGST,
+          gst_5_total: orderTotals.gst5Total,
+          gst_18_total: orderTotals.gst18Total,
+          shipping_cost: shippingCost,
+          order_total: finalTotal,
+          
+          // 🐛 FIX: Store in RUPEES not paise (consistency with other fields)
+          total_price: finalTotal,  // ✅ Changed from totalPaise
+          amount: finalTotal,
+          
           status: "pending",
           payment_status: "pending",
           payment_method: paymentMethod || "PayNow",
@@ -639,7 +793,7 @@ export const useCheckoutLogic = () => {
           throw new Error(`Database error: ${orderError.message}`);
         }
 
-        console.log("✅ Order created:", order.id);
+        console.log("✅ Order created with billing snapshot:", order.id);
 
         console.log("\n📤 UPLOADING CUSTOMIZATION IMAGES...");
         const processedCartItems = [];
@@ -696,20 +850,37 @@ export const useCheckoutLogic = () => {
           });
         }
 
-        console.log("\n📝 Inserting into order_items table...");
+        console.log("\n📝 Inserting order_items with pricing snapshot...");
         
-        const orderItemsData = processedCartItems.map(item => ({
-          order_id: order.id,
-          product_id: item.productId,
-          variant_id: item.variantId,
-          catalog_number: catalogNumberMap[item.productId] || null,
-          quantity: item.quantity,
-          unit_price: Math.round(item.price * 100),
-          total_price: Math.round(item.price * item.quantity * 100),
-          customization_data: item.processedCustomization
-        }));
+        // ✅ CREATE ORDER ITEMS WITH PRICING SNAPSHOT (all in rupees)
+        const orderItemsData = processedCartItems.map(item => {
+          const productData = productDataMap[item.productId] || item;
+          const pricing = calculateItemPricing(item, productData);
+          
+          return {
+            order_id: order.id,
+            product_id: item.productId,
+            variant_id: item.variantId,
+            catalog_number: productData.catalog_number || null,
+            quantity: pricing.quantity,
+            
+            // 💰 PRICING SNAPSHOT (frozen at order time) - ALL IN RUPEES
+            base_price: pricing.basePrice,
+            gst_rate: pricing.gstRate,
+            gst_amount: pricing.gstAmount,
+            item_subtotal: pricing.subtotal,
+            item_gst_total: pricing.itemGSTTotal,
+            item_total: pricing.itemTotal,
+            
+            // 🐛 FIX: Store in RUPEES not paise (consistency)
+            unit_price: pricing.priceWithGST,  // ✅ Changed from paise
+            total_price: pricing.itemTotal,     // ✅ Changed from paise
+            
+            customization_data: item.processedCustomization
+          };
+        });
 
-        console.log("  Order items to insert:", JSON.stringify(orderItemsData, null, 2));
+        console.log("  Order items with pricing snapshot:", JSON.stringify(orderItemsData, null, 2));
 
         const { data: insertedItems, error: itemsError } = await supabase
           .from('order_items')
@@ -724,7 +895,7 @@ export const useCheckoutLogic = () => {
           );
         }
 
-        console.log("✅ Order items inserted:", insertedItems.length);
+        console.log("✅ Order items inserted with pricing snapshot:", insertedItems.length);
 
         console.log("\n🎨 CREATING CUSTOMIZATION REQUESTS...");
         const customizationRequests = [];
@@ -814,16 +985,16 @@ export const useCheckoutLogic = () => {
 
           console.log(`  ✅ All reservations created: ${stockReservations.length} items`);
 
-          console.log("\n  🎯 Step 2: Batch confirming reservations (atomic)...");
+          console.log("\n  🎯 Step 2: Batch confirming reservations (atomic stock decrement)...");
           const reservationIds = stockReservations.map(r => r.reservationId);
           
           const confirmResult = await confirmMultipleReservations(reservationIds);
           
           console.log(`  ✅ ATOMIC CONFIRMATION SUCCESS: ${confirmResult.confirmedCount} items`);
-          console.log(`     All stock decremented in single transaction`);
+          console.log(`     Stock decremented in database via single transaction ✅`);
           
           stockReservations.forEach(r => {
-            console.log(`    ✅ ${r.item}: ${r.quantity} units confirmed`);
+            console.log(`    ✅ ${r.item}: -${r.quantity} units (stock updated)`);
           });
 
         } catch (error) {
@@ -847,11 +1018,12 @@ export const useCheckoutLogic = () => {
           throw new Error(userMessage);
         }
 
-        console.log("\n✅ STOCK RESERVATION COMPLETE (BUG #2 FIXED)");
-        console.log("   - Atomic operation: All-or-nothing");
-        console.log("   - No race conditions possible");
-        console.log("   - Automatic rollback on failure");
-        console.log("\n🎉 ORDER CREATION COMPLETE WITH CUSTOMIZATIONS\n");
+        console.log("\n✅ ORDER CREATION COMPLETE WITH BILLING SNAPSHOT");
+        console.log("   💰 Billing totals saved to database (immutable)");
+        console.log("   📸 Per-item pricing snapshot saved with correct GST");
+        console.log("   🔒 Stock decremented atomically ✅");
+        console.log("   🐛 FIX: All prices stored in RUPEES (not paise) ✅");
+        console.log("\n🎉 ORDER READY FOR PAYMENT\n");
         
         return order;
       } catch (error) {
@@ -862,8 +1034,8 @@ export const useCheckoutLogic = () => {
     [
       user?.id, 
       formData, 
-      total, 
-      getCartForCheckout, 
+      enrichedCartItems,  // ✅ CHANGED: Use enrichedCartItems
+      orderTotals,  // ✅ CHANGED: Use memoized orderTotals
       createCustomizationDetails, 
       uploadCustomizationImage, 
       reserveStock,
@@ -876,6 +1048,12 @@ export const useCheckoutLogic = () => {
     if (!validateForm()) return;
     
     if (!validateCartItems()) {
+      return;
+    }
+
+    // ✅ NEW: Re-validate stock before payment
+    const stockAvailable = await validateStockAvailability();
+    if (!stockAvailable) {
       return;
     }
 
@@ -893,7 +1071,14 @@ export const useCheckoutLogic = () => {
 
       const order = await createOrder("PayNow");
 
+      // 💳 PAYMENT GATEWAY: Amount MUST be in paise (external requirement)
       const totalAmount = Math.round(total * 100);
+      
+      console.log('💳 PAYMENT AMOUNT:', {
+        totalRupees: total,
+        totalPaise: totalAmount,
+        orderTotal: order.order_total
+      });
 
       const requiredElements = [
         "pp-order-id",
@@ -913,7 +1098,7 @@ export const useCheckoutLogic = () => {
       }
 
       document.getElementById("pp-order-id").value = order.id;
-      document.getElementById("pp-amount").value = totalAmount;
+      document.getElementById("pp-amount").value = totalAmount;  // ✅ Still in paise for PhonePe
       document.getElementById("pp-customer-email").value = formData.email;
       document.getElementById("pp-customer-phone").value = formData.phone;
       document.getElementById(
@@ -945,12 +1130,18 @@ export const useCheckoutLogic = () => {
       });
       setProcessingPayment(false);
     }
-  }, [validateForm, validateCartItems, items, total, formData, createOrder, toast]);
+  }, [validateForm, validateCartItems, validateStockAvailability, items, total, formData, createOrder, toast]);
 
   const handleCODPayment = useCallback(async () => {
     if (!validateForm()) return;
     
     if (!validateCartItems()) {
+      return;
+    }
+
+    // ✅ NEW: Re-validate stock before COD order
+    const stockAvailable = await validateStockAvailability();
+    if (!stockAvailable) {
       return;
     }
 
@@ -992,7 +1183,7 @@ export const useCheckoutLogic = () => {
     } finally {
       setProcessingPayment(false);
     }
-  }, [validateForm, validateCartItems, createOrder, clearCart, toast, navigate]);
+  }, [validateForm, validateCartItems, validateStockAvailability, createOrder, clearCart, toast, navigate]);
 
   const clearUrlParams = useCallback(() => {
     const newSearchParams = new URLSearchParams(searchParams);
@@ -1072,17 +1263,14 @@ export const useCheckoutLogic = () => {
     [clearCart, toast, navigate, clearUrlParams]
   );
 
-  // ✨ UX #2 FIX: Enhanced payment failure handler with user-friendly messages
   const handlePaymentFailure = useCallback(
     async (orderId, message = null) => {
       try {
         setPaymentProcessed(true);
         clearUrlParams();
 
-        // ✨ Parse error message for user-friendly display
         const parsedError = parsePaymentError(message);
         
-        // Log technical details for debugging
         console.error('🚨 Payment failed:', {
           orderId,
           rawMessage: message,
@@ -1098,14 +1286,13 @@ export const useCheckoutLogic = () => {
           })
           .eq("id", orderId);
 
-        // ✨ Show user-friendly message with specific guidance
         toast({
           title: parsedError.title,
           description: parsedError.action
-  ? `${parsedError.description}\n👉 ${parsedError.action}`
-  : parsedError.description,
+            ? `${parsedError.description}\n👉 ${parsedError.action}`
+            : parsedError.description,
           variant: "destructive",
-          duration: 8000, // Longer duration for important error details
+          duration: 8000,
         });
 
         setTimeout(() => {

@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import InvoiceGenerator from "@/components/InvoiceGenerator";
-import { formatCurrency } from "@/utils/billingUtils";
+import { getOrderTotal, formatPrice, rupeesToPaise } from "@/utils/billingHelpers";
 import {
   ArrowLeft,
   CheckCircle,
@@ -16,25 +16,18 @@ import {
   Package,
   Truck,
   MapPin,
-  Eye,
   RefreshCw,
-  Calendar,
   CreditCard,
   Phone,
-  Mail,
   User,
-  Home,
-  Copy,
   CheckCircle2,
   AlertCircle,
-  Star,
   Wrench,
   Image as ImageIcon,
   FileText,
   Palette,
   Ruler,
   Loader2,
-  ShieldCheck,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabaseClient";
@@ -240,7 +233,6 @@ export default function OrderDetail() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [processingPayment, setProcessingPayment] = useState(false);
-  const [copiedField, setCopiedField] = useState(null);
   const [showInvoice, setShowInvoice] = useState(false);
 
   useEffect(() => {
@@ -248,15 +240,16 @@ export default function OrderDetail() {
     fetchOrder();
   }, [orderId, user]);
 
+  // ✅ FIXED: Query tables directly with correct billing snapshot columns
   const fetchOrder = async () => {
     try {
       setLoading(true);
 
-      console.log("\n=== FETCHING ORDER DETAILS WITH BILLING SNAPSHOT ===");
+      console.log("\n=== FETCHING ORDER (DIRECT TABLE QUERY) ===");
       console.log("Order ID:", orderId);
       console.log("User ID:", user.id);
 
-      // ✅ STEP 1: Fetch order with billing snapshot from orders table
+      // Step 1: Get order details from orders table
       const { data: orderData, error: orderError } = await supabase
         .from("orders")
         .select(`
@@ -266,126 +259,109 @@ export default function OrderDetail() {
           payment_status,
           payment_method,
           order_total,
-          amount,
-          total_price,
           subtotal,
           total_gst,
-          gst_5_total,
-          gst_18_total,
           shipping_cost,
           created_at,
           updated_at,
           shipping_info,
           delivery_info,
           order_notes,
-          customization_details,
+          transaction_id,
           requires_customization,
-          transaction_id
+          customization_details
         `)
         .eq("id", orderId)
         .eq("user_id", user.id)
         .single();
 
-      console.log("📦 Order from orders table:", { orderData, orderError });
-
       if (orderError) throw orderError;
-      if (!orderData) {
-        console.warn("⚠️ No order data found");
-        setOrder(null);
-        setItems([]);
-        setLoading(false);
-        return;
-      }
+      if (!orderData) throw new Error("Order not found");
 
-      // ✅ STEP 2: Fetch order items from order_details_full view
+      console.log("✅ Order data:", orderData);
+
+      // Step 2: Get order items with product details and billing snapshots
       const { data: itemsData, error: itemsError } = await supabase
-        .from("order_details_full")
-        .select("*")
+        .from("order_items")
+        .select(`
+          id,
+          order_id,
+          product_id,
+          variant_id,
+          quantity,
+          item_total,
+          item_subtotal,
+          item_gst_total,
+          unit_price_with_gst,
+          base_price,
+          gst_amount,
+          gst_rate,
+          customization_data,
+          products (
+            id,
+            name,
+            title,
+            image_url,
+            catalog_number
+          ),
+          product_variants (
+            size_display,
+            size_numeric,
+            size_unit
+          )
+        `)
         .eq("order_id", orderId);
 
-      console.log("📋 Items from order_details_full:", { itemsData, itemsError });
+      if (itemsError) throw itemsError;
 
-      if (itemsError) {
-        console.warn("⚠️ Failed to fetch items:", itemsError);
-      }
+      console.log("✅ Order items:", itemsData?.length || 0);
+      itemsData?.forEach((item, i) => {
+        console.log(`  Item ${i + 1}:`, {
+          name: item.products?.name || item.products?.title,
+          quantity: item.quantity,
+          item_total: item.item_total,
+          unit_price_with_gst: item.unit_price_with_gst,
+          base_price: item.base_price,
+          gst_amount: item.gst_amount,
+        });
+      });
 
-      // ✅ STEP 3: Map order data with billing snapshot
-      const mappedOrder = {
-        id: orderData.id,
-        user_id: orderData.user_id,
-        status: orderData.status,
-        payment_status: orderData.payment_status,
-        payment_method: orderData.payment_method,
-        // 💰 BILLING SNAPSHOT (all in rupees)
-        order_total: parseFloat(orderData.order_total) || 0,
-        amount: parseFloat(orderData.amount) || 0,
-        total_price: orderData.total_price,
-        subtotal: parseFloat(orderData.subtotal) || 0,
-        total_gst: parseFloat(orderData.total_gst) || 0,
-        gst_5_total: parseFloat(orderData.gst_5_total) || 0,
-        gst_18_total: parseFloat(orderData.gst_18_total) || 0,
-        shipping_cost: parseFloat(orderData.shipping_cost) || 0,
-        created_at: orderData.created_at,
-        updated_at: orderData.updated_at,
-        shipping_info: orderData.shipping_info,
-        delivery_info: orderData.delivery_info,
-        order_notes: orderData.order_notes,
-        customization_details: orderData.customization_details,
-        requires_customization: orderData.requires_customization,
-        transaction_id: orderData.transaction_id,
-      };
+      // Map items to component state
+      const mappedItems = (itemsData || []).map((item) => ({
+        id: item.id,
+        product_id: item.product_id,
+        variant_id: item.variant_id,
+        quantity: item.quantity,
+        // ✅ Use billing snapshot fields (already in rupees)
+        item_total: item.item_total,
+        unit_price: item.unit_price_with_gst,
+        base_price: item.base_price,
+        gst_amount: item.gst_amount,
+        gst_rate: item.gst_rate,
+        // Product details
+        name: item.products?.name || item.products?.title,
+        title: item.products?.title || item.products?.name,
+        image: item.products?.image_url,
+        catalog_number: item.products?.catalog_number,
+        customization: item.customization_data,
+        variant: {
+          sizeDisplay: item.product_variants?.size_display,
+          sizeNumeric: item.product_variants?.size_numeric,
+          sizeUnit: item.product_variants?.size_unit,
+        },
+      }));
 
-      // ✅ STEP 4: Map order items with pricing from database
-      const mappedItems = itemsData?.map((row) => {
-        const gstRate = parseFloat(row.gst_rate) || 0;
-        
-        return {
-          id: row.product_id,
-          product_id: row.product_id,
-          quantity: row.quantity,
-          // 💰 PRICING FROM DATABASE (all in rupees)
-          item_total: parseFloat(row.item_total) || 0,
-          total_price: row.total_price,
-          unit_price: row.unit_price,
-          base_price: parseFloat(row.base_price) || 0,
-          gst_amount: parseFloat(row.gst_amount) || 0,
-          gst_rate: gstRate,
-          // ✅ Add flags for invoice display
-          gst_5pct: gstRate === 5,
-          gst_18pct: gstRate === 18,
-          // Product details
-          name: row.product_name,
-          title: row.product_name,
-          image: row.product_image,
-          catalog_number: row.catalog_number,
-          item_id: row.item_id,
-          customization: row.customization_data,
-          variant: {
-            sizeDisplay: row.size_display,
-            sizeNumeric: row.size_numeric,
-            sizeUnit: row.size_unit,
-          },
-        };
-      }) || [];
-
-      setOrder(mappedOrder);
+      setOrder(orderData);
       setItems(mappedItems);
 
-      console.log("✅ Order loaded with billing snapshot:");
-      console.log("  💰 Billing totals:", {
-        subtotal: mappedOrder.subtotal,
-        total_gst: mappedOrder.total_gst,
-        gst_5_total: mappedOrder.gst_5_total,
-        gst_18_total: mappedOrder.gst_18_total,
-        shipping_cost: mappedOrder.shipping_cost,
-        order_total: mappedOrder.order_total
-      });
-      console.log("  📦 Items:", mappedItems.length);
+      console.log("✅ Order loaded successfully");
+      console.log("  - Order Total:", orderData.order_total);
+      console.log("  - Items:", mappedItems.length);
     } catch (error) {
-      console.error("Error fetching order:", error);
+      console.error("❌ Error fetching order:", error);
       toast({
         title: "Error",
-        description: "Failed to load order details. Please try again.",
+        description: error.message || "Failed to load order details. Please try again.",
         variant: "destructive",
       });
       setOrder(null);
@@ -411,8 +387,8 @@ export default function OrderDetail() {
     setProcessingPayment(true);
 
     try {
-      // ✅ Use order_total from database (already in rupees)
-      const totalAmount = Math.round(order.order_total * 100); // Convert to paise
+      const orderTotal = getOrderTotal(order);
+      const totalAmount = rupeesToPaise(orderTotal);
 
       const form = document.createElement("form");
       form.method = "POST";
@@ -450,24 +426,6 @@ export default function OrderDetail() {
         variant: "destructive",
       });
       setProcessingPayment(false);
-    }
-  };
-
-  const handleCopy = async (text, field) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopiedField(field);
-      setTimeout(() => setCopiedField(null), 2000);
-      toast({
-        title: "Copied",
-        description: "Text copied to clipboard.",
-      });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to copy text.",
-        variant: "destructive",
-      });
     }
   };
 
@@ -536,22 +494,7 @@ export default function OrderDetail() {
     ? new Date(order.created_at).toLocaleString()
     : "—";
 
-  // ✅ Use database values directly - no calculation needed
-  const subtotal = order.subtotal;
-  const totalGST = order.total_gst;
-  const gst5Total = order.gst_5_total;
-  const gst18Total = order.gst_18_total;
-  const shippingCost = order.shipping_cost;
-  const grandTotal = order.order_total;
-  
-  console.log("💰 Display totals (from DB):", {
-    subtotal,
-    totalGST,
-    gst5Total,
-    gst18Total,
-    shippingCost,
-    grandTotal
-  });
+  const orderTotal = getOrderTotal(order);
 
   return (
     <Layout>
@@ -672,7 +615,7 @@ export default function OrderDetail() {
                       ) : (
                         <>
                           <CreditCard className="h-4 w-4 mr-2" />
-                          Pay {formatCurrency(grandTotal)}
+                          Pay {formatPrice(orderTotal)}
                         </>
                       )}
                     </Button>
@@ -694,16 +637,12 @@ export default function OrderDetail() {
                   <CardContent className="p-4 sm:p-6">
                     <div className="space-y-4 sm:space-y-6">
                       {items.map((item, index) => {
-                        // ✅ Use database values directly
-                        const quantity = item.quantity;
-                        const basePrice = item.base_price;
-                        const gstRate = item.gst_rate;
-                        const gstAmount = item.gst_amount;
-                        const itemTotal = item.item_total;
-                        const priceWithGst = basePrice + gstAmount;
+                        // ✅ Use billing snapshot fields directly (already in rupees)
+                        const itemTotal = item.item_total || 0;
+                        const unitPrice = item.unit_price || 0;
 
                         return (
-                          <div key={item.item_id || index}>
+                          <div key={item.id}>
                             <div className="flex gap-3 sm:gap-4">
                               {item.image ? (
                                 <img
@@ -739,22 +678,16 @@ export default function OrderDetail() {
                                     </>
                                   )}
                                   <span>•</span>
-                                  <span>Qty: {quantity}</span>
-                                  {gstRate > 0 && (
-                                    <>
-                                      <span>•</span>
-                                      <span className="text-orange-600">GST @{gstRate}%</span>
-                                    </>
-                                  )}
+                                  <span>Qty: {item.quantity}</span>
                                 </div>
 
                                 <div className="flex items-baseline gap-2">
                                   <span className="text-base sm:text-lg font-bold text-gray-900">
-                                    {formatCurrency(itemTotal)}
+                                    {formatPrice(itemTotal)}
                                   </span>
-                                  {quantity > 1 && (
+                                  {item.quantity > 1 && (
                                     <span className="text-xs sm:text-sm text-gray-500">
-                                      ({formatCurrency(priceWithGst)} each)
+                                      ({formatPrice(unitPrice)} each)
                                     </span>
                                   )}
                                 </div>
@@ -812,24 +745,15 @@ export default function OrderDetail() {
                       <div className="flex justify-between text-sm sm:text-base">
                         <span className="text-gray-600">Subtotal</span>
                         <span className="font-semibold">
-                          {formatCurrency(subtotal)}
+                          {formatPrice(orderTotal)}
                         </span>
                       </div>
 
-                      {totalGST > 0 && (
-                        <div className="flex justify-between text-sm sm:text-base text-orange-600">
-                          <span>GST</span>
-                          <span className="font-semibold">
-                            +{formatCurrency(totalGST)}
-                          </span>
-                        </div>
-                      )}
-
-                      {shippingCost > 0 && (
+                      {order.shipping_cost && Number(order.shipping_cost) > 0 && (
                         <div className="flex justify-between text-sm sm:text-base">
                           <span className="text-gray-600">Shipping</span>
                           <span className="font-semibold">
-                            {formatCurrency(shippingCost)}
+                            {formatPrice(Number(order.shipping_cost))}
                           </span>
                         </div>
                       )}
@@ -839,7 +763,7 @@ export default function OrderDetail() {
                       <div className="flex justify-between text-base sm:text-lg font-bold">
                         <span>Total</span>
                         <span className="text-primary">
-                          {formatCurrency(grandTotal)}
+                          {formatPrice(orderTotal)}
                         </span>
                       </div>
 
@@ -864,11 +788,11 @@ export default function OrderDetail() {
                         </Button>
                       )}
 
-                      {/* ✨ ENABLED: View Invoice button for all orders */}
                       <Button
                         variant="outline"
                         className="w-full"
                         onClick={() => setShowInvoice(true)}
+                        disabled={order.payment_status === "pending"}
                       >
                         <FileText className="h-4 w-4 mr-2" />
                         View Invoice
@@ -957,10 +881,7 @@ export default function OrderDetail() {
         </div>
       </div>
       {showInvoice && (
-        <InvoiceGenerator 
-          order={{ ...order, items }} 
-          onClose={() => setShowInvoice(false)} 
-        />
+        <InvoiceGenerator order={order} onClose={() => setShowInvoice(false)} />
       )}
     </Layout>
   );

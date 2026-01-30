@@ -21,7 +21,7 @@ export function OrderDetailsItems({
     );
   }
 
-  // Parse customization_details if it's a string
+  // ✅ Parse customization_details (order-level customization)
   let customizationObj = {};
   if (typeof customizationDetails === "string") {
     try {
@@ -52,61 +52,81 @@ export function OrderDetailsItems({
       <CardContent>
         <div className="space-y-4">
           {rawItems.map((item, index) => {
-            // Extract the original product ID
-            const originalProductId = item.productId || item.id;
+            // Extract the product ID
+            const originalProductId = item.productId || item.product_id || item.id;
 
-            // Get product details using the original ID
+            // Get product details from cache
             const productDetails = productsCache.get(originalProductId);
 
-            // Use item data as primary source
+            // ✅ Use snapshot data as primary source
             const displayName =
-              item.name || productDetails?.title || "Unknown Product";
-            const displayImage = item.image || productDetails?.image_url;
-            const itemPrice = item.price || productDetails?.price || 0;
+              item.name || item.product_name || productDetails?.title || "Unknown Product";
+            const displayImage = item.image || item.product_image || productDetails?.image_url;
+            const itemPrice = item.price || item.unit_price || productDetails?.price || 0;
 
             // Product details from database
-            const catalogNumber = productDetails?.catalog_number;
+            const catalogNumber = item.catalog_number || productDetails?.catalog_number;
             const materialType = productDetails?.material_type;
             const weightGrams = productDetails?.weight_grams;
             const dimensions = productDetails?.dimensions;
             const thickness = productDetails?.thickness;
             const baseType = productDetails?.base_type;
-            const description = productDetails?.description;
+            const description = item.description || item.product_description || productDetails?.description;
 
-            // Find customization details using the original productId
-            let customizationDetail = null;
-            if (customizationObj[originalProductId]) {
-              customizationDetail = customizationObj[originalProductId];
+            // ✅ CUSTOMIZATION LOGIC: Check BOTH sources
+            // 1. Item-level customization_data (from order_items.customization_data JSONB)
+            let itemCustomization = null;
+            if (item.customization_data) {
+              if (typeof item.customization_data === 'string') {
+                try {
+                  itemCustomization = JSON.parse(item.customization_data);
+                } catch (e) {
+                  console.error('Failed to parse item customization_data:', e);
+                }
+              } else if (typeof item.customization_data === 'object') {
+                itemCustomization = item.customization_data;
+              }
             }
 
-            // Extract customization data
-            const customizations = customizationDetail?.customizations || {};
-            const customText = customizations.text
-              ? customizations.text.trim()
-              : "";
-            const customSize = customizations.size
-              ? customizations.size.trim()
-              : "";
-            const customColor = customizations.color
-              ? customizations.color.trim()
-              : "";
-            const customUploadedImage = customizations.uploadedImage || null;
-            const productTitle = customizationDetail?.productTitle
-              ? customizationDetail.productTitle.trim()
-              : "";
+            // 2. Order-level customization details (from orders.customization_details JSONB)
+            let orderCustomization = null;
+            if (customizationObj[originalProductId]) {
+              orderCustomization = customizationObj[originalProductId];
+            }
+
+            // ✅ Merge customization from both sources (item-level takes priority)
+            const finalCustomization = itemCustomization || orderCustomization;
+
+            // Extract customization fields
+            let customText = '';
+            let customSize = '';
+            let customColor = '';
+            let customUploadedImage = null;
+            let productTitle = '';
+            let customTimestamp = null;
+
+            if (finalCustomization) {
+              // Handle different customization structures
+              const customizations = finalCustomization.customizations || finalCustomization || {};
+              
+              customText = customizations.text?.trim() || '';
+              customSize = customizations.size?.trim() || '';
+              customColor = customizations.color?.trim() || '';
+              customUploadedImage = customizations.uploadedImage || null;
+              productTitle = finalCustomization.productTitle?.trim() || customizations.productTitle?.trim() || '';
+              customTimestamp = finalCustomization.timestamp || customizations.timestamp;
+            }
 
             const hasAnyCustomizationData =
-              customText !== "" ||
-              customSize !== "" ||
-              customColor !== "" ||
-              (customUploadedImage &&
-                customUploadedImage.url &&
-                customUploadedImage.url.trim() !== "") ||
-              productTitle !== "";
+              customText !== '' ||
+              customSize !== '' ||
+              customColor !== '' ||
+              (customUploadedImage?.url && customUploadedImage.url.trim() !== '') ||
+              productTitle !== '';
 
             return (
               <div
-                key={originalProductId || index}
+                key={item.item_id || originalProductId || index}
                 className="border rounded-lg p-3 sm:p-4 bg-muted/30"
               >
                 {/* Product Header */}
@@ -146,7 +166,7 @@ export function OrderDetailsItems({
                               variant="outline"
                               className="text-xs px-2 py-0.5"
                             >
-                              🏗️ {materialType}
+                              🏭️ {materialType}
                             </Badge>
                           )}
 
@@ -160,11 +180,21 @@ export function OrderDetailsItems({
                             </Badge>
                           ) : (
                             <Badge
-                              variant="destructive"
-                              className="text-xs px-2 py-0.5"
+                              variant="secondary"
+                              className="text-xs px-2 py-0.5 bg-blue-100 text-blue-800"
                             >
                               <AlertCircle className="h-3 w-3 mr-1" />
-                              Using Item Data Only
+                              Using Snapshot Data
+                            </Badge>
+                          )}
+
+                          {/* ✅ Customization Indicator */}
+                          {hasAnyCustomizationData && (
+                            <Badge
+                              variant="default"
+                              className="text-xs px-2 py-0.5 bg-purple-100 text-purple-800"
+                            >
+                              🎨 Customized
                             </Badge>
                           )}
                         </div>
@@ -196,22 +226,18 @@ export function OrderDetailsItems({
                   </div>
 
                   {/* Variant Size */}
-                  {(customSize !== "" || item.variant?.size) && (
+                  {(item.size_display || item.variant?.size) && (
                     <div className="flex items-center gap-2">
                       <span className="font-medium">Size:</span>
-                      <span>
-                        {customSize !== "" ? customSize : item.variant?.size}
-                      </span>
+                      <span>{item.size_display || item.variant?.size}</span>
                     </div>
                   )}
 
-                  {/* Color */}
-                  {(customColor !== "" || item.color) && (
+                  {/* SKU */}
+                  {item.sku && (
                     <div className="flex items-center gap-2">
-                      <span className="font-medium">Color:</span>
-                      <span>
-                        {customColor !== "" ? customColor : item.color}
-                      </span>
+                      <span className="font-medium">SKU:</span>
+                      <span className="font-mono text-xs">{item.sku}</span>
                     </div>
                   )}
 
@@ -243,8 +269,6 @@ export function OrderDetailsItems({
                       <span>{baseType}</span>
                     </div>
                   )}
-
-                  
                 </div>
 
                 {/* Product ID Information */}
@@ -253,31 +277,49 @@ export function OrderDetailsItems({
                     <div>
                       <span className="font-medium">Product ID:</span>
                       <span className="font-mono ml-1">
-                        {originalProductId}
+                        {originalProductId?.slice(0, 16)}...
                       </span>
                     </div>
-                    {item.variantId && (
+                    {(item.variantId || item.variant_id) && (
                       <div>
                         <span className="font-medium">Variant ID:</span>
                         <span className="font-mono ml-1">
-                          {item.variantId.slice(0, 12)}...
+                          {(item.variantId || item.variant_id).slice(0, 12)}...
                         </span>
                       </div>
                     )}
                   </div>
+                  {item.item_total && (
+                    <div className="mt-2 pt-2 border-t">
+                      <span className="font-medium">Item Total:</span>
+                      <span className="ml-2 font-semibold text-green-700">
+                        ₹{Number(item.item_total).toLocaleString()}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
-                {/* Customization Details */}
+                {/* ✅ Customization Details - Now showing data from BOTH sources */}
                 {hasAnyCustomizationData && (
-                  <div className="mt-3 p-3 bg-green-50 rounded-lg border border-green-200">
-                    <div className="font-medium text-green-800 mb-2 flex items-center gap-2">
+                  <div className="mt-3 p-3 bg-purple-50 rounded-lg border border-purple-200">
+                    <div className="font-medium text-purple-800 mb-2 flex items-center gap-2">
                       <span>🎨 Customization Details</span>
+                      {itemCustomization && (
+                        <Badge variant="outline" className="text-xs bg-white">
+                          From Item Data
+                        </Badge>
+                      )}
+                      {!itemCustomization && orderCustomization && (
+                        <Badge variant="outline" className="text-xs bg-white">
+                          From Order Data
+                        </Badge>
+                      )}
                     </div>
 
                     <div className="space-y-2">
                       {customText !== "" && (
                         <div className="flex items-start gap-2">
-                          <span className="font-medium text-green-700 min-w-fit">
+                          <span className="font-medium text-purple-700 min-w-fit">
                             Text:
                           </span>
                           <span className="break-words">{customText}</span>
@@ -286,7 +328,7 @@ export function OrderDetailsItems({
 
                       {customSize !== "" && (
                         <div className="flex items-center gap-2">
-                          <span className="font-medium text-green-700">
+                          <span className="font-medium text-purple-700">
                             Custom Size:
                           </span>
                           <span>{customSize}</span>
@@ -295,7 +337,7 @@ export function OrderDetailsItems({
 
                       {customColor !== "" && (
                         <div className="flex items-center gap-2">
-                          <span className="font-medium text-green-700">
+                          <span className="font-medium text-purple-700">
                             Custom Color:
                           </span>
                           <span>{customColor}</span>
@@ -304,7 +346,7 @@ export function OrderDetailsItems({
 
                       {productTitle !== "" && (
                         <div className="flex items-start gap-2">
-                          <span className="font-medium text-green-700 min-w-fit">
+                          <span className="font-medium text-purple-700 min-w-fit">
                             Product:
                           </span>
                           <span className="break-words">{productTitle}</span>
@@ -313,7 +355,7 @@ export function OrderDetailsItems({
 
                       {customUploadedImage?.url && (
                         <div>
-                          <div className="font-medium text-green-700 mb-2">
+                          <div className="font-medium text-purple-700 mb-2">
                             📸 Uploaded Image:
                           </div>
                           <img
@@ -330,19 +372,27 @@ export function OrderDetailsItems({
                             }}
                           />
                           {customUploadedImage.fileName && (
-                            <p className="text-xs text-green-600 mt-1">
+                            <p className="text-xs text-purple-600 mt-1">
                               📄 File: {customUploadedImage.fileName}
                             </p>
                           )}
                         </div>
                       )}
 
-                      {customizationDetail?.timestamp && (
-                        <div className="text-xs text-green-600 pt-2 border-t border-green-200">
+                      {customTimestamp && (
+                        <div className="text-xs text-purple-600 pt-2 border-t border-purple-200">
                           ⏰ Customized:{" "}
-                          {new Date(
-                            customizationDetail.timestamp
-                          ).toLocaleString()}
+                          {new Date(customTimestamp).toLocaleString()}
+                        </div>
+                      )}
+
+                      {/* ✅ Show production notes if available */}
+                      {item.production_notes && (
+                        <div className="flex items-start gap-2 pt-2 border-t border-purple-200">
+                          <span className="font-medium text-purple-700 min-w-fit">
+                            📝 Production Notes:
+                          </span>
+                          <span className="break-words text-sm">{item.production_notes}</span>
                         </div>
                       )}
                     </div>

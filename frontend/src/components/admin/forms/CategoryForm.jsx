@@ -26,6 +26,29 @@ const generateSlug = (text) => {
     .replace(/^-+|-+$/g, '');
 };
 
+// Helper function to generate slug from name
+function generateSlug(name) {
+  return name
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, '') // Remove special characters
+    .replace(/\s+/g, '-') // Replace spaces with hyphens
+    .replace(/-+/g, '-'); // Replace multiple hyphens with single hyphen
+}
+
+// Custom Checkbox Component (no Radix UI dependency)
+function CustomCheckbox({ id, checked, onCheckedChange, className = "" }) {
+  return (
+    <input
+      type="checkbox"
+      id={id}
+      checked={checked}
+      onChange={(e) => onCheckedChange(e.target.checked)}
+      className={`h-4 w-4 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary cursor-pointer ${className}`}
+    />
+  );
+}
+
 // --- AddCategoryForm ---
 export function AddCategoryForm({ onSubmit, onCancel }) {
   const { toast } = useToast();
@@ -39,7 +62,7 @@ export function AddCategoryForm({ onSubmit, onCancel }) {
   const [isCheckingSlug, setIsCheckingSlug] = useState(false);
 
   const onUploadSuccess = (imgData) => {
-    setImageUrl(imgData.url || imgData.cloudinary_url || "");
+    setImage(imgData.url || imgData.cloudinary_url || "");
     toast({ title: "Image uploaded successfully" });
     setUploading(false);
   };
@@ -209,6 +232,7 @@ export function AddCategoryForm({ onSubmit, onCancel }) {
           )}
           <ImageUploadDirect
             onUploadSuccess={onUploadSuccess}
+            onUploadStart={handleUploadStart}
             maxFiles={1}
             folder="shreephal-handicrafts/categories"
           />
@@ -252,7 +276,7 @@ export function EditCategoryForm({ category, onSubmit, onCancel }) {
   }, [category]);
 
   const onUploadSuccess = (imgData) => {
-    setImageUrl(imgData.url || imgData.cloudinary_url || "");
+    setImage(imgData.url || imgData.cloudinary_url || "");
     toast({ title: "Image uploaded successfully" });
     setUploading(false);
   };
@@ -373,6 +397,9 @@ export function EditCategoryForm({ category, onSubmit, onCancel }) {
             onChange={(e) => setPrice(e.target.value)}
             placeholder="0.00"
           />
+          <Label htmlFor="featured" className="cursor-pointer">
+            Featured Category
+          </Label>
         </div>
 
         <div>
@@ -428,6 +455,7 @@ export function EditCategoryForm({ category, onSubmit, onCancel }) {
           )}
           <ImageUploadDirect
             onUploadSuccess={onUploadSuccess}
+            onUploadStart={handleUploadStart}
             maxFiles={1}
             folder="shreephal-handicrafts/categories"
           />

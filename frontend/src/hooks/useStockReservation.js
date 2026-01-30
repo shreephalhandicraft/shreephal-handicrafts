@@ -1,5 +1,4 @@
 import { supabase } from "@/lib/supabaseClient";
-import { useToast } from "@/hooks/use-toast";
 
 /**
  * Custom hook for managing stock reservations
@@ -10,8 +9,6 @@ import { useToast } from "@/hooks/use-toast";
  * @returns {Object} Reservation management functions
  */
 export function useStockReservation() {
-  const { toast } = useToast();
-
   /**
    * Reserve stock when adding item to cart
    * 

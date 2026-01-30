@@ -136,6 +136,23 @@ const getEstimatedArrival = (createdAt, status, estimatedDays = 7) => {
   }
 };
 
+// ✅ FIX: Get order total - all fields now in RUPEES (not paise)
+const getOrderTotal = (order) => {
+  // Priority: order_total (snapshot) > amount > total_price
+  // 🐛 FIX: All values are now stored in RUPEES, no conversion needed
+  if (order.order_total != null) {
+    return Number(order.order_total);
+  }
+  if (order.amount != null) {
+    return Number(order.amount);
+  }
+  if (order.total_price != null) {
+    // 🐛 FIX: No longer divide by 100 - values are in rupees
+    return Number(order.total_price);
+  }
+  return 0;
+};
+
 export default function MyOrders() {
   const { toast } = useToast();
   const { user } = useAuth();
@@ -159,10 +176,10 @@ export default function MyOrders() {
     try {
       setLoading(true);
 
-      console.log("\n=== FETCHING ORDERS (NEW VIEW) ===");
+      console.log("\n=== FETCHING ORDERS (BILLING SNAPSHOT) ===");
       console.log("User ID:", user.id);
 
-      // ✅ Query the new view which has pre-joined product info
+      // ✅ Query the view which includes order_total snapshot
       const { data: ordersData, error: ordersError } = await supabase
         .from("orders_with_item_summary")
         .select("*")
@@ -176,12 +193,17 @@ export default function MyOrders() {
         throw ordersError;
       }
 
-      // ✅ Data from view already includes:
-      // - order_id, status, payment_status, created_at, total_price, amount
-      // - customer_name, customer_email, customer_phone
-      // - total_items, total_quantity
-      // - first_product_name, first_product_image, first_catalog_number
-      // - shipping_info, payment_method, requires_customization
+      // ✅ Log billing consistency check
+      if (ordersData && ordersData.length > 0) {
+        console.log("\n💰 BILLING SNAPSHOT CHECK:");
+        ordersData.slice(0, 3).forEach(order => {
+          console.log(`  Order #${order.order_id.slice(0, 8)}:`);
+          console.log(`    order_total (snapshot): ₹${order.order_total}`);
+          console.log(`    total_price (all in rupees): ₹${order.total_price}`);
+          console.log(`    amount (all in rupees): ₹${order.amount}`);
+          console.log(`    ✅ Display: ₹${getOrderTotal(order)}`);
+        });
+      }
 
       setOrders(ordersData || []);
       console.log(`✅ Loaded ${ordersData?.length || 0} orders from view`);
@@ -204,8 +226,16 @@ export default function MyOrders() {
     setProcessingPayments((prev) => new Set(prev).add(order.order_id));
 
     try {
-      // ✅ FIX: Use total_price from view (not amount)
-      const totalAmount = Math.round(Number(order.total_price || order.amount) * 100);
+      // ✅ Get order total in rupees
+      const orderTotal = getOrderTotal(order);
+      // Convert to paise for payment gateway (PhonePe requires paise)
+      const totalAmount = Math.round(orderTotal * 100);
+
+      console.log('💳 PAYMENT:', {
+        order_id: order.order_id.slice(0, 8),
+        order_total_rupees: orderTotal,
+        payment_gateway_paise: totalAmount
+      });
 
       const form = document.createElement("form");
       form.method = "POST";
@@ -214,7 +244,7 @@ export default function MyOrders() {
 
       const fields = {
         orderId: order.order_id,
-        amount: totalAmount,
+        amount: totalAmount,  // PhonePe expects paise
         customerEmail: order.customer_email || user.email,
         customerPhone: order.customer_phone || "",
         customerName: order.customer_name || user.name,
@@ -399,6 +429,7 @@ export default function MyOrders() {
                 );
                 const isProcessingPayment = processingPayments.has(order.order_id);
                 const isDownloadingInvoice = downloadingInvoices.has(order.order_id);
+                const orderTotal = getOrderTotal(order);
 
                 return (
                   <Card
@@ -433,8 +464,7 @@ export default function MyOrders() {
                             ) : (
                               <>
                                 <CreditCard className="h-3 w-3 mr-1" />
-                                {/* ✅ FIX: Use total_price from view */}
-                                Pay ₹{Number(order.total_price || order.amount).toFixed(2)?.toLocaleString()}
+                                Pay ₹{orderTotal.toFixed(2)}
                               </>
                             )}
                           </Button>
@@ -513,9 +543,8 @@ export default function MyOrders() {
                         </div>
 
                         <div className="text-left sm:text-right space-y-2">
-                          {/* ✅ FIX: Use total_price from view */}
                           <p className="text-lg sm:text-xl font-bold text-gray-900">
-                            ₹{Number(order.total_price || order.amount).toFixed(2)?.toLocaleString() || "0"}
+                            ₹{orderTotal.toFixed(2)}
                           </p>
                           <div className="space-y-1">
                             {order.payment_method && (
@@ -587,8 +616,7 @@ export default function MyOrders() {
                             ) : (
                               <>
                                 <CreditCard className="h-4 w-4 mr-2" />
-                                {/* ✅ FIX: Use total_price from view */}
-                                Pay Now - ₹{Number(order.total_price || order.amount).toFixed(2)?.toLocaleString()}
+                                Pay Now - ₹{orderTotal.toFixed(2)}
                               </>
                             )}
                           </Button>

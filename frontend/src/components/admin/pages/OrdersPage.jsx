@@ -1,9 +1,8 @@
 import { useState } from "react";
 import { RefreshCw } from "lucide-react";
 
-// Hooks
-import { useOrders } from "../component/hooks/useOrdersFilter";
-import { useOrdersFilter } from "../component/hooks/useOrdersFilter";
+// Hooks - ✅ FIXED BUG #1: Combined import statement
+import { useOrders, useOrdersFilter } from "../component/hooks/useOrdersFilter";
 
 // Components
 import { OrdersPageHeader } from "../component/orderpagecomponents/OrdersPageHeader";

@@ -55,6 +55,7 @@ export function ProductsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [viewMode, setViewMode] = useState("grid");
   const [deleteProduct, setDeleteProduct] = useState(null);
+  const [deleteWarning, setDeleteWarning] = useState(null);
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
@@ -91,10 +92,18 @@ export function ProductsPage() {
         if (varErr) throw varErr;
 
         const map = {};
-        vars.forEach((v) => {
+        for (const v of vars) {
+          // Check order count for each variant
+          const { count } = await supabase
+            .from("order_items")
+            .select("*", { count: "exact", head: true })
+            .eq("variant_id", v.id);
+          
+          const variantWithCount = { ...v, order_count: count || 0 };
+          
           if (!map[v.product_id]) map[v.product_id] = [];
-          map[v.product_id].push(v);
-        });
+          map[v.product_id].push(variantWithCount);
+        }
         setVariantsMap(map);
       } else {
         setVariantsMap({});
@@ -182,12 +191,15 @@ export function ProductsPage() {
 
       await fetchData();
 
+      // Refresh data
+      await fetchData();
       setDeleteProduct(null);
       toast({ 
         title: "Product deleted successfully",
         description: "The product and all related data have been permanently removed."
       });
     } catch (error) {
+      console.error("Delete product error:", error);
       toast({
         title: "Failed to delete product",
         description: error.message,
@@ -451,58 +463,68 @@ export function ProductsPage() {
                   : "space-y-4"
               }
             >
-              {filteredProducts.map((product) => (
-                <Card
-                  key={product.id}
-                  className={`hover:shadow-lg transition-all duration-200 hover:scale-[1.02] ${
-                    viewMode === "list" ? "flex flex-row" : ""
-                  }`}
-                >
-                  <div className={viewMode === "list" ? "flex-1 flex" : ""}>
-                    {product.image_url && (
-                      <img
-                        src={product.image_url}
-                        alt={`Image of ${product.title}`}
-                        className={`rounded-md shadow-sm border object-cover ${
-                          viewMode === "list"
-                            ? "w-40 h-28 mr-4 flex-shrink-0"
-                            : "w-full h-48 mb-4"
-                        }`}
-                      />
-                    )}
+              {filteredProducts.map((product) => {
+                const variants = variantsMap[product.id] || [];
+                const hasOrders = variants.some(v => (v.order_count || 0) > 0);
+                
+                return (
+                  <Card
+                    key={product.id}
+                    className={`hover:shadow-lg transition-all duration-200 hover:scale-[1.02] ${
+                      viewMode === "list" ? "flex flex-row" : ""
+                    }`}
+                  >
+                    <div className={viewMode === "list" ? "flex-1 flex" : ""}>
+                      {product.image_url && (
+                        <img
+                          src={product.image_url}
+                          alt={`Image of ${product.title}`}
+                          className={`rounded-md shadow-sm border object-cover ${
+                            viewMode === "list"
+                              ? "w-40 h-28 mr-4 flex-shrink-0"
+                              : "w-full h-48 mb-4"
+                          }`}
+                        />
+                      )}
 
-                    <div className="flex flex-col flex-1">
-                      <CardHeader
-                        className={`${viewMode === "list" ? "pb-2" : ""}`}
-                      >
-                        <div className="flex justify-between items-start">
-                          <div className="flex-1">
-                            <CardTitle className="text-lg">
-                              {product.title}
-                            </CardTitle>
-                            <CardDescription className="text-sm">
-                              {categories.find(
-                                (cat) => cat.id === product.category_id
-                              )?.name || "Uncategorized"}
-                            </CardDescription>
-                          </div>
-                          <div className="flex gap-1">
-                            {product.featured && (
+                      <div className="flex flex-col flex-1">
+                        <CardHeader
+                          className={`${viewMode === "list" ? "pb-2" : ""}`}
+                        >
+                          <div className="flex justify-between items-start">
+                            <div className="flex-1">
+                              <CardTitle className="text-lg">
+                                {product.title}
+                              </CardTitle>
+                              <CardDescription className="text-sm">
+                                {categories.find(
+                                  (cat) => cat.id === product.category_id
+                                )?.name || "Uncategorized"}
+                              </CardDescription>
+                            </div>
+                            <div className="flex gap-1 flex-wrap">
+                              {product.featured && (
+                                <Badge
+                                  variant="secondary"
+                                  className="bg-yellow-100 text-yellow-800 gap-1"
+                                >
+                                  <Star className="h-3 w-3" />
+                                  Featured
+                                </Badge>
+                              )}
                               <Badge
-                                variant="secondary"
-                                className="bg-yellow-100 text-yellow-800 gap-1"
+                                variant={
+                                  product.in_stock ? "default" : "destructive"
+                                }
                               >
-                                <Star className="h-3 w-3" />
-                                Featured
+                                {product.in_stock ? "In Stock" : "Out of Stock"}
                               </Badge>
-                            )}
-                            <Badge
-                              variant={
-                                product.in_stock ? "default" : "destructive"
-                              }
-                            >
-                              {product.in_stock ? "In Stock" : "Out of Stock"}
-                            </Badge>
+                              {hasOrders && (
+                                <Badge variant="outline" className="border-blue-500 text-blue-700">
+                                  Has Orders
+                                </Badge>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </CardHeader>
@@ -518,7 +540,7 @@ export function ProductsPage() {
                                 Available Sizes:
                               </h4>
                               <ul className="flex flex-wrap gap-2 text-sm">
-                                {variantsMap[product.id].map((variant) => (
+                                {variants.map((variant) => (
                                   <li
                                     key={variant.id}
                                     className="bg-gray-100 px-3 py-1 rounded-full border border-gray-300 text-xs"
@@ -542,49 +564,52 @@ export function ProductsPage() {
                             </div>
                           )}
 
-                        <div
-                          className={`flex ${
-                            viewMode === "list" ? "flex-row" : "flex-col"
-                          } justify-between items-${
-                            viewMode === "list" ? "center" : "start"
-                          } gap-4`}
-                        >
-                          <div className="flex items-center gap-1">
-                            <IndianRupee className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-xl font-bold">
-                              {product.price ? Number(product.price).toFixed(2) : '0.00'}
-                            </span>
-                            <span className="text-xs text-gray-500">(base)</span>
-                          </div>
+                          <div
+                            className={`flex ${
+                              viewMode === "list" ? "flex-row" : "flex-col"
+                            } justify-between items-${
+                              viewMode === "list" ? "center" : "start"
+                            } gap-4`}
+                          >
+                            <div className="flex items-center gap-1">
+                              <IndianRupee className="h-4 w-4 text-muted-foreground" />
+                              <span className="text-xl font-bold">
+                                {product.price ? Number(product.price).toFixed(2) : '0.00'}
+                              </span>
+                              <span className="text-xs text-gray-500">(base)</span>
+                            </div>
 
-                          <div className="flex space-x-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() =>
-                                navigate(`/admin/products/edit/${product.id}`)
-                              }
-                              className="hover:bg-blue-50 hover:border-blue-300"
-                            >
-                              <Edit className="h-4 w-4 mr-1" />
-                              Edit
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="text-destructive hover:bg-red-50 hover:border-red-300"
-                              onClick={() => setDeleteProduct(product)}
-                            >
-                              <Trash2 className="h-4 w-4 mr-1" />
-                              Delete
-                            </Button>
+                            <div className="flex space-x-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  navigate(`/admin/products/edit/${product.id}`)
+                                }
+                                className="hover:bg-blue-50 hover:border-blue-300"
+                              >
+                                <Edit className="h-4 w-4 mr-1" />
+                                Edit
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-destructive hover:bg-red-50 hover:border-red-300"
+                                onClick={() => handleDeleteClick(product)}
+                                disabled={hasOrders}
+                                title={hasOrders ? "Cannot delete product with orders" : "Delete product"}
+                              >
+                                <Trash2 className="h-4 w-4 mr-1" />
+                                Delete
+                              </Button>
+                            </div>
                           </div>
-                        </div>
-                      </CardContent>
+                        </CardContent>
+                      </div>
                     </div>
-                  </div>
-                </Card>
-              ))}
+                  </Card>
+                );
+              })}
             </div>
           )}
         </CardContent>
@@ -593,7 +618,10 @@ export function ProductsPage() {
       {/* Delete Confirmation Dialog */}
       <AlertDialog
         open={!!deleteProduct}
-        onOpenChange={() => setDeleteProduct(null)}
+        onOpenChange={() => {
+          setDeleteProduct(null);
+          setDeleteWarning(null);
+        }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>

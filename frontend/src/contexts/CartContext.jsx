@@ -298,7 +298,9 @@ export const CartProvider = ({ children }) => {
         }
 
         localStorage.setItem("cart_items", JSON.stringify(storedCart));
-        setCartItems(storedCart);
+        
+        // ✅ NEW: Fetch and enrich with GST data
+        await fetchCartItems();
       }
 
       toast({
@@ -417,11 +419,12 @@ export const CartProvider = ({ children }) => {
             // Use variant price if available, otherwise product base price
             const basePrice = item.product_variants?.price || item.products?.price || 0;
             
+            // ✅ Calculate GST based on product flags
             let gstRate = 0;
-            if (item.products?.gst_5pct) {
-              gstRate = 0.05;
-            } else if (item.products?.gst_18pct) {
+            if (item.products?.gst_18pct) {
               gstRate = 0.18;
+            } else if (item.products?.gst_5pct) {
+              gstRate = 0.05;
             }
             const gstAmount = basePrice * gstRate;
             const priceWithGst = basePrice + gstAmount;
@@ -451,7 +454,7 @@ export const CartProvider = ({ children }) => {
 
         setCartItems(transformedItems);
       } else {
-        // ✅ CRITICAL BUG #1: Validate guest cart from localStorage
+        // ✅ FIXED: Fetch product data for guest cart to calculate GST
         const storedCart = JSON.parse(
           localStorage.getItem("cart_items") || "[]"
         );
@@ -465,7 +468,76 @@ export const CartProvider = ({ children }) => {
           localStorage.setItem("cart_items", JSON.stringify(validItems));
         }
         
-        setCartItems(validItems);
+        // ✅ NEW: Fetch product GST flags for guest cart items
+        if (validItems.length > 0) {
+          const productIds = [...new Set(validItems.map(item => item.productId || item.id))];
+          
+          try {
+            const { data: productsData, error: productsError } = await supabase
+              .from('products')
+              .select('id, gst_5pct, gst_18pct, price')
+              .in('id', productIds);
+            
+            if (productsError) {
+              console.warn('⚠️ Could not fetch product GST data for guest cart:', productsError);
+            }
+            
+            // Create product data map
+            const productGSTMap = {};
+            if (productsData) {
+              productsData.forEach(p => {
+                productGSTMap[p.id] = {
+                  gst_5pct: p.gst_5pct,
+                  gst_18pct: p.gst_18pct,
+                  dbPrice: p.price
+                };
+              });
+            }
+            
+            // ✅ Enrich cart items with GST calculations
+            const enrichedItems = validItems.map(item => {
+              const productId = item.productId || item.id;
+              const productGST = productGSTMap[productId];
+              
+              // Use item price or fallback to DB price
+              const basePrice = item.price || productGST?.dbPrice || 0;
+              
+              // Calculate GST based on product flags
+              let gstRate = 0;
+              if (productGST?.gst_18pct) {
+                gstRate = 0.18;
+              } else if (productGST?.gst_5pct) {
+                gstRate = 0.05;
+              }
+              
+              const gstAmount = basePrice * gstRate;
+              const priceWithGst = basePrice + gstAmount;
+              
+              console.log(`💰 Guest cart item: ${item.name}`, {
+                basePrice,
+                gstRate,
+                gstAmount,
+                priceWithGst
+              });
+              
+              return {
+                ...item,
+                price: basePrice,
+                gstRate,
+                gstAmount,
+                priceWithGst
+              };
+            });
+            
+            setCartItems(enrichedItems);
+          } catch (error) {
+            console.error('❌ Failed to enrich guest cart with GST:', error);
+            // Fallback: use cart items without GST enrichment
+            setCartItems(validItems);
+          }
+        } else {
+          setCartItems([]);
+        }
       }
     } catch (error) {
       console.error("Error fetching cart items:", error);
@@ -552,7 +624,13 @@ export const CartProvider = ({ children }) => {
         );
 
         localStorage.setItem("cart_items", JSON.stringify(updatedCart));
-        setCartItems(updatedCart);
+        setCartItems((prev) =>
+          prev.map((cartItem) =>
+            generateItemKey(cartItem) === itemKey
+              ? { ...cartItem, quantity: newQuantity }
+              : cartItem
+          )
+        );
       }
     } catch (error) {
       console.error("Error updating quantity:", error);
@@ -709,6 +787,12 @@ export const CartProvider = ({ children }) => {
       image: item.image,
       variant: item.variant,
       customization: item.customization || {},
+      // ✅ Include GST data for checkout
+      gst_5pct: item.gstRate === 0.05,
+      gst_18pct: item.gstRate === 0.18,
+      gstRate: item.gstRate,
+      gstAmount: item.gstAmount,
+      priceWithGst: item.priceWithGst
     }));
   };
 

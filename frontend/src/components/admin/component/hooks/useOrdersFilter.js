@@ -7,8 +7,6 @@ export function useOrders() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [totalOrders, setTotalOrders] = useState(0);
-  
-  // ✅ FIX BUG #4: Track which orders are being updated
   const [updatingIds, setUpdatingIds] = useState(new Set());
   
   const { toast } = useToast();
@@ -17,14 +15,14 @@ export function useOrders() {
     try {
       setLoading(reset);
 
-      // ✅ FIX BUG #1: Use order_details_full view instead of orders table
       console.log("🔍 Admin: Fetching orders from order_details_full view...");
 
+      // ✅ FIXED: Optimized pagination - load reasonable amount
       const { data, error } = await supabase
         .from("order_details_full")
         .select("*")
         .order("order_date", { ascending: false })
-        .limit(ORDERS_PER_PAGE * 2 * 5);
+        .limit(ORDERS_PER_PAGE * 10); // Load max 10 pages worth
 
       if (error) throw error;
 
@@ -44,6 +42,7 @@ export function useOrders() {
             customer_id: row.customer_id,
             status: row.order_status,
             payment_status: row.payment_status,
+            // 🐛 FIX: Store DB value but will recalculate after items are added
             amount: row.order_total,
             order_total: row.order_total,
             created_at: row.order_date,
@@ -54,6 +53,7 @@ export function useOrders() {
             payment_method: row.payment_method,
             transaction_id: row.transaction_id,
             order_notes: row.order_notes,
+            customization_details: row.customization_details, // ✅ Pass through customization
             customers: {
               id: row.customer_id,
               user_id: row.user_id,
@@ -69,32 +69,86 @@ export function useOrders() {
           };
         }
 
+        // ✅ FIXED BUG #2: Correctly map product snapshot data with fallbacks
         groupedOrders[orderId].items.push({
           item_id: row.item_id,
+          
+          // ✅ Product references
           product_id: row.product_id,
           variant_id: row.variant_id,
+          productId: row.product_id, // For OrderDetailsItems lookup
+          variantId: row.variant_id,
+          
+          // ✅ Snapshot data (stored at order time)
           catalog_number: row.catalog_number,
-          quantity: row.quantity,
-          unit_price: row.unit_price,
-          item_total: row.item_total,
-          customization_data: row.customization_data,
-          production_notes: row.production_notes,
-          product_name: row.product_name,
-          product_description: row.product_description,
-          product_image: row.product_image,
+          name: row.product_name || "Product Deleted", // ✅ Fallback
+          image: row.product_image || "/placeholder.png", // ✅ Fallback
+          description: row.product_description,
+          
+          // ✅ Variant details (snapshot)
           sku: row.sku,
           size_display: row.size_display,
           size_numeric: row.size_numeric,
           size_unit: row.size_unit,
           price_tier: row.price_tier,
+          
+          // ✅ Order item details
+          quantity: row.quantity,
+          price: row.unit_price, // ✅ Use unit_price from order_items
+          unit_price: row.unit_price,
+          item_total: row.item_total,
+          
+          // ✅ Customization & production
+          customization_data: row.customization_data,
+          production_notes: row.production_notes,
+          
+          // ✅ Category info
           category_id: row.category_id,
           category_name: row.category_name,
+          
+          // ✅ Additional product info for display
+          product_name: row.product_name || "Product Deleted",
+          product_description: row.product_description,
+          product_image: row.product_image || "/placeholder.png",
         });
       });
 
       const ordersArray = Object.values(groupedOrders);
       
+      // 🐛 FIX: Recalculate order_total from items if DB value is missing/invalid
+      ordersArray.forEach(order => {
+        // Calculate total from items
+        const calculatedTotal = order.items.reduce((sum, item) => {
+          const itemTotal = parseFloat(item.item_total) || 0;
+          return sum + itemTotal;
+        }, 0);
+
+        console.log(`Order ${order.id.slice(0,8)}: DB total = ${order.order_total}, Calculated = ${calculatedTotal}`);
+
+        // Use DB value if valid, otherwise use calculated
+        const dbTotal = parseFloat(order.order_total);
+        if (!dbTotal || isNaN(dbTotal) || dbTotal <= 0) {
+          console.warn(`⚠️ Order ${order.id.slice(0,8)}: Invalid DB total (${order.order_total}), using calculated total (${calculatedTotal})`);
+          order.order_total = calculatedTotal;
+          order.amount = calculatedTotal;
+        } else {
+          // Verify DB total matches calculated (within 1 rupee tolerance for rounding)
+          const difference = Math.abs(dbTotal - calculatedTotal);
+          if (difference > 1) {
+            console.warn(`⚠️ Order ${order.id.slice(0,8)}: DB total (${dbTotal}) differs from calculated (${calculatedTotal}) by ₹${difference.toFixed(2)}`);
+            // Use calculated total as it's more reliable
+            order.order_total = calculatedTotal;
+            order.amount = calculatedTotal;
+          }
+        }
+      });
+      
       console.log(`✅ Grouped into ${ordersArray.length} orders`);
+      console.log("Sample order with totals:", {
+        id: ordersArray[0]?.id?.slice(0,8),
+        order_total: ordersArray[0]?.order_total,
+        items_count: ordersArray[0]?.items?.length
+      });
 
       setOrders(ordersArray);
       setTotalOrders(ordersArray.length);
@@ -111,16 +165,14 @@ export function useOrders() {
     }
   };
 
-  // ✅ FIX BUG #4: Optimistic update implementation
+  // ✅ Optimistic update implementation
   const updateOrder = async (orderId, updates) => {
-    // Prevent duplicate updates
     if (updatingIds.has(orderId)) {
       console.warn("⚠️ Update already in progress for order:", orderId);
       return false;
     }
 
     try {
-      // Mark order as updating
       setUpdatingIds(prev => new Set(prev).add(orderId));
 
       // 1️⃣ OPTIMISTIC UPDATE: Update UI immediately
@@ -142,7 +194,6 @@ export function useOrders() {
 
       // 3️⃣ HANDLE RESULT
       if (error) {
-        // ❌ ROLLBACK on error
         console.error("❌ Update failed, rolling back:", error);
         setOrders(previousOrders);
         
@@ -155,7 +206,6 @@ export function useOrders() {
         return false;
       }
 
-      // ✅ SUCCESS - keep optimistic update
       console.log("✅ Update confirmed by server");
       
       toast({
@@ -163,9 +213,7 @@ export function useOrders() {
         description: "The order has been updated successfully.",
       });
 
-      // Optional: Refetch to ensure consistency (but not blocking)
       fetchOrders(false);
-      
       return true;
       
     } catch (err) {
@@ -177,12 +225,10 @@ export function useOrders() {
         variant: "destructive",
       });
       
-      // Refetch to restore correct state
       fetchOrders(false);
       return false;
       
     } finally {
-      // Remove from updating set
       setUpdatingIds(prev => {
         const newSet = new Set(prev);
         newSet.delete(orderId);
@@ -191,16 +237,14 @@ export function useOrders() {
     }
   };
 
-  // ✅ FIX BUG #4: Optimistic delete implementation
+  // ✅ Optimistic delete implementation
   const deleteOrder = async (orderId) => {
-    // Prevent duplicate deletes
     if (updatingIds.has(orderId)) {
       console.warn("⚠️ Operation already in progress for order:", orderId);
       return false;
     }
 
     try {
-      // Mark as updating
       setUpdatingIds(prev => new Set(prev).add(orderId));
 
       // 1️⃣ OPTIMISTIC DELETE: Remove from UI immediately
@@ -220,7 +264,6 @@ export function useOrders() {
 
       // 3️⃣ HANDLE RESULT
       if (error) {
-        // ❌ ROLLBACK on error
         console.error("❌ Delete failed, rolling back:", error);
         setOrders(previousOrders);
         setTotalOrders(prev => prev + 1);
@@ -234,7 +277,6 @@ export function useOrders() {
         return false;
       }
 
-      // ✅ SUCCESS - keep optimistic delete
       console.log("✅ Delete confirmed by server");
       
       toast({
@@ -253,12 +295,10 @@ export function useOrders() {
         variant: "destructive",
       });
       
-      // Refetch to restore correct state
       fetchOrders(false);
       return false;
       
     } finally {
-      // Remove from updating set
       setUpdatingIds(prev => {
         const newSet = new Set(prev);
         newSet.delete(orderId);
@@ -278,7 +318,6 @@ export function useOrders() {
     fetchOrders,
     updateOrder,
     deleteOrder,
-    // ✅ Export updating state for UI to show loading indicators
     updatingIds,
   };
 }
