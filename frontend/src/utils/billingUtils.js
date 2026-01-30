@@ -1,16 +1,18 @@
 /**
- * Billing Utilities
+ * COMPREHENSIVE BILLING UTILITIES
  * 
- * Centralized billing calculation logic with proper GST handling.
+ * System-wide billing calculation logic with GST handling.
  * Ensures consistency across orders and order_items tables.
+ * Handles backward compatibility and edge cases.
  * 
- * FORMULA:
- * - Item Subtotal (base_price) = Price without GST
- * - GST Amount = base_price × (gst_rate / 100)
- * - Item Total = base_price + GST Amount
- * - Order Subtotal = Sum of all item base_prices
- * - Order Total GST = Sum of all GST amounts
- * - Order Total = Order Subtotal + Order Total GST + Shipping
+ * CORE FORMULA:
+ *   order_total = subtotal + total_gst + shipping_cost
+ * 
+ * Where:
+ *   - subtotal = Sum of base_prices (WITHOUT GST)
+ *   - total_gst = gst_5_total + gst_18_total
+ *   - shipping_cost = Delivery charges
+ *   - total_price = order_total × 100 (in paise)
  */
 
 /**
@@ -20,31 +22,66 @@
  */
 export const getGSTRate = (category) => {
   // Handicraft items typically have 5% GST
-  // Other items might have 18% GST
-  const lowGSTCategories = ['handicrafts', 'handmade', 'art', 'decor'];
+  const lowGSTCategories = [
+    'handicrafts', 
+    'handmade', 
+    'hand-made',
+    'art', 
+    'craft',
+    'decor',
+    'home-decor',
+    'traditional'
+  ];
   
-  if (category && lowGSTCategories.some(cat => 
-    category.toLowerCase().includes(cat)
-  )) {
-    return 5;
+  if (category) {
+    const categoryLower = category.toLowerCase();
+    if (lowGSTCategories.some(cat => categoryLower.includes(cat))) {
+      return 5;
+    }
   }
   
   return 18; // Default GST rate
 };
 
 /**
+ * Extract base price from a price that may or may not include GST
+ * This handles backward compatibility
+ * 
+ * @param {number} price - Price value
+ * @param {number} gstRate - GST rate (5 or 18)
+ * @param {boolean} includesGST - Whether price includes GST
+ * @returns {number} Base price without GST
+ */
+export const extractBasePrice = (price, gstRate, includesGST = false) => {
+  const numPrice = parseFloat(price) || 0;
+  
+  if (includesGST) {
+    // Reverse calculate: base_price = price_with_gst / (1 + gst_rate/100)
+    return roundTo2Decimals(numPrice / (1 + gstRate / 100));
+  }
+  
+  return roundTo2Decimals(numPrice);
+};
+
+/**
  * Calculate item-level billing
- * @param {Object} item - Order item
- * @param {number} item.price - Base price (without GST)
- * @param {number} item.quantity - Quantity
- * @param {number} item.gstRate - GST rate (5 or 18)
+ * Handles both prices with and without GST
+ * 
+ * @param {Object} params - Calculation parameters
+ * @param {number} params.price - Price (can be with or without GST)
+ * @param {number} params.quantity - Quantity
+ * @param {number} params.gstRate - GST rate (5 or 18)
+ * @param {boolean} params.priceIncludesGST - Whether price includes GST (default: false)
  * @returns {Object} Item billing details
  */
-export const calculateItemBilling = (item) => {
-  const { price, quantity, gstRate = 18 } = item;
-  
-  // Base price (without GST)
-  const basePrice = parseFloat(price) || 0;
+export const calculateItemBilling = ({ 
+  price, 
+  quantity, 
+  gstRate = 18, 
+  priceIncludesGST = false 
+}) => {
+  // Extract base price (without GST)
+  const basePrice = extractBasePrice(price, gstRate, priceIncludesGST);
   
   // Calculate GST amount per unit
   const gstAmount = basePrice * (gstRate / 100);
@@ -70,7 +107,8 @@ export const calculateItemBilling = (item) => {
 
 /**
  * Calculate order-level billing from order items
- * @param {Array} orderItems - Array of order items with billing details
+ * 
+ * @param {Array} orderItems - Array of items with billing details
  * @param {number} shippingCost - Shipping cost (default: 0)
  * @returns {Object} Order billing details
  */
@@ -80,14 +118,19 @@ export const calculateOrderBilling = (orderItems, shippingCost = 0) => {
   let gst18Total = 0;
   
   orderItems.forEach(item => {
-    const itemBilling = item.billing || calculateItemBilling(item);
+    const itemBilling = item.billing || calculateItemBilling({
+      price: item.price || item.basePrice || item.unit_price_with_gst,
+      quantity: item.quantity,
+      gstRate: item.gstRate || item.gst_rate || 18,
+      priceIncludesGST: item.priceIncludesGST || false
+    });
     
     subtotal += itemBilling.item_subtotal;
     
     // Separate GST by rate
-    if (item.gstRate === 5 || itemBilling.gst_rate === 5) {
+    if ((item.gstRate || item.gst_rate || itemBilling.gst_rate) === 5) {
       gst5Total += itemBilling.item_gst_total;
-    } else if (item.gstRate === 18 || itemBilling.gst_rate === 18) {
+    } else {
       gst18Total += itemBilling.item_gst_total;
     }
   });
@@ -102,16 +145,48 @@ export const calculateOrderBilling = (orderItems, shippingCost = 0) => {
     total_gst: roundTo2Decimals(totalGst),
     shipping_cost: roundTo2Decimals(shippingCost),
     order_total: roundTo2Decimals(orderTotal),
-    grand_total: roundTo2Decimals(orderTotal), // Same as order_total
-    amount: roundTo2Decimals(orderTotal), // Same as order_total
-    total_price: Math.round(orderTotal * 100) // In paise for legacy compatibility
+    grand_total: roundTo2Decimals(orderTotal),
+    amount: roundTo2Decimals(orderTotal),
+    total_price: Math.round(orderTotal * 100)
+  };
+};
+
+/**
+ * Recalculate order billing from database values
+ * Useful for fixing existing orders
+ * 
+ * @param {Object} order - Order object from database
+ * @returns {Object} Corrected billing
+ */
+export const recalculateOrderBilling = (order) => {
+  const subtotal = parseFloat(order.subtotal) || 0;
+  const totalGst = parseFloat(order.total_gst) || 0;
+  const shippingCost = parseFloat(order.shipping_cost) || 0;
+  
+  // If total_gst is missing but gst_5 and gst_18 exist
+  let calculatedTotalGst = totalGst;
+  if (!totalGst && (order.gst_5_total || order.gst_18_total)) {
+    calculatedTotalGst = (parseFloat(order.gst_5_total) || 0) + 
+                         (parseFloat(order.gst_18_total) || 0);
+  }
+  
+  const orderTotal = subtotal + calculatedTotalGst + shippingCost;
+  
+  return {
+    subtotal: roundTo2Decimals(subtotal),
+    gst_5_total: roundTo2Decimals(parseFloat(order.gst_5_total) || 0),
+    gst_18_total: roundTo2Decimals(parseFloat(order.gst_18_total) || 0),
+    total_gst: roundTo2Decimals(calculatedTotalGst),
+    shipping_cost: roundTo2Decimals(shippingCost),
+    order_total: roundTo2Decimals(orderTotal),
+    grand_total: roundTo2Decimals(orderTotal),
+    amount: roundTo2Decimals(orderTotal),
+    total_price: Math.round(orderTotal * 100)
   };
 };
 
 /**
  * Convert price from paise to rupees
- * @param {number} paise - Price in paise
- * @returns {number} Price in rupees
  */
 export const paiseToRupees = (paise) => {
   return roundTo2Decimals((paise || 0) / 100);
@@ -119,8 +194,6 @@ export const paiseToRupees = (paise) => {
 
 /**
  * Convert price from rupees to paise
- * @param {number} rupees - Price in rupees
- * @returns {number} Price in paise
  */
 export const rupeesToPaise = (rupees) => {
   return Math.round((rupees || 0) * 100);
@@ -128,8 +201,6 @@ export const rupeesToPaise = (rupees) => {
 
 /**
  * Round to 2 decimal places
- * @param {number} value - Value to round
- * @returns {number} Rounded value
  */
 export const roundTo2Decimals = (value) => {
   return Math.round((value || 0) * 100) / 100;
@@ -137,9 +208,6 @@ export const roundTo2Decimals = (value) => {
 
 /**
  * Format currency for display
- * @param {number} amount - Amount in rupees
- * @param {boolean} showSymbol - Whether to show ₹ symbol
- * @returns {string} Formatted currency string
  */
 export const formatCurrency = (amount, showSymbol = true) => {
   const formatted = roundTo2Decimals(amount).toFixed(2);
@@ -148,17 +216,25 @@ export const formatCurrency = (amount, showSymbol = true) => {
 
 /**
  * Validate billing calculations
- * @param {Object} orderBilling - Order billing object
- * @returns {Object} { valid: boolean, errors: Array }
  */
 export const validateBilling = (orderBilling) => {
   const errors = [];
   
-  const { subtotal, gst_5_total, gst_18_total, total_gst, shipping_cost, order_total } = orderBilling;
+  const { 
+    subtotal, 
+    gst_5_total, 
+    gst_18_total, 
+    total_gst, 
+    shipping_cost, 
+    order_total 
+  } = orderBilling;
   
   // Check if total_gst matches sum of GST components
-  const calculatedTotalGst = roundTo2Decimals(gst_5_total + gst_18_total);
-  if (calculatedTotalGst !== total_gst) {
+  const calculatedTotalGst = roundTo2Decimals(
+    (gst_5_total || 0) + (gst_18_total || 0)
+  );
+  
+  if (Math.abs(calculatedTotalGst - (total_gst || 0)) > 0.01) {
     errors.push({
       field: 'total_gst',
       message: `Total GST mismatch. Expected ${calculatedTotalGst}, got ${total_gst}`
@@ -166,27 +242,58 @@ export const validateBilling = (orderBilling) => {
   }
   
   // Check if order_total matches formula
-  const calculatedOrderTotal = roundTo2Decimals(subtotal + total_gst + shipping_cost);
-  if (calculatedOrderTotal !== order_total) {
+  const calculatedOrderTotal = roundTo2Decimals(
+    (subtotal || 0) + (total_gst || 0) + (shipping_cost || 0)
+  );
+  
+  if (Math.abs(calculatedOrderTotal - (order_total || 0)) > 0.01) {
     errors.push({
       field: 'order_total',
-      message: `Order total mismatch. Expected ${calculatedOrderTotal}, got ${order_total}`
+      message: `Order total mismatch. Expected ${calculatedOrderTotal}, got ${order_total}`,
+      expected: calculatedOrderTotal,
+      actual: order_total
     });
   }
   
   return {
     valid: errors.length === 0,
-    errors
+    errors,
+    correctedValues: {
+      total_gst: calculatedTotalGst,
+      order_total: calculatedOrderTotal,
+      total_price: Math.round(calculatedOrderTotal * 100)
+    }
+  };
+};
+
+/**
+ * Auto-fix billing object
+ * Returns corrected billing values
+ */
+export const autoFixBilling = (orderBilling) => {
+  const validation = validateBilling(orderBilling);
+  
+  if (validation.valid) {
+    return orderBilling;
+  }
+  
+  // Return corrected values
+  return {
+    ...orderBilling,
+    ...validation.correctedValues
   };
 };
 
 export default {
   getGSTRate,
+  extractBasePrice,
   calculateItemBilling,
   calculateOrderBilling,
+  recalculateOrderBilling,
   paiseToRupees,
   rupeesToPaise,
   roundTo2Decimals,
   formatCurrency,
-  validateBilling
+  validateBilling,
+  autoFixBilling
 };
