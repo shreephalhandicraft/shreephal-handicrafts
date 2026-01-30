@@ -82,7 +82,7 @@ export function ProductsPage() {
 
       setProducts(prods || []);
 
-      // Fetch variants
+      // Fetch variants with order count
       const productIds = prods?.map((p) => p.id) || [];
       if (productIds.length > 0) {
         const { data: vars, error: varErr } = await supabase
@@ -122,89 +122,70 @@ export function ProductsPage() {
     fetchData();
   }, [fetchData]);
 
-  // ✅ FIX: Add missing handleDeleteClick function
-  const handleDeleteClick = (product) => {
-    setDeleteProduct(product);
-  };
-
-  // HARD DELETE: Permanently remove product from database
+  // Handle delete with order check
   const handleDelete = async () => {
     if (!deleteProduct) return;
     setLoading(true);
 
     try {
-      // Step 1: Check for related data in orders
-      const { data: orderItems, error: orderCheckError } = await supabase
-        .from("order_items")
-        .select("id")
-        .eq("product_id", deleteProduct.id)
-        .limit(1);
+      const variants = variantsMap[deleteProduct.id] || [];
+      const hasOrders = variants.some(v => (v.order_count || 0) > 0);
 
-      if (orderCheckError) throw orderCheckError;
-
-      if (orderItems && orderItems.length > 0) {
+      if (hasOrders) {
+        const totalOrders = variants.reduce((sum, v) => sum + (v.order_count || 0), 0);
         toast({
           title: "Cannot delete product",
-          description: "This product is referenced in existing orders. Please deactivate instead of deleting.",
+          description: `"${deleteProduct.title}" has ${totalOrders} order(s). Products with order history cannot be deleted.`,
           variant: "destructive",
         });
-        setLoading(false);
         setDeleteProduct(null);
+        setDeleteWarning(null);
+        setLoading(false);
         return;
       }
 
-      // Step 2: Delete cart items containing this product
-      const { error: cartDeleteError } = await supabase
+      // Delete cart items first
+      const { error: cartError } = await supabase
         .from("cart_items")
         .delete()
         .eq("product_id", deleteProduct.id);
+      if (cartError) console.warn("Cart delete:", cartError);
 
-      if (cartDeleteError) {
-        console.warn("Cart delete error:", cartDeleteError);
-      }
-
-      // Step 3: Delete product variants (CASCADE should handle this)
-      const { error: variantDelError } = await supabase
+      // Delete variants
+      const { error: variantError } = await supabase
         .from("product_variants")
         .delete()
         .eq("product_id", deleteProduct.id);
+      if (variantError) throw variantError;
 
-      if (variantDelError) throw variantDelError;
-
-      // Step 4: Delete product image from storage (if exists)
+      // Delete product image
       if (deleteProduct.image_url) {
         try {
           const urlParts = deleteProduct.image_url.split('/');
-          const bucket = 'product-images';
           const filePath = urlParts[urlParts.length - 1];
-          
-          await supabase.storage
-            .from(bucket)
-            .remove([filePath]);
+          await supabase.storage.from('product-images').remove([filePath]);
         } catch (imgError) {
-          console.warn("Image deletion warning:", imgError);
+          console.warn("Image delete:", imgError);
         }
       }
 
-      // Step 5: HARD DELETE the product
-      const { error: prodDelError } = await supabase
+      // Delete product
+      const { error: prodError } = await supabase
         .from("products")
         .delete()
         .eq("id", deleteProduct.id);
+      if (prodError) throw prodError;
 
-      if (prodDelError) throw prodDelError;
+      toast({ 
+        title: "Product deleted", 
+        description: `"${deleteProduct.title}" has been permanently deleted.`
+      });
 
-      await fetchData();
-
-      // Refresh data
       await fetchData();
       setDeleteProduct(null);
-      toast({ 
-        title: "Product deleted successfully",
-        description: "The product and all related data have been permanently removed."
-      });
+      setDeleteWarning(null);
     } catch (error) {
-      console.error("Delete product error:", error);
+      console.error("Delete error:", error);
       toast({
         title: "Failed to delete product",
         description: error.message,
@@ -212,6 +193,28 @@ export function ProductsPage() {
       });
     }
     setLoading(false);
+  };
+
+  const handleDeleteClick = (product) => {
+    const variants = variantsMap[product.id] || [];
+    const hasOrders = variants.some(v => (v.order_count || 0) > 0);
+    const totalOrders = variants.reduce((sum, v) => sum + (v.order_count || 0), 0);
+    
+    if (hasOrders) {
+      setDeleteWarning({
+        canDelete: false,
+        totalOrders,
+        message: `This product has ${totalOrders} order(s) and cannot be deleted.`
+      });
+    } else {
+      setDeleteWarning({
+        canDelete: true,
+        totalOrders: 0,
+        message: "This product has no orders and will be permanently deleted."
+      });
+    }
+    
+    setDeleteProduct(product);
   };
 
   const handleRefresh = () => {
@@ -433,8 +436,7 @@ export function ProductsPage() {
           <CardDescription>
             {selectedCategoryId && selectedCategoryId !== "all"
               ? `Showing products in ${
-                  categories.find((c) => c.id === selectedCategoryId)?.name ||
-                  ""
+                  categories.find((c) => c.id === selectedCategoryId)?.name || ""
                 }`
               : "Showing all products"}
             {searchTerm && ` matching "${searchTerm}"`}
@@ -450,15 +452,12 @@ export function ProductsPage() {
                   ? "Try adjusting your filters or search terms"
                   : "Get started by adding your first product"}
               </p>
-              {!searchTerm &&
-                (!selectedCategoryId || selectedCategoryId === "all") && (
-                  <Button
-                    onClick={() => navigate("/admin/products/add-product")}
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add Your First Product
-                  </Button>
-                )}
+              {!searchTerm && (!selectedCategoryId || selectedCategoryId === "all") && (
+                <Button onClick={() => navigate("/admin/products/add-product")}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Your First Product
+                </Button>
+              )}
             </div>
           ) : (
             <div
@@ -535,36 +534,35 @@ export function ProductsPage() {
                             {product.description}
                           </p>
 
-                          {variantsMap[product.id] &&
-                            variantsMap[product.id].length > 0 && (
-                              <div className="mb-4">
-                                <h4 className="font-semibold mb-1 text-sm">
-                                  Available Sizes:
-                                </h4>
-                                <ul className="flex flex-wrap gap-2 text-sm">
-                                  {variants.map((variant) => (
-                                    <li
-                                      key={variant.id}
-                                      className="bg-gray-100 px-3 py-1 rounded-full border border-gray-300 text-xs"
-                                    >
-                                      <span className="font-medium">
-                                        {variant.size_display}
+                          {variants.length > 0 && (
+                            <div className="mb-4">
+                              <h4 className="font-semibold mb-1 text-sm">
+                                Available Sizes:
+                              </h4>
+                              <ul className="flex flex-wrap gap-2 text-sm">
+                                {variants.map((variant) => (
+                                  <li
+                                    key={variant.id}
+                                    className="bg-gray-100 px-3 py-1 rounded-full border border-gray-300 text-xs"
+                                  >
+                                    <span className="font-medium">
+                                      {variant.size_display}
+                                    </span>
+                                    {variant.price && (
+                                      <span className="ml-1 text-gray-600">
+                                        — ₹{Number(variant.price).toFixed(2)}
                                       </span>
-                                      {variant.price && (
-                                        <span className="ml-1 text-gray-600">
-                                          — ₹{Number(variant.price).toFixed(2)}
-                                        </span>
-                                      )}
-                                      {variant.sku && (
-                                        <span className="ml-1 text-gray-500 text-xs">
-                                          ({variant.sku})
-                                        </span>
-                                      )}
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
+                                    )}
+                                    {variant.sku && (
+                                      <span className="ml-1 text-gray-500 text-xs">
+                                        ({variant.sku})
+                                      </span>
+                                    )}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
 
                           <div
                             className={`flex ${
@@ -627,36 +625,50 @@ export function ProductsPage() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-destructive" />
-              Permanently Delete Product
+            <AlertDialogTitle>
+              <span className="flex items-center gap-2">
+                <Trash2 className="h-5 w-5 text-red-500" />
+                Delete Product
+              </span>
             </AlertDialogTitle>
-            <AlertDialogDescription className="space-y-2">
-              <p className="font-semibold">
-                Are you sure you want to permanently delete "{deleteProduct?.title}"?
+            <AlertDialogDescription className="space-y-3">
+              <p>
+                Are you sure you want to delete
+                <span className="font-semibold"> "{deleteProduct?.title}"</span>?
               </p>
-              <div className="bg-destructive/10 p-3 rounded-md border border-destructive/20">
-                <p className="text-sm text-destructive font-medium mb-1">
-                  ⚠️ This action CANNOT be undone and will:
-                </p>
-                <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
-                  <li>Permanently delete the product from the database</li>
-                  <li>Delete all product variants and sizes</li>
-                  <li>Remove the product image from storage</li>
-                  <li>Remove from all user carts</li>
-                </ul>
-              </div>
+              
+              {deleteWarning?.canDelete ? (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-2">
+                  <AlertTriangle className="h-5 w-5 text-red-600 mt-0.5 flex-shrink-0" />
+                  <div className="text-sm text-red-800">
+                    <p className="font-medium mb-1">⚠️ Permanent deletion</p>
+                    <p>{deleteWarning.message}</p>
+                    <p className="mt-2 font-semibold">This action cannot be undone!</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 flex items-start gap-2">
+                  <AlertTriangle className="h-5 w-5 text-yellow-600 mt-0.5 flex-shrink-0" />
+                  <div className="text-sm text-yellow-800">
+                    <p className="font-medium mb-1">❌ Cannot delete</p>
+                    <p>{deleteWarning?.message}</p>
+                    <p className="mt-2">Products with order history must be preserved.</p>
+                  </div>
+                </div>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              <Trash2 className="h-4 w-4 mr-2" />
-              Permanently Delete
-            </AlertDialogAction>
+            {deleteWarning?.canDelete && (
+              <AlertDialogAction
+                onClick={handleDelete}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete Permanently
+              </AlertDialogAction>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
