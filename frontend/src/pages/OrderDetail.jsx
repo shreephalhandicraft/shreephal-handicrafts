@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import InvoiceGenerator from "@/components/InvoiceGenerator";
-import { getOrderTotal, formatPrice, rupeesToPaise } from "@/utils/billingHelpers";  // ✅ ADDED
+import { calculateItemPricing, calculateOrderTotals, formatCurrency } from "@/utils/billingUtils";  // ✅ FIXED import
 import {
   ArrowLeft,
   CheckCircle,
@@ -44,74 +44,6 @@ const PHONEPE_PAY_URL =
   process.env.NODE_ENV === "production"
     ? "https://Shreephal-Handicrafts.onrender.com/pay"
     : "http://localhost:3000/pay";
-
-/**
- * ✅ FIXED: Helper to get correct item price (handles paise vs rupees)
- * 
- * Priority:
- * 1. item_total (billing snapshot) - if looks correct (< 10000)
- * 2. total_price / 100 (legacy paise field)
- * 3. unit_price_with_gst * quantity
- */
-const getItemTotal = (item) => {
-  // Priority 1: item_total (if it looks like rupees, not paise)
-  if (item.item_total != null) {
-    const itemTotal = Number(item.item_total);
-    // If item_total is < 10000, assume it's already in rupees
-    if (itemTotal > 0 && itemTotal < 10000) {
-      return itemTotal;
-    }
-    // If item_total is >= 10000, might be paise - convert
-    if (itemTotal >= 10000) {
-      return itemTotal / 100;
-    }
-  }
-
-  // Priority 2: total_price (legacy paise field)
-  if (item.total_price != null && Number(item.total_price) > 0) {
-    return Number(item.total_price) / 100;
-  }
-
-  // Priority 3: Calculate from unit price and quantity
-  if (item.unit_price_with_gst && item.quantity) {
-    return Number(item.unit_price_with_gst) * Number(item.quantity);
-  }
-
-  // Priority 4: Calculate from unit_price (legacy) and quantity
-  if (item.unit_price && item.quantity) {
-    return (Number(item.unit_price) / 100) * Number(item.quantity);
-  }
-
-  return 0;
-};
-
-/**
- * ✅ FIXED: Helper to get unit price
- */
-const getUnitPrice = (item) => {
-  // Priority 1: unit_price_with_gst (billing snapshot)
-  if (item.unit_price_with_gst != null && Number(item.unit_price_with_gst) > 0) {
-    return Number(item.unit_price_with_gst);
-  }
-
-  // Priority 2: base_price + gst_amount
-  if (item.base_price != null && item.gst_amount != null) {
-    return Number(item.base_price) + Number(item.gst_amount);
-  }
-
-  // Priority 3: Calculate from item_total / quantity
-  const itemTotal = getItemTotal(item);
-  if (itemTotal > 0 && item.quantity > 0) {
-    return itemTotal / Number(item.quantity);
-  }
-
-  // Priority 4: unit_price (legacy paise field)
-  if (item.unit_price != null && Number(item.unit_price) > 0) {
-    return Number(item.unit_price) / 100;
-  }
-
-  return 0;
-};
 
 // Helper function to render customization details
 const renderCustomizationDetails = (item, customizationDetails) => {
@@ -316,12 +248,11 @@ export default function OrderDetail() {
     fetchOrder();
   }, [orderId, user]);
 
-  // ✅ FIXED: Corrected WHERE clause column names and item price mapping
   const fetchOrder = async () => {
     try {
       setLoading(true);
 
-      console.log("\n=== FETCHING ORDER DETAILS (BILLING FIX V2) ===");
+      console.log("\n=== FETCHING ORDER DETAILS (BILLING FIX) ===");
       console.log("Order ID:", orderId);
       console.log("User ID:", user.id);
 
@@ -337,19 +268,19 @@ export default function OrderDetail() {
       if (error) throw error;
 
       if (data && data.length > 0) {
-        // ✅ FIXED: Use getOrderTotal helper for order amount
         const orderData = {
           id: data[0].order_id,
           user_id: data[0].user_id,
           status: data[0].order_status,
           payment_status: data[0].payment_status,
           payment_method: data[0].payment_method,
-          // ✅ Store all billing fields for helper to use
           order_total: data[0].order_total,
           amount: data[0].amount,
           total_price: data[0].total_price,
           subtotal: data[0].subtotal,
           total_gst: data[0].total_gst,
+          gst_5_total: data[0].gst_5_total,
+          gst_18_total: data[0].gst_18_total,
           shipping_cost: data[0].shipping_cost,
           created_at: data[0].order_date,
           updated_at: data[0].updated_at,
@@ -364,18 +295,21 @@ export default function OrderDetail() {
           production_status: null,
         };
 
-        // ✅ FIXED: Store raw billing data for items (helpers will extract correct values)
+        // Map order items with all billing fields
         const orderItems = data.map((row) => ({
           id: row.product_id,
           product_id: row.product_id,
           quantity: row.quantity,
-          // ✅ Store ALL price fields - helpers will determine correct one
+          // All price fields for billing utilities to use
           item_total: row.item_total,
           total_price: row.total_price,
           unit_price: row.unit_price,
           unit_price_with_gst: row.unit_price_with_gst,
           base_price: row.base_price,
           gst_amount: row.gst_amount,
+          gst_rate: row.gst_rate,
+          price: row.base_price,  // For calculateItemPricing
+          price_at_order: row.unit_price_with_gst, // Price WITH GST
           // Product details
           name: row.product_name,
           title: row.product_name,
@@ -396,18 +330,9 @@ export default function OrderDetail() {
         setOrder(orderData);
         setItems(orderItems);
 
-        console.log("✅ Order loaded (BILLING FIX V2):");
-        console.log("  - Order Total (helper):", getOrderTotal(orderData));
+        console.log("✅ Order loaded (BILLING FIX):");
+        console.log("  - Order Data:", orderData);
         console.log("  - Items:", orderItems.length);
-        orderItems.forEach((item, i) => {
-          console.log(`  - Item ${i + 1}:`, {
-            name: item.name,
-            quantity: item.quantity,
-            item_total_raw: item.item_total,
-            item_total_calculated: getItemTotal(item),
-            unit_price_calculated: getUnitPrice(item),
-          });
-        });
       } else {
         console.warn("⚠️ No order data found");
         setOrder(null);
@@ -443,9 +368,9 @@ export default function OrderDetail() {
     setProcessingPayment(true);
 
     try {
-      // ✅ FIXED: Use billing helper
-      const orderTotal = getOrderTotal(order);
-      const totalAmount = rupeesToPaise(orderTotal);
+      // ✅ Use billing utilities
+      const totals = calculateOrderTotals(items, order.shipping_cost || 0);
+      const totalAmount = Math.round(totals.grandTotal * 100); // Convert to paise
 
       const form = document.createElement("form");
       form.method = "POST";
@@ -569,8 +494,8 @@ export default function OrderDetail() {
     ? new Date(order.created_at).toLocaleString()
     : "—";
 
-  // ✅ FIXED: Use billing helper for order total
-  const orderTotal = getOrderTotal(order);
+  // ✅ Calculate totals using billing utilities
+  const totals = calculateOrderTotals(items, order.shipping_cost || 0);
 
   return (
     <Layout>
@@ -691,8 +616,7 @@ export default function OrderDetail() {
                       ) : (
                         <>
                           <CreditCard className="h-4 w-4 mr-2" />
-                          {/* ✅ FIXED: Use formatPrice helper */}
-                          Pay {formatPrice(orderTotal)}
+                          Pay {formatCurrency(totals.grandTotal)}
                         </>
                       )}
                     </Button>
@@ -714,9 +638,8 @@ export default function OrderDetail() {
                   <CardContent className="p-4 sm:p-6">
                     <div className="space-y-4 sm:space-y-6">
                       {items.map((item, index) => {
-                        // ✅ FIXED: Use helper functions for item prices
-                        const itemTotal = getItemTotal(item);
-                        const unitPrice = getUnitPrice(item);
+                        // ✅ Use billing utilities for pricing
+                        const pricing = calculateItemPricing(item);
 
                         return (
                           <div key={item.item_id || index}>
@@ -755,17 +678,16 @@ export default function OrderDetail() {
                                     </>
                                   )}
                                   <span>•</span>
-                                  <span>Qty: {item.quantity}</span>
+                                  <span>Qty: {pricing.quantity}</span>
                                 </div>
 
                                 <div className="flex items-baseline gap-2">
-                                  {/* ✅ FIXED: Use formatPrice helper */}
                                   <span className="text-base sm:text-lg font-bold text-gray-900">
-                                    {formatPrice(itemTotal)}
+                                    {formatCurrency(pricing.itemTotal)}
                                   </span>
-                                  {item.quantity > 1 && (
+                                  {pricing.quantity > 1 && (
                                     <span className="text-xs sm:text-sm text-gray-500">
-                                      ({formatPrice(unitPrice)} each)
+                                      ({formatCurrency(pricing.unitPriceWithGST)} each)
                                     </span>
                                   )}
                                 </div>
@@ -822,17 +744,25 @@ export default function OrderDetail() {
                     <div className="space-y-3 sm:space-y-4">
                       <div className="flex justify-between text-sm sm:text-base">
                         <span className="text-gray-600">Subtotal</span>
-                        {/* ✅ FIXED: Use formatPrice helper */}
                         <span className="font-semibold">
-                          {formatPrice(orderTotal)}
+                          {formatCurrency(totals.subtotal)}
                         </span>
                       </div>
 
-                      {order.shipping_cost && Number(order.shipping_cost) > 0 && (
+                      {totals.totalGST > 0 && (
+                        <div className="flex justify-between text-sm sm:text-base text-orange-600">
+                          <span>GST</span>
+                          <span className="font-semibold">
+                            +{formatCurrency(totals.totalGST)}
+                          </span>
+                        </div>
+                      )}
+
+                      {totals.shippingCost > 0 && (
                         <div className="flex justify-between text-sm sm:text-base">
                           <span className="text-gray-600">Shipping</span>
                           <span className="font-semibold">
-                            {formatPrice(Number(order.shipping_cost))}
+                            {formatCurrency(totals.shippingCost)}
                           </span>
                         </div>
                       )}
@@ -841,9 +771,8 @@ export default function OrderDetail() {
 
                       <div className="flex justify-between text-base sm:text-lg font-bold">
                         <span>Total</span>
-                        {/* ✅ FIXED: Use formatPrice helper */}
                         <span className="text-primary">
-                          {formatPrice(orderTotal)}
+                          {formatCurrency(totals.grandTotal)}
                         </span>
                       </div>
 
@@ -961,7 +890,10 @@ export default function OrderDetail() {
         </div>
       </div>
       {showInvoice && (
-        <InvoiceGenerator order={order} onClose={() => setShowInvoice(false)} />
+        <InvoiceGenerator 
+          order={{ ...order, items }} 
+          onClose={() => setShowInvoice(false)} 
+        />
       )}
     </Layout>
   );
