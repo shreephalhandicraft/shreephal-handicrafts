@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import InvoiceGenerator from "@/components/InvoiceGenerator";
-import { calculateItemPricing, calculateOrderTotals, formatCurrency } from "@/utils/billingUtils";  // ✅ FIXED import
+import { formatCurrency } from "@/utils/billingUtils";
 import {
   ArrowLeft,
   CheckCircle,
@@ -252,7 +252,7 @@ export default function OrderDetail() {
     try {
       setLoading(true);
 
-      console.log("\n=== FETCHING ORDER DETAILS (BILLING FIX) ===");
+      console.log("\n=== FETCHING ORDER DETAILS (USE DB VALUES) ===");
       console.log("Order ID:", orderId);
       console.log("User ID:", user.id);
 
@@ -274,14 +274,15 @@ export default function OrderDetail() {
           status: data[0].order_status,
           payment_status: data[0].payment_status,
           payment_method: data[0].payment_method,
-          order_total: data[0].order_total,
-          amount: data[0].amount,
+          // ✅ USE DATABASE VALUES DIRECTLY - NO RECALCULATION
+          order_total: parseFloat(data[0].order_total) || 0,
+          amount: parseFloat(data[0].amount) || 0,
           total_price: data[0].total_price,
-          subtotal: data[0].subtotal,
-          total_gst: data[0].total_gst,
-          gst_5_total: data[0].gst_5_total,
-          gst_18_total: data[0].gst_18_total,
-          shipping_cost: data[0].shipping_cost,
+          subtotal: parseFloat(data[0].subtotal) || 0,
+          total_gst: parseFloat(data[0].total_gst) || 0,
+          gst_5_total: parseFloat(data[0].gst_5_total) || 0,
+          gst_18_total: parseFloat(data[0].gst_18_total) || 0,
+          shipping_cost: parseFloat(data[0].shipping_cost) || 0,
           created_at: data[0].order_date,
           updated_at: data[0].updated_at,
           shipping_info: data[0].shipping_info,
@@ -295,28 +296,24 @@ export default function OrderDetail() {
           production_status: null,
         };
 
-        // Map order items with all billing fields
+        // Map order items with all pricing fields from database
         const orderItems = data.map((row) => {
-          // ✅ FIX: Convert numeric gst_rate to boolean flags for billingUtils
           const gstRate = parseFloat(row.gst_rate) || 0;
           
           return {
             id: row.product_id,
             product_id: row.product_id,
             quantity: row.quantity,
-            // All price fields for billing utilities to use
-            item_total: row.item_total,
+            // ✅ ALL PRICING FROM DATABASE - NO CALCULATION
+            item_total: parseFloat(row.item_total) || 0,
             total_price: row.total_price,
             unit_price: row.unit_price,
-            unit_price_with_gst: row.unit_price_with_gst,
-            base_price: row.base_price,
-            gst_amount: row.gst_amount,
+            base_price: parseFloat(row.base_price) || 0,
+            gst_amount: parseFloat(row.gst_amount) || 0,
             gst_rate: gstRate,
-            // ✅ NEW: Add GST flags for billingUtils compatibility
+            // ✅ Add flags for invoice display
             gst_5pct: gstRate === 5,
             gst_18pct: gstRate === 18,
-            price: row.base_price,  // For calculateItemPricing
-            price_at_order: row.unit_price_with_gst, // Price WITH GST
             // Product details
             name: row.product_name,
             title: row.product_name,
@@ -338,14 +335,15 @@ export default function OrderDetail() {
         setOrder(orderData);
         setItems(orderItems);
 
-        console.log("✅ Order loaded (BILLING FIX):");
+        console.log("✅ Order loaded (USING DB VALUES):");
         console.log("  - Order Data:", orderData);
-        console.log("  - Items:", orderItems.length);
-        console.log("  - First item GST data:", {
-          gst_rate: orderItems[0]?.gst_rate,
-          gst_5pct: orderItems[0]?.gst_5pct,
-          gst_18pct: orderItems[0]?.gst_18pct
+        console.log("  - Totals from DB:", {
+          subtotal: orderData.subtotal,
+          total_gst: orderData.total_gst,
+          shipping_cost: orderData.shipping_cost,
+          order_total: orderData.order_total
         });
+        console.log("  - Items:", orderItems.length);
       } else {
         console.warn("⚠️ No order data found");
         setOrder(null);
@@ -381,9 +379,8 @@ export default function OrderDetail() {
     setProcessingPayment(true);
 
     try {
-      // ✅ Use billing utilities
-      const totals = calculateOrderTotals(items, order.shipping_cost || 0);
-      const totalAmount = Math.round(totals.grandTotal * 100); // Convert to paise
+      // ✅ Use order_total from database (already in rupees)
+      const totalAmount = Math.round(order.order_total * 100); // Convert to paise
 
       const form = document.createElement("form");
       form.method = "POST";
@@ -507,10 +504,22 @@ export default function OrderDetail() {
     ? new Date(order.created_at).toLocaleString()
     : "—";
 
-  // ✅ Calculate totals using billing utilities
-  const totals = calculateOrderTotals(items, order.shipping_cost || 0);
+  // ✅ Use database values directly - no calculation needed
+  const subtotal = order.subtotal;
+  const totalGST = order.total_gst;
+  const gst5Total = order.gst_5_total;
+  const gst18Total = order.gst_18_total;
+  const shippingCost = order.shipping_cost;
+  const grandTotal = order.order_total;
   
-  console.log("💰 Calculated totals:", totals);
+  console.log("💰 Display totals (from DB):", {
+    subtotal,
+    totalGST,
+    gst5Total,
+    gst18Total,
+    shippingCost,
+    grandTotal
+  });
 
   return (
     <Layout>
@@ -631,7 +640,7 @@ export default function OrderDetail() {
                       ) : (
                         <>
                           <CreditCard className="h-4 w-4 mr-2" />
-                          Pay {formatCurrency(totals.grandTotal)}
+                          Pay {formatCurrency(grandTotal)}
                         </>
                       )}
                     </Button>
@@ -653,20 +662,13 @@ export default function OrderDetail() {
                   <CardContent className="p-4 sm:p-6">
                     <div className="space-y-4 sm:space-y-6">
                       {items.map((item, index) => {
-                        // ✅ Use billing utilities for pricing
-                        const pricing = calculateItemPricing(item);
-                        
-                        console.log(`📦 Item ${index + 1} pricing:`, {
-                          name: item.name,
-                          input: {
-                            price: item.price,
-                            gst_rate: item.gst_rate,
-                            gst_5pct: item.gst_5pct,
-                            gst_18pct: item.gst_18pct,
-                            quantity: item.quantity
-                          },
-                          output: pricing
-                        });
+                        // ✅ Use database values directly
+                        const quantity = item.quantity;
+                        const basePrice = item.base_price;
+                        const gstRate = item.gst_rate;
+                        const gstAmount = item.gst_amount;
+                        const itemTotal = item.item_total;
+                        const priceWithGst = basePrice + gstAmount;
 
                         return (
                           <div key={item.item_id || index}>
@@ -705,22 +707,22 @@ export default function OrderDetail() {
                                     </>
                                   )}
                                   <span>•</span>
-                                  <span>Qty: {pricing.quantity}</span>
-                                  {pricing.gstRate > 0 && (
+                                  <span>Qty: {quantity}</span>
+                                  {gstRate > 0 && (
                                     <>
                                       <span>•</span>
-                                      <span className="text-orange-600">GST @{pricing.gstRate}%</span>
+                                      <span className="text-orange-600">GST @{gstRate}%</span>
                                     </>
                                   )}
                                 </div>
 
                                 <div className="flex items-baseline gap-2">
                                   <span className="text-base sm:text-lg font-bold text-gray-900">
-                                    {formatCurrency(pricing.itemTotal)}
+                                    {formatCurrency(itemTotal)}
                                   </span>
-                                  {pricing.quantity > 1 && (
+                                  {quantity > 1 && (
                                     <span className="text-xs sm:text-sm text-gray-500">
-                                      ({formatCurrency(pricing.unitPriceWithGST)} each)
+                                      ({formatCurrency(priceWithGst)} each)
                                     </span>
                                   )}
                                 </div>
@@ -778,24 +780,24 @@ export default function OrderDetail() {
                       <div className="flex justify-between text-sm sm:text-base">
                         <span className="text-gray-600">Subtotal</span>
                         <span className="font-semibold">
-                          {formatCurrency(totals.subtotal)}
+                          {formatCurrency(subtotal)}
                         </span>
                       </div>
 
-                      {totals.totalGST > 0 && (
+                      {totalGST > 0 && (
                         <div className="flex justify-between text-sm sm:text-base text-orange-600">
                           <span>GST</span>
                           <span className="font-semibold">
-                            +{formatCurrency(totals.totalGST)}
+                            +{formatCurrency(totalGST)}
                           </span>
                         </div>
                       )}
 
-                      {totals.shippingCost > 0 && (
+                      {shippingCost > 0 && (
                         <div className="flex justify-between text-sm sm:text-base">
                           <span className="text-gray-600">Shipping</span>
                           <span className="font-semibold">
-                            {formatCurrency(totals.shippingCost)}
+                            {formatCurrency(shippingCost)}
                           </span>
                         </div>
                       )}
@@ -805,7 +807,7 @@ export default function OrderDetail() {
                       <div className="flex justify-between text-base sm:text-lg font-bold">
                         <span>Total</span>
                         <span className="text-primary">
-                          {formatCurrency(totals.grandTotal)}
+                          {formatCurrency(grandTotal)}
                         </span>
                       </div>
 
