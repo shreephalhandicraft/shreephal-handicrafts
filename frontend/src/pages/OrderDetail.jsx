@@ -252,103 +252,135 @@ export default function OrderDetail() {
     try {
       setLoading(true);
 
-      console.log("\n=== FETCHING ORDER DETAILS (USE DB VALUES) ===");
+      console.log("\n=== FETCHING ORDER DETAILS WITH BILLING SNAPSHOT ===");
       console.log("Order ID:", orderId);
       console.log("User ID:", user.id);
 
-      // Query the comprehensive view with all order and item details
-      const { data, error } = await supabase
-        .from("order_details_full")
-        .select("*")
-        .eq("order_id", orderId)
-        .eq("user_id", user.id);
+      // ✅ STEP 1: Fetch order with billing snapshot from orders table
+      const { data: orderData, error: orderError } = await supabase
+        .from("orders")
+        .select(`
+          id,
+          user_id,
+          status,
+          payment_status,
+          payment_method,
+          order_total,
+          amount,
+          total_price,
+          subtotal,
+          total_gst,
+          gst_5_total,
+          gst_18_total,
+          shipping_cost,
+          created_at,
+          updated_at,
+          shipping_info,
+          delivery_info,
+          order_notes,
+          customization_details,
+          requires_customization,
+          transaction_id
+        `)
+        .eq("id", orderId)
+        .eq("user_id", user.id)
+        .single();
 
-      console.log("Order details from view:", { data, error });
+      console.log("📦 Order from orders table:", { orderData, orderError });
 
-      if (error) throw error;
-
-      if (data && data.length > 0) {
-        const orderData = {
-          id: data[0].order_id,
-          user_id: data[0].user_id,
-          status: data[0].order_status,
-          payment_status: data[0].payment_status,
-          payment_method: data[0].payment_method,
-          // ✅ USE DATABASE VALUES DIRECTLY - NO RECALCULATION
-          order_total: parseFloat(data[0].order_total) || 0,
-          amount: parseFloat(data[0].amount) || 0,
-          total_price: data[0].total_price,
-          subtotal: parseFloat(data[0].subtotal) || 0,
-          total_gst: parseFloat(data[0].total_gst) || 0,
-          gst_5_total: parseFloat(data[0].gst_5_total) || 0,
-          gst_18_total: parseFloat(data[0].gst_18_total) || 0,
-          shipping_cost: parseFloat(data[0].shipping_cost) || 0,
-          created_at: data[0].order_date,
-          updated_at: data[0].updated_at,
-          shipping_info: data[0].shipping_info,
-          delivery_info: data[0].delivery_info,
-          order_notes: data[0].order_notes,
-          customization_details: null,
-          requires_customization: data[0].customization_data ? true : false,
-          estimated_delivery_days: null,
-          upi_reference: null,
-          transaction_id: data[0].transaction_id,
-          production_status: null,
-        };
-
-        // Map order items with all pricing fields from database
-        const orderItems = data.map((row) => {
-          const gstRate = parseFloat(row.gst_rate) || 0;
-          
-          return {
-            id: row.product_id,
-            product_id: row.product_id,
-            quantity: row.quantity,
-            // ✅ ALL PRICING FROM DATABASE - NO CALCULATION
-            item_total: parseFloat(row.item_total) || 0,
-            total_price: row.total_price,
-            unit_price: row.unit_price,
-            base_price: parseFloat(row.base_price) || 0,
-            gst_amount: parseFloat(row.gst_amount) || 0,
-            gst_rate: gstRate,
-            // ✅ Add flags for invoice display
-            gst_5pct: gstRate === 5,
-            gst_18pct: gstRate === 18,
-            // Product details
-            name: row.product_name,
-            title: row.product_name,
-            image: row.product_image,
-            catalog_number: row.catalog_number,
-            material_type: null,
-            weight_grams: null,
-            item_id: row.item_id,
-            item_created_at: null,
-            customization: row.customization_data,
-            variant: {
-              sizeDisplay: row.size_display,
-              sizeNumeric: row.size_numeric,
-              sizeUnit: row.size_unit,
-            },
-          };
-        });
-
-        setOrder(orderData);
-        setItems(orderItems);
-
-        console.log("✅ Order loaded (USING DB VALUES):");
-        console.log("  - Order Data:", orderData);
-        console.log("  - Totals from DB:", {
-          subtotal: orderData.subtotal,
-          total_gst: orderData.total_gst,
-          shipping_cost: orderData.shipping_cost,
-          order_total: orderData.order_total
-        });
-        console.log("  - Items:", orderItems.length);
-      } else {
+      if (orderError) throw orderError;
+      if (!orderData) {
         console.warn("⚠️ No order data found");
         setOrder(null);
         setItems([]);
+        setLoading(false);
+        return;
       }
+
+      // ✅ STEP 2: Fetch order items from order_details_full view
+      const { data: itemsData, error: itemsError } = await supabase
+        .from("order_details_full")
+        .select("*")
+        .eq("order_id", orderId);
+
+      console.log("📋 Items from order_details_full:", { itemsData, itemsError });
+
+      if (itemsError) {
+        console.warn("⚠️ Failed to fetch items:", itemsError);
+      }
+
+      // ✅ STEP 3: Map order data with billing snapshot
+      const mappedOrder = {
+        id: orderData.id,
+        user_id: orderData.user_id,
+        status: orderData.status,
+        payment_status: orderData.payment_status,
+        payment_method: orderData.payment_method,
+        // 💰 BILLING SNAPSHOT (all in rupees)
+        order_total: parseFloat(orderData.order_total) || 0,
+        amount: parseFloat(orderData.amount) || 0,
+        total_price: orderData.total_price,
+        subtotal: parseFloat(orderData.subtotal) || 0,
+        total_gst: parseFloat(orderData.total_gst) || 0,
+        gst_5_total: parseFloat(orderData.gst_5_total) || 0,
+        gst_18_total: parseFloat(orderData.gst_18_total) || 0,
+        shipping_cost: parseFloat(orderData.shipping_cost) || 0,
+        created_at: orderData.created_at,
+        updated_at: orderData.updated_at,
+        shipping_info: orderData.shipping_info,
+        delivery_info: orderData.delivery_info,
+        order_notes: orderData.order_notes,
+        customization_details: orderData.customization_details,
+        requires_customization: orderData.requires_customization,
+        transaction_id: orderData.transaction_id,
+      };
+
+      // ✅ STEP 4: Map order items with pricing from database
+      const mappedItems = itemsData?.map((row) => {
+        const gstRate = parseFloat(row.gst_rate) || 0;
+        
+        return {
+          id: row.product_id,
+          product_id: row.product_id,
+          quantity: row.quantity,
+          // 💰 PRICING FROM DATABASE (all in rupees)
+          item_total: parseFloat(row.item_total) || 0,
+          total_price: row.total_price,
+          unit_price: row.unit_price,
+          base_price: parseFloat(row.base_price) || 0,
+          gst_amount: parseFloat(row.gst_amount) || 0,
+          gst_rate: gstRate,
+          // ✅ Add flags for invoice display
+          gst_5pct: gstRate === 5,
+          gst_18pct: gstRate === 18,
+          // Product details
+          name: row.product_name,
+          title: row.product_name,
+          image: row.product_image,
+          catalog_number: row.catalog_number,
+          item_id: row.item_id,
+          customization: row.customization_data,
+          variant: {
+            sizeDisplay: row.size_display,
+            sizeNumeric: row.size_numeric,
+            sizeUnit: row.size_unit,
+          },
+        };
+      }) || [];
+
+      setOrder(mappedOrder);
+      setItems(mappedItems);
+
+      console.log("✅ Order loaded with billing snapshot:");
+      console.log("  💰 Billing totals:", {
+        subtotal: mappedOrder.subtotal,
+        total_gst: mappedOrder.total_gst,
+        gst_5_total: mappedOrder.gst_5_total,
+        gst_18_total: mappedOrder.gst_18_total,
+        shipping_cost: mappedOrder.shipping_cost,
+        order_total: mappedOrder.order_total
+      });
+      console.log("  📦 Items:", mappedItems.length);
     } catch (error) {
       console.error("Error fetching order:", error);
       toast({
