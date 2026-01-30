@@ -584,7 +584,7 @@ export function ProductsPage() {
                                 variant="outline"
                                 size="sm"
                                 onClick={() =>
-                                  navigate(`/admin/products/edit/${product.id}`)
+                                  navigate("/admin/products/edit/" + product.id)
                                 }
                                 className="hover:bg-blue-50 hover:border-blue-300"
                               >
