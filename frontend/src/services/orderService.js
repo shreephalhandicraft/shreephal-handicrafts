@@ -1,6 +1,13 @@
 import { supabase } from '@/lib/supabaseClient';
+import { 
+  calculateItemBilling, 
+  calculateOrderBilling, 
+  getGSTRate,
+  roundTo2Decimals 
+} from '@/utils/billingUtils';
 
 /**
+ * ✅ BILLING FIX: Consistent GST-separated calculations
  * ✅ FIX ARCH #3: Business Logic Extraction
  * ✅ FIX CRITICAL BUG #2: Stock Race Condition (Using DB RPC)
  * 
@@ -9,22 +16,41 @@ import { supabase } from '@/lib/supabaseClient';
  */
 
 /**
- * Calculate order totals
+ * Calculate order totals with proper GST separation
  * @param {Array} cartItems - Cart items with price and quantity
- * @returns {Object} { subtotal, shipping, tax, total }
+ * @param {number} shippingCost - Shipping cost (optional)
+ * @returns {Object} { subtotal, gst_5_total, gst_18_total, total_gst, shipping_cost, order_total }
  */
-export const calculateOrderTotals = (cartItems) => {
-  const subtotal = cartItems.reduce((sum, item) => {
-    const itemPrice = item.priceWithGst || item.price || 0;
-    return sum + (itemPrice * item.quantity);
-  }, 0);
-
-  // Free shipping over ₹500
-  const shipping = subtotal >= 500 ? 0 : 50;
-  const tax = 0; // GST already included in priceWithGst
-  const total = subtotal + shipping + tax;
-
-  return { subtotal, shipping, tax, total };
+export const calculateOrderTotals = (cartItems, shippingCost = null) => {
+  // Prepare items with billing details
+  const itemsWithBilling = cartItems.map(item => {
+    // Determine GST rate (from item or category)
+    const gstRate = item.gstRate || getGSTRate(item.category);
+    
+    return {
+      ...item,
+      gstRate,
+      billing: calculateItemBilling({
+        price: item.price || item.basePrice,
+        quantity: item.quantity,
+        gstRate
+      })
+    };
+  });
+  
+  // Calculate shipping if not provided
+  let shipping = shippingCost;
+  if (shipping === null) {
+    // Get subtotal for shipping calculation
+    const tempSubtotal = itemsWithBilling.reduce((sum, item) => 
+      sum + item.billing.item_subtotal, 0
+    );
+    // Free shipping over ₹500
+    shipping = tempSubtotal >= 500 ? 0 : 50;
+  }
+  
+  // Calculate order billing
+  return calculateOrderBilling(itemsWithBilling, shipping);
 };
 
 /**
@@ -118,27 +144,42 @@ export const checkStockAvailability = async (cartItems) => {
 };
 
 /**
- * Create order record
+ * Create order record with proper billing fields
  * @param {Object} orderData - Order information
  * @param {string} userId - User ID
- * @param {Object} totals - Order totals { subtotal, shipping, total }
+ * @param {string} customerId - Customer ID
+ * @param {Object} totals - Order totals from calculateOrderTotals()
  * @returns {Promise<Object>} Created order
  */
-export const createOrder = async (orderData, userId, totals) => {
+export const createOrder = async (orderData, userId, customerId, totals) => {
   const { data: order, error } = await supabase
     .from('orders')
     .insert({
       user_id: userId,
-      total_amount: totals.total,
-      shipping_amount: totals.shipping,
+      customer_id: customerId,
+      
+      // Billing fields (properly separated)
+      subtotal: totals.subtotal,
+      gst_5_total: totals.gst_5_total,
+      gst_18_total: totals.gst_18_total,
+      total_gst: totals.total_gst,
+      shipping_cost: totals.shipping_cost,
+      order_total: totals.order_total,
+      grand_total: totals.grand_total,
+      amount: totals.amount,
+      total_price: totals.total_price, // In paise
+      
+      // Order details
+      status: 'pending',
       payment_method: orderData.paymentMethod,
       payment_status: orderData.paymentMethod === 'cod' ? 'pending' : 'pending',
-      order_status: 'pending',
-      shipping_address: orderData.shippingAddress,
-      billing_address: orderData.billingAddress,
-      contact_phone: orderData.phone,
-      contact_email: orderData.email,
-      notes: orderData.notes || null,
+      
+      // Shipping info
+      shipping_info: orderData.shippingAddress,
+      
+      // Other fields
+      order_notes: orderData.notes || null,
+      items: [], // Will be populated via order_items table
     })
     .select()
     .single();
@@ -148,19 +189,54 @@ export const createOrder = async (orderData, userId, totals) => {
 };
 
 /**
- * Create order items
+ * Create order items with proper billing fields
  * @param {string} orderId - Order ID
  * @param {Array} cartItems - Cart items to add to order
  * @returns {Promise<Array>} Created order items
  */
 export const createOrderItems = async (orderId, cartItems) => {
-  const orderItems = cartItems.map(item => ({
-    order_id: orderId,
-    product_variant_id: item.variantId,
-    quantity: item.quantity,
-    price_at_purchase: item.priceWithGst || item.price,
-    customization_details: item.customization || null,
-  }));
+  const orderItems = cartItems.map(item => {
+    // Determine GST rate
+    const gstRate = item.gstRate || getGSTRate(item.category);
+    
+    // Calculate item billing
+    const billing = calculateItemBilling({
+      price: item.price || item.basePrice,
+      quantity: item.quantity,
+      gstRate
+    });
+    
+    return {
+      order_id: orderId,
+      product_id: item.productId,
+      variant_id: item.variantId,
+      catalog_number: item.catalogNumber,
+      quantity: item.quantity,
+      
+      // Billing fields
+      base_price: billing.base_price,
+      gst_rate: billing.gst_rate,
+      gst_amount: billing.gst_amount,
+      unit_price_with_gst: billing.unit_price_with_gst,
+      item_subtotal: billing.item_subtotal,
+      item_gst_total: billing.item_gst_total,
+      item_total: billing.item_total,
+      
+      // Legacy fields for compatibility
+      unit_price: Math.round(billing.unit_price_with_gst * 100), // In paise
+      total_price: Math.round(billing.item_total * 100), // In paise
+      price_at_order: billing.unit_price_with_gst,
+      
+      // Product info snapshot
+      product_name: item.name,
+      product_image_url: item.image,
+      variant_sku: item.sku,
+      
+      // Customization
+      customization_data: item.customization || null,
+      customization_snapshot: item.customization || null,
+    };
+  });
 
   const { data, error } = await supabase
     .from('order_items')
@@ -229,9 +305,10 @@ export const decrementStock = async (cartItems) => {
  * @param {Object} orderData - Order information
  * @param {Array} cartItems - Cart items
  * @param {string} userId - User ID
+ * @param {string} customerId - Customer ID
  * @returns {Promise<Object>} { order, orderItems }
  */
-export const processOrder = async (orderData, cartItems, userId) => {
+export const processOrder = async (orderData, cartItems, userId, customerId) => {
   // 1. Validate cart
   const validation = validateCartItems(cartItems);
   if (!validation.valid) {
@@ -251,11 +328,11 @@ export const processOrder = async (orderData, cartItems, userId) => {
     throw error;
   }
 
-  // 3. Calculate totals
+  // 3. Calculate totals (with proper GST separation)
   const totals = calculateOrderTotals(cartItems);
 
   // 4. Create order
-  const order = await createOrder(orderData, userId, totals);
+  const order = await createOrder(orderData, userId, customerId, totals);
 
   try {
     // 5. Create order items
@@ -282,7 +359,7 @@ export const cancelOrder = async (orderId) => {
   // Get order items
   const { data: orderItems, error: fetchError } = await supabase
     .from('order_items')
-    .select('product_variant_id, quantity')
+    .select('variant_id, quantity')
     .eq('order_id', orderId);
 
   if (fetchError) throw fetchError;
@@ -292,21 +369,21 @@ export const cancelOrder = async (orderId) => {
     const { data: variant } = await supabase
       .from('product_variants')
       .select('stock_quantity')
-      .eq('id', item.product_variant_id)
+      .eq('id', item.variant_id)
       .single();
 
     if (variant) {
       await supabase
         .from('product_variants')
         .update({ stock_quantity: variant.stock_quantity + item.quantity })
-        .eq('id', item.product_variant_id);
+        .eq('id', item.variant_id);
     }
   }
 
   // Update order status
   await supabase
     .from('orders')
-    .update({ order_status: 'cancelled' })
+    .update({ status: 'cancelled' })
     .eq('id', orderId);
 };
 

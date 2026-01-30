@@ -1,261 +1,192 @@
 /**
- * ✅ CENTRALIZED BILLING SYSTEM
- * All billing calculations across the project use this single source of truth.
+ * Billing Utilities
  * 
- * GST RULES:
- * - If product.gst_5pct = true → Apply 5% GST
- * - If product.gst_18pct = true → Apply 18% GST  
- * - If both false/null → No GST (0%)
+ * Centralized billing calculation logic with proper GST handling.
+ * Ensures consistency across orders and order_items tables.
  * 
- * PRICE STRUCTURE:
- * - Base Price: Product's base price (without GST)
- * - GST Amount: Base Price × GST Rate
- * - Price with GST: Base Price + GST Amount
- * - Item Total: Price with GST × Quantity
+ * FORMULA:
+ * - Item Subtotal (base_price) = Price without GST
+ * - GST Amount = base_price × (gst_rate / 100)
+ * - Item Total = base_price + GST Amount
+ * - Order Subtotal = Sum of all item base_prices
+ * - Order Total GST = Sum of all GST amounts
+ * - Order Total = Order Subtotal + Order Total GST + Shipping
  */
 
 /**
- * Calculate GST rate from product flags
- * @param {Object} product - Product object with gst_5pct and gst_18pct fields
- * @returns {number} GST rate (0.05, 0.18, or 0)
+ * Get GST rate for a product category
+ * @param {string} category - Product category
+ * @returns {number} GST rate (5 or 18)
  */
-export const getGSTRate = (product) => {
-  if (!product) return 0;
+export const getGSTRate = (category) => {
+  // Handicraft items typically have 5% GST
+  // Other items might have 18% GST
+  const lowGSTCategories = ['handicrafts', 'handmade', 'art', 'decor'];
   
-  // Priority: 5% > 18% > None
-  if (product.gst_5pct === true) {
-    return 0.05;
-  } else if (product.gst_18pct === true) {
-    return 0.18;
+  if (category && lowGSTCategories.some(cat => 
+    category.toLowerCase().includes(cat)
+  )) {
+    return 5;
   }
   
-  return 0;
+  return 18; // Default GST rate
 };
 
 /**
- * Get GST percentage display (5, 18, or 0)
- * @param {Object} product
- * @returns {number} GST percentage
+ * Calculate item-level billing
+ * @param {Object} item - Order item
+ * @param {number} item.price - Base price (without GST)
+ * @param {number} item.quantity - Quantity
+ * @param {number} item.gstRate - GST rate (5 or 18)
+ * @returns {Object} Item billing details
  */
-export const getGSTPercentage = (product) => {
-  return Math.round(getGSTRate(product) * 100);
-};
-
-/**
- * Calculate GST amount for a product
- * @param {number} basePrice - Product's base price
- * @param {Object} product - Product object
- * @returns {number} GST amount
- */
-export const calculateGSTAmount = (basePrice, product) => {
-  const rate = getGSTRate(product);
-  return Number((basePrice * rate).toFixed(2));
-};
-
-/**
- * Calculate price including GST
- * @param {number} basePrice - Product's base price
- * @param {Object} product - Product object
- * @returns {number} Price with GST
- */
-export const calculatePriceWithGST = (basePrice, product) => {
-  const gstAmount = calculateGSTAmount(basePrice, product);
-  return Number((basePrice + gstAmount).toFixed(2));
-};
-
-/**
- * Calculate complete pricing breakdown for a single item
- * @param {Object} item - Cart item or order item
- * @param {Object} product - Product data (optional, can be part of item)
- * @returns {Object} Complete pricing breakdown
- */
-export const calculateItemPricing = (item, product = null) => {
-  const productData = product || item.product || item;
-  const basePrice = Number(item.price || productData.price || 0);
-  const quantity = Number(item.quantity || 1);
+export const calculateItemBilling = (item) => {
+  const { price, quantity, gstRate = 18 } = item;
   
-  const gstRate = getGSTRate(productData);
-  const gstPercentage = Math.round(gstRate * 100);
-  const gstAmount = Number((basePrice * gstRate).toFixed(2));
-  const priceWithGST = Number((basePrice + gstAmount).toFixed(2));
-  const itemTotal = Number((priceWithGST * quantity).toFixed(2));
-  const itemGSTTotal = Number((gstAmount * quantity).toFixed(2));
+  // Base price (without GST)
+  const basePrice = parseFloat(price) || 0;
+  
+  // Calculate GST amount per unit
+  const gstAmount = basePrice * (gstRate / 100);
+  
+  // Unit price with GST
+  const unitPriceWithGst = basePrice + gstAmount;
+  
+  // Item totals
+  const itemSubtotal = basePrice * quantity;
+  const itemGstTotal = gstAmount * quantity;
+  const itemTotal = itemSubtotal + itemGstTotal;
   
   return {
-    basePrice,
-    gstRate,
-    gstPercentage,
-    gstAmount,
-    priceWithGST,
-    quantity,
-    subtotal: Number((basePrice * quantity).toFixed(2)),
-    itemGSTTotal,
-    itemTotal,
+    base_price: roundTo2Decimals(basePrice),
+    gst_rate: gstRate,
+    gst_amount: roundTo2Decimals(gstAmount),
+    unit_price_with_gst: roundTo2Decimals(unitPriceWithGst),
+    item_subtotal: roundTo2Decimals(itemSubtotal),
+    item_gst_total: roundTo2Decimals(itemGstTotal),
+    item_total: roundTo2Decimals(itemTotal)
   };
 };
 
 /**
- * Calculate order totals from array of items
- * @param {Array} items - Array of cart/order items
- * @returns {Object} Order totals breakdown
+ * Calculate order-level billing from order items
+ * @param {Array} orderItems - Array of order items with billing details
+ * @param {number} shippingCost - Shipping cost (default: 0)
+ * @returns {Object} Order billing details
  */
-export const calculateOrderTotals = (items) => {
-  if (!Array.isArray(items) || items.length === 0) {
-    return {
-      subtotal: 0,
-      totalGST: 0,
-      gst5Total: 0,
-      gst18Total: 0,
-      noGSTTotal: 0,
-      grandTotal: 0,
-      itemCount: 0,
-      totalQuantity: 0,
-    };
-  }
-  
+export const calculateOrderBilling = (orderItems, shippingCost = 0) => {
   let subtotal = 0;
-  let totalGST = 0;
   let gst5Total = 0;
   let gst18Total = 0;
-  let noGSTTotal = 0;
-  let totalQuantity = 0;
   
-  items.forEach(item => {
-    const pricing = calculateItemPricing(item);
+  orderItems.forEach(item => {
+    const itemBilling = item.billing || calculateItemBilling(item);
     
-    subtotal += pricing.subtotal;
-    totalGST += pricing.itemGSTTotal;
-    totalQuantity += pricing.quantity;
+    subtotal += itemBilling.item_subtotal;
     
-    // Categorize by GST rate
-    if (pricing.gstRate === 0.05) {
-      gst5Total += pricing.itemGSTTotal;
-    } else if (pricing.gstRate === 0.18) {
-      gst18Total += pricing.itemGSTTotal;
-    } else {
-      noGSTTotal += pricing.subtotal;
+    // Separate GST by rate
+    if (item.gstRate === 5 || itemBilling.gst_rate === 5) {
+      gst5Total += itemBilling.item_gst_total;
+    } else if (item.gstRate === 18 || itemBilling.gst_rate === 18) {
+      gst18Total += itemBilling.item_gst_total;
     }
   });
   
+  const totalGst = gst5Total + gst18Total;
+  const orderTotal = subtotal + totalGst + shippingCost;
+  
   return {
-    subtotal: Number(subtotal.toFixed(2)),
-    totalGST: Number(totalGST.toFixed(2)),
-    gst5Total: Number(gst5Total.toFixed(2)),
-    gst18Total: Number(gst18Total.toFixed(2)),
-    noGSTTotal: Number(noGSTTotal.toFixed(2)),
-    grandTotal: Number((subtotal + totalGST).toFixed(2)),
-    itemCount: items.length,
-    totalQuantity,
+    subtotal: roundTo2Decimals(subtotal),
+    gst_5_total: roundTo2Decimals(gst5Total),
+    gst_18_total: roundTo2Decimals(gst18Total),
+    total_gst: roundTo2Decimals(totalGst),
+    shipping_cost: roundTo2Decimals(shippingCost),
+    order_total: roundTo2Decimals(orderTotal),
+    grand_total: roundTo2Decimals(orderTotal), // Same as order_total
+    amount: roundTo2Decimals(orderTotal), // Same as order_total
+    total_price: Math.round(orderTotal * 100) // In paise for legacy compatibility
   };
+};
+
+/**
+ * Convert price from paise to rupees
+ * @param {number} paise - Price in paise
+ * @returns {number} Price in rupees
+ */
+export const paiseToRupees = (paise) => {
+  return roundTo2Decimals((paise || 0) / 100);
+};
+
+/**
+ * Convert price from rupees to paise
+ * @param {number} rupees - Price in rupees
+ * @returns {number} Price in paise
+ */
+export const rupeesToPaise = (rupees) => {
+  return Math.round((rupees || 0) * 100);
+};
+
+/**
+ * Round to 2 decimal places
+ * @param {number} value - Value to round
+ * @returns {number} Rounded value
+ */
+export const roundTo2Decimals = (value) => {
+  return Math.round((value || 0) * 100) / 100;
 };
 
 /**
  * Format currency for display
- * @param {number} amount
- * @param {string} currency - Default INR
+ * @param {number} amount - Amount in rupees
+ * @param {boolean} showSymbol - Whether to show ₹ symbol
  * @returns {string} Formatted currency string
  */
-export const formatCurrency = (amount, currency = 'INR') => {
-  const symbol = currency === 'INR' ? '₹' : currency;
-  return `${symbol}${Number(amount).toLocaleString('en-IN', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
+export const formatCurrency = (amount, showSymbol = true) => {
+  const formatted = roundTo2Decimals(amount).toFixed(2);
+  return showSymbol ? `₹${formatted}` : formatted;
 };
 
 /**
- * Get GST breakdown text for display
- * @param {Object} product
- * @returns {string} GST description
+ * Validate billing calculations
+ * @param {Object} orderBilling - Order billing object
+ * @returns {Object} { valid: boolean, errors: Array }
  */
-export const getGSTDescription = (product) => {
-  const rate = getGSTPercentage(product);
-  
-  if (rate === 5) {
-    return 'GST @5%';
-  } else if (rate === 18) {
-    return 'GST @18%';
-  }
-  
-  return 'No GST';
-};
-
-/**
- * Validate billing data
- * @param {Object} data - Billing data to validate
- * @returns {Object} Validation result
- */
-export const validateBillingData = (data) => {
+export const validateBilling = (orderBilling) => {
   const errors = [];
   
-  if (!data.items || !Array.isArray(data.items) || data.items.length === 0) {
-    errors.push('No items in order');
+  const { subtotal, gst_5_total, gst_18_total, total_gst, shipping_cost, order_total } = orderBilling;
+  
+  // Check if total_gst matches sum of GST components
+  const calculatedTotalGst = roundTo2Decimals(gst_5_total + gst_18_total);
+  if (calculatedTotalGst !== total_gst) {
+    errors.push({
+      field: 'total_gst',
+      message: `Total GST mismatch. Expected ${calculatedTotalGst}, got ${total_gst}`
+    });
   }
   
-  if (data.items) {
-    data.items.forEach((item, index) => {
-      if (!item.price || Number(item.price) <= 0) {
-        errors.push(`Item ${index + 1}: Invalid price`);
-      }
-      if (!item.quantity || Number(item.quantity) <= 0) {
-        errors.push(`Item ${index + 1}: Invalid quantity`);
-      }
+  // Check if order_total matches formula
+  const calculatedOrderTotal = roundTo2Decimals(subtotal + total_gst + shipping_cost);
+  if (calculatedOrderTotal !== order_total) {
+    errors.push({
+      field: 'order_total',
+      message: `Order total mismatch. Expected ${calculatedOrderTotal}, got ${order_total}`
     });
   }
   
   return {
     valid: errors.length === 0,
-    errors,
-  };
-};
-
-/**
- * Calculate item snapshot for order storage
- * This creates the snapshot data to store in order_items table
- * @param {Object} item - Cart item
- * @param {Object} product - Full product data from database
- * @returns {Object} Item snapshot for database
- */
-export const createItemSnapshot = (item, product) => {
-  const pricing = calculateItemPricing(item, product);
-  
-  return {
-    product_id: item.productId || item.id || product.id,
-    variant_id: item.variantId || null,
-    quantity: pricing.quantity,
-    
-    // Snapshot data (frozen at order time)
-    unit_price: pricing.priceWithGST, // Price customer pays per unit (with GST)
-    base_price: pricing.basePrice,     // Base price without GST
-    gst_rate: pricing.gstRate,         // 0.05, 0.18, or 0
-    gst_amount: pricing.gstAmount,     // GST per unit
-    item_total: pricing.itemTotal,      // Total for this line item
-    
-    // Product snapshot
-    product_name: item.name || product.title,
-    product_image: item.image || product.image_url,
-    product_description: product.description || null,
-    catalog_number: product.catalog_number || null,
-    
-    // Variant snapshot
-    sku: item.variant?.sku || item.sku || null,
-    size_display: item.variant?.sizeDisplay || item.size_display || null,
-    
-    // Customization
-    customization_data: item.customization || null,
-    production_notes: item.production_notes || null,
+    errors
   };
 };
 
 export default {
   getGSTRate,
-  getGSTPercentage,
-  calculateGSTAmount,
-  calculatePriceWithGST,
-  calculateItemPricing,
-  calculateOrderTotals,
+  calculateItemBilling,
+  calculateOrderBilling,
+  paiseToRupees,
+  rupeesToPaise,
+  roundTo2Decimals,
   formatCurrency,
-  getGSTDescription,
-  validateBillingData,
-  createItemSnapshot,
+  validateBilling
 };
