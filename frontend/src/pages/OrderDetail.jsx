@@ -864,11 +864,11 @@ export default function OrderDetail() {
                         </Button>
                       )}
 
+                      {/* ✨ ENABLED: View Invoice button for all orders */}
                       <Button
                         variant="outline"
                         className="w-full"
                         onClick={() => setShowInvoice(true)}
-                        disabled={order.payment_status === "pending"}
                       >
                         <FileText className="h-4 w-4 mr-2" />
                         View Invoice
