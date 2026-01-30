@@ -42,6 +42,7 @@ export function useOrders() {
             customer_id: row.customer_id,
             status: row.order_status,
             payment_status: row.payment_status,
+            // 🐛 FIX: Store DB value but will recalculate after items are added
             amount: row.order_total,
             order_total: row.order_total,
             created_at: row.order_date,
@@ -114,8 +115,40 @@ export function useOrders() {
 
       const ordersArray = Object.values(groupedOrders);
       
+      // 🐛 FIX: Recalculate order_total from items if DB value is missing/invalid
+      ordersArray.forEach(order => {
+        // Calculate total from items
+        const calculatedTotal = order.items.reduce((sum, item) => {
+          const itemTotal = parseFloat(item.item_total) || 0;
+          return sum + itemTotal;
+        }, 0);
+
+        console.log(`Order ${order.id.slice(0,8)}: DB total = ${order.order_total}, Calculated = ${calculatedTotal}`);
+
+        // Use DB value if valid, otherwise use calculated
+        const dbTotal = parseFloat(order.order_total);
+        if (!dbTotal || isNaN(dbTotal) || dbTotal <= 0) {
+          console.warn(`⚠️ Order ${order.id.slice(0,8)}: Invalid DB total (${order.order_total}), using calculated total (${calculatedTotal})`);
+          order.order_total = calculatedTotal;
+          order.amount = calculatedTotal;
+        } else {
+          // Verify DB total matches calculated (within 1 rupee tolerance for rounding)
+          const difference = Math.abs(dbTotal - calculatedTotal);
+          if (difference > 1) {
+            console.warn(`⚠️ Order ${order.id.slice(0,8)}: DB total (${dbTotal}) differs from calculated (${calculatedTotal}) by ₹${difference.toFixed(2)}`);
+            // Use calculated total as it's more reliable
+            order.order_total = calculatedTotal;
+            order.amount = calculatedTotal;
+          }
+        }
+      });
+      
       console.log(`✅ Grouped into ${ordersArray.length} orders`);
-      console.log("Sample order items:", ordersArray[0]?.items);
+      console.log("Sample order with totals:", {
+        id: ordersArray[0]?.id?.slice(0,8),
+        order_total: ordersArray[0]?.order_total,
+        items_count: ordersArray[0]?.items?.length
+      });
 
       setOrders(ordersArray);
       setTotalOrders(ordersArray.length);
