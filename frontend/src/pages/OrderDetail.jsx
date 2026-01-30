@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import InvoiceGenerator from "@/components/InvoiceGenerator";
+import { getOrderTotal, formatPrice, rupeesToPaise } from "@/utils/billingHelpers";  // ✅ ADDED
 import {
   ArrowLeft,
   CheckCircle,
@@ -43,6 +44,74 @@ const PHONEPE_PAY_URL =
   process.env.NODE_ENV === "production"
     ? "https://Shreephal-Handicrafts.onrender.com/pay"
     : "http://localhost:3000/pay";
+
+/**
+ * ✅ FIXED: Helper to get correct item price (handles paise vs rupees)
+ * 
+ * Priority:
+ * 1. item_total (billing snapshot) - if looks correct (< 10000)
+ * 2. total_price / 100 (legacy paise field)
+ * 3. unit_price_with_gst * quantity
+ */
+const getItemTotal = (item) => {
+  // Priority 1: item_total (if it looks like rupees, not paise)
+  if (item.item_total != null) {
+    const itemTotal = Number(item.item_total);
+    // If item_total is < 10000, assume it's already in rupees
+    if (itemTotal > 0 && itemTotal < 10000) {
+      return itemTotal;
+    }
+    // If item_total is >= 10000, might be paise - convert
+    if (itemTotal >= 10000) {
+      return itemTotal / 100;
+    }
+  }
+
+  // Priority 2: total_price (legacy paise field)
+  if (item.total_price != null && Number(item.total_price) > 0) {
+    return Number(item.total_price) / 100;
+  }
+
+  // Priority 3: Calculate from unit price and quantity
+  if (item.unit_price_with_gst && item.quantity) {
+    return Number(item.unit_price_with_gst) * Number(item.quantity);
+  }
+
+  // Priority 4: Calculate from unit_price (legacy) and quantity
+  if (item.unit_price && item.quantity) {
+    return (Number(item.unit_price) / 100) * Number(item.quantity);
+  }
+
+  return 0;
+};
+
+/**
+ * ✅ FIXED: Helper to get unit price
+ */
+const getUnitPrice = (item) => {
+  // Priority 1: unit_price_with_gst (billing snapshot)
+  if (item.unit_price_with_gst != null && Number(item.unit_price_with_gst) > 0) {
+    return Number(item.unit_price_with_gst);
+  }
+
+  // Priority 2: base_price + gst_amount
+  if (item.base_price != null && item.gst_amount != null) {
+    return Number(item.base_price) + Number(item.gst_amount);
+  }
+
+  // Priority 3: Calculate from item_total / quantity
+  const itemTotal = getItemTotal(item);
+  if (itemTotal > 0 && item.quantity > 0) {
+    return itemTotal / Number(item.quantity);
+  }
+
+  // Priority 4: unit_price (legacy paise field)
+  if (item.unit_price != null && Number(item.unit_price) > 0) {
+    return Number(item.unit_price) / 100;
+  }
+
+  return 0;
+};
 
 // Helper function to render customization details
 const renderCustomizationDetails = (item, customizationDetails) => {
@@ -247,12 +316,12 @@ export default function OrderDetail() {
     fetchOrder();
   }, [orderId, user]);
 
-  // ✅ FIX: Corrected WHERE clause column names (added underscores)
+  // ✅ FIXED: Corrected WHERE clause column names and item price mapping
   const fetchOrder = async () => {
     try {
       setLoading(true);
 
-      console.log("\n=== FETCHING ORDER DETAILS (FIXED MAPPING) ===");
+      console.log("\n=== FETCHING ORDER DETAILS (BILLING FIX V2) ===");
       console.log("Order ID:", orderId);
       console.log("User ID:", user.id);
 
@@ -260,68 +329,85 @@ export default function OrderDetail() {
       const { data, error } = await supabase
         .from("order_details_full")
         .select("*")
-        .eq("order_id", orderId)  // ✅ FIXED: Added underscore (was: orderid)
-        .eq("user_id", user.id);  // ✅ FIXED: Added underscore (was: userid)
+        .eq("order_id", orderId)
+        .eq("user_id", user.id);
 
       console.log("Order details from view:", { data, error });
 
       if (error) throw error;
 
       if (data && data.length > 0) {
-        // ✅ FIXED: Map to correct column names from order_details_full view
+        // ✅ FIXED: Use getOrderTotal helper for order amount
         const orderData = {
-          id: data[0].order_id,  // ✅ Fixed
-          user_id: data[0].user_id,  // ✅ Fixed
-          status: data[0].order_status,  // ✅ Fixed
-          payment_status: data[0].payment_status,  // ✅ Fixed
-          payment_method: data[0].payment_method,  // ✅ Fixed
-          // ✅ Use 'amount' field (numeric) which exists in view
-          amount: data[0].amount ? Number(data[0].amount) : (data[0].order_total || 0),
-          // ✅ Fields not in view - set to null/default
-          shipping_cost: null,  // Not in order_details_full view
-          created_at: data[0].order_date,  // ✅ Fixed
-          updated_at: data[0].updated_at,  // ✅ Fixed
-          shipping_info: data[0].shipping_info,  // ✅ Fixed
-          delivery_info: data[0].delivery_info,  // ✅ Fixed
-          order_notes: data[0].order_notes,  // ✅ Fixed
-          customization_details: null,  // Not directly in view
-          requires_customization: data[0].customization_data ? true : false,  // ✅ Inferred from items
-          estimated_delivery_days: null,  // Not in view
-          upi_reference: null,  // Not in view
-          transaction_id: data[0].transaction_id,  // ✅ Fixed
-          production_status: null,  // Not in view
+          id: data[0].order_id,
+          user_id: data[0].user_id,
+          status: data[0].order_status,
+          payment_status: data[0].payment_status,
+          payment_method: data[0].payment_method,
+          // ✅ Store all billing fields for helper to use
+          order_total: data[0].order_total,
+          amount: data[0].amount,
+          total_price: data[0].total_price,
+          subtotal: data[0].subtotal,
+          total_gst: data[0].total_gst,
+          shipping_cost: data[0].shipping_cost,
+          created_at: data[0].order_date,
+          updated_at: data[0].updated_at,
+          shipping_info: data[0].shipping_info,
+          delivery_info: data[0].delivery_info,
+          order_notes: data[0].order_notes,
+          customization_details: null,
+          requires_customization: data[0].customization_data ? true : false,
+          estimated_delivery_days: null,
+          upi_reference: null,
+          transaction_id: data[0].transaction_id,
+          production_status: null,
         };
 
-        // ✅ FIXED: Extract items from view rows with correct column names
+        // ✅ FIXED: Store raw billing data for items (helpers will extract correct values)
         const orderItems = data.map((row) => ({
-          id: row.product_id,  // ✅ Fixed
-          product_id: row.product_id,  // ✅ Fixed
-          quantity: row.quantity,  // ✅ Already correct!
-          price: row.item_total || 0,  // ✅ Fixed
-          unit_price: row.unit_price || 0,  // ✅ Fixed
-          // Product details from view
-          name: row.product_name,  // ✅ Fixed
-          title: row.product_name,  // ✅ Fixed
-          image: row.product_image,  // ✅ Fixed
-          catalog_number: row.catalog_number,  // ✅ Fixed
-          material_type: null,  // Not in view
-          weight_grams: null,  // Not in view
-          // Store item metadata
-          item_id: row.item_id,  // ✅ Fixed
-          item_created_at: null,  // Not in view
-          customization: row.customization_data,  // ✅ Fixed
+          id: row.product_id,
+          product_id: row.product_id,
+          quantity: row.quantity,
+          // ✅ Store ALL price fields - helpers will determine correct one
+          item_total: row.item_total,
+          total_price: row.total_price,
+          unit_price: row.unit_price,
+          unit_price_with_gst: row.unit_price_with_gst,
+          base_price: row.base_price,
+          gst_amount: row.gst_amount,
+          // Product details
+          name: row.product_name,
+          title: row.product_name,
+          image: row.product_image,
+          catalog_number: row.catalog_number,
+          material_type: null,
+          weight_grams: null,
+          item_id: row.item_id,
+          item_created_at: null,
+          customization: row.customization_data,
           variant: {
-            sizeDisplay: row.size_display,  // ✅ Fixed
-            sizeNumeric: row.size_numeric,  // ✅ Fixed
-            sizeUnit: row.size_unit,  // ✅ Fixed
+            sizeDisplay: row.size_display,
+            sizeNumeric: row.size_numeric,
+            sizeUnit: row.size_unit,
           },
         }));
 
         setOrder(orderData);
         setItems(orderItems);
 
-        console.log("✅ Order loaded (FIXED):", orderData);
-        console.log("✅ Items loaded:", orderItems.length, "items");
+        console.log("✅ Order loaded (BILLING FIX V2):");
+        console.log("  - Order Total (helper):", getOrderTotal(orderData));
+        console.log("  - Items:", orderItems.length);
+        orderItems.forEach((item, i) => {
+          console.log(`  - Item ${i + 1}:`, {
+            name: item.name,
+            quantity: item.quantity,
+            item_total_raw: item.item_total,
+            item_total_calculated: getItemTotal(item),
+            unit_price_calculated: getUnitPrice(item),
+          });
+        });
       } else {
         console.warn("⚠️ No order data found");
         setOrder(null);
@@ -357,7 +443,9 @@ export default function OrderDetail() {
     setProcessingPayment(true);
 
     try {
-      const totalAmount = Math.round(Number(order.amount) * 100);
+      // ✅ FIXED: Use billing helper
+      const orderTotal = getOrderTotal(order);
+      const totalAmount = rupeesToPaise(orderTotal);
 
       const form = document.createElement("form");
       form.method = "POST";
@@ -481,6 +569,9 @@ export default function OrderDetail() {
     ? new Date(order.created_at).toLocaleString()
     : "—";
 
+  // ✅ FIXED: Use billing helper for order total
+  const orderTotal = getOrderTotal(order);
+
   return (
     <Layout>
       <div className="min-h-screen bg-gray-50/50">
@@ -600,7 +691,8 @@ export default function OrderDetail() {
                       ) : (
                         <>
                           <CreditCard className="h-4 w-4 mr-2" />
-                          Pay ₹{Number(order.amount).toFixed(2)?.toLocaleString()}
+                          {/* ✅ FIXED: Use formatPrice helper */}
+                          Pay {formatPrice(orderTotal)}
                         </>
                       )}
                     </Button>
@@ -621,75 +713,82 @@ export default function OrderDetail() {
                   </CardHeader>
                   <CardContent className="p-4 sm:p-6">
                     <div className="space-y-4 sm:space-y-6">
-                      {items.map((item, index) => (
-                        <div key={item.item_id || index}>
-                          <div className="flex gap-3 sm:gap-4">
-                            {item.image ? (
-                              <img
-                                src={item.image}
-                                alt={item.name}
-                                className="h-16 w-16 sm:h-20 sm:w-20 object-cover rounded-lg border border-gray-200 flex-shrink-0"
-                                onError={(e) => {
-                                  e.target.style.display = "none";
-                                  e.target.nextSibling.style.display = "flex";
+                      {items.map((item, index) => {
+                        // ✅ FIXED: Use helper functions for item prices
+                        const itemTotal = getItemTotal(item);
+                        const unitPrice = getUnitPrice(item);
+
+                        return (
+                          <div key={item.item_id || index}>
+                            <div className="flex gap-3 sm:gap-4">
+                              {item.image ? (
+                                <img
+                                  src={item.image}
+                                  alt={item.name}
+                                  className="h-16 w-16 sm:h-20 sm:w-20 object-cover rounded-lg border border-gray-200 flex-shrink-0"
+                                  onError={(e) => {
+                                    e.target.style.display = "none";
+                                    e.target.nextSibling.style.display = "flex";
+                                  }}
+                                />
+                              ) : null}
+                              <ProductFallbackIcon
+                                className="h-16 w-16 sm:h-20 sm:w-20 flex-shrink-0"
+                                style={{
+                                  display: item.image ? "none" : "flex",
                                 }}
                               />
-                            ) : null}
-                            <ProductFallbackIcon
-                              className="h-16 w-16 sm:h-20 sm:w-20 flex-shrink-0"
-                              style={{
-                                display: item.image ? "none" : "flex",
-                              }}
-                            />
 
-                            <div className="flex-1 min-w-0">
-                              <h4 className="font-semibold text-sm sm:text-base text-gray-900 mb-1">
-                                {item.name || item.title || "Product"}
-                              </h4>
+                              <div className="flex-1 min-w-0">
+                                <h4 className="font-semibold text-sm sm:text-base text-gray-900 mb-1">
+                                  {item.name || item.title || "Product"}
+                                </h4>
 
-                              <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm text-gray-600 mb-2">
-                                {item.catalog_number && (
-                                  <span>SKU: {item.catalog_number}</span>
-                                )}
-                                {item.variant?.sizeDisplay && (
-                                  <>
-                                    <span>•</span>
-                                    <span>Size: {item.variant.sizeDisplay}</span>
-                                  </>
-                                )}
-                                <span>•</span>
-                                <span>Qty: {item.quantity}</span>
-                              </div>
+                                <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm text-gray-600 mb-2">
+                                  {item.catalog_number && (
+                                    <span>SKU: {item.catalog_number}</span>
+                                  )}
+                                  {item.variant?.sizeDisplay && (
+                                    <>
+                                      <span>•</span>
+                                      <span>Size: {item.variant.sizeDisplay}</span>
+                                    </>
+                                  )}
+                                  <span>•</span>
+                                  <span>Qty: {item.quantity}</span>
+                                </div>
 
-                              <div className="flex items-baseline gap-2">
-                                <span className="text-base sm:text-lg font-bold text-gray-900">
-                                  ₹{(Number(item.price) || 0).toFixed(2)?.toLocaleString()}
-                                </span>
-                                {item.quantity > 1 && (
-                                  <span className="text-xs sm:text-sm text-gray-500">
-                                    (₹{(Number(item.unit_price) || 0).toFixed(2)} each)
+                                <div className="flex items-baseline gap-2">
+                                  {/* ✅ FIXED: Use formatPrice helper */}
+                                  <span className="text-base sm:text-lg font-bold text-gray-900">
+                                    {formatPrice(itemTotal)}
                                   </span>
-                                )}
+                                  {item.quantity > 1 && (
+                                    <span className="text-xs sm:text-sm text-gray-500">
+                                      ({formatPrice(unitPrice)} each)
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                             </div>
-                          </div>
 
-                          {/* Customization details */}
-                          {item.customization &&
-                            Object.keys(item.customization).length > 0 && (
-                              <div className="mt-3">
-                                {renderCustomizationDetails(
-                                  item,
-                                  { [item.product_id]: { customizations: item.customization } }
-                                )}
-                              </div>
+                            {/* Customization details */}
+                            {item.customization &&
+                              Object.keys(item.customization).length > 0 && (
+                                <div className="mt-3">
+                                  {renderCustomizationDetails(
+                                    item,
+                                    { [item.product_id]: { customizations: item.customization } }
+                                  )}
+                                </div>
+                              )}
+
+                            {index < items.length - 1 && (
+                              <Separator className="mt-4 sm:mt-6" />
                             )}
-
-                          {index < items.length - 1 && (
-                            <Separator className="mt-4 sm:mt-6" />
-                          )}
-                        </div>
-                      ))}
+                          </div>
+                        );
+                      })}
                     </div>
                   </CardContent>
                 </Card>
@@ -723,8 +822,9 @@ export default function OrderDetail() {
                     <div className="space-y-3 sm:space-y-4">
                       <div className="flex justify-between text-sm sm:text-base">
                         <span className="text-gray-600">Subtotal</span>
+                        {/* ✅ FIXED: Use formatPrice helper */}
                         <span className="font-semibold">
-                          ₹{(Number(order.amount) || 0).toFixed(2)?.toLocaleString()}
+                          {formatPrice(orderTotal)}
                         </span>
                       </div>
 
@@ -732,7 +832,7 @@ export default function OrderDetail() {
                         <div className="flex justify-between text-sm sm:text-base">
                           <span className="text-gray-600">Shipping</span>
                           <span className="font-semibold">
-                            ₹{Number(order.shipping_cost).toFixed(2)?.toLocaleString()}
+                            {formatPrice(Number(order.shipping_cost))}
                           </span>
                         </div>
                       )}
@@ -741,8 +841,9 @@ export default function OrderDetail() {
 
                       <div className="flex justify-between text-base sm:text-lg font-bold">
                         <span>Total</span>
+                        {/* ✅ FIXED: Use formatPrice helper */}
                         <span className="text-primary">
-                          ₹{(Number(order.amount) || 0).toFixed(2)?.toLocaleString()}
+                          {formatPrice(orderTotal)}
                         </span>
                       </div>
 
