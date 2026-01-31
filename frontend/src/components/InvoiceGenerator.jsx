@@ -76,7 +76,8 @@ const InvoiceGenerator = ({ order, onClose }) => {
   const gst18Total = parseFloat(order.gst_18_total) || 0;
   const totalGST = parseFloat(order.total_gst) || 0;
   const shippingCost = parseFloat(order.shipping_cost) || 0;
-  const grandTotal = parseFloat(order.order_total) || 0;
+  // ✅ FIX: Use order_total from OrderDetail mapping (which maps grand_total → order_total)
+  const grandTotal = parseFloat(order.order_total) || parseFloat(order.grand_total) || 0;
 
   console.log("📄 Invoice totals (from DB):", {
     subtotal,
@@ -84,7 +85,9 @@ const InvoiceGenerator = ({ order, onClose }) => {
     gst18Total,
     totalGST,
     shippingCost,
-    grandTotal
+    grandTotal,
+    order_total: order.order_total,
+    grand_total: order.grand_total
   });
 
   return (
