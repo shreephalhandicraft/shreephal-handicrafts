@@ -682,7 +682,7 @@ export const useCheckoutLogic = () => {
   const createOrder = useCallback(
     async (paymentMethod = "PayNow") => {
       try {
-        console.log("\n=== CREATING ORDER WITH BILLING SNAPSHOT ===");
+        console.log("\n=== CREATING ORDER WITH FRESH GST DATA FROM DATABASE ===");
 
         if (!user?.id) {
           throw new Error("User not authenticated");
@@ -697,49 +697,46 @@ export const useCheckoutLogic = () => {
           throw new Error("Authentication failed");
         }
 
-        // ✅ Use enrichedCartItems which include GST flags
-        const cartItems = enrichedCartItems;
+        const cartItems = getCartForCheckout();
         
-        // ✅ FIX #3: Validate GST data before proceeding
-        console.log("\n🔍 VALIDATING GST DATA BEFORE ORDER CREATION...");
-        const missingGSTData = cartItems.filter(item => 
-          !item.gst_5pct && !item.gst_18pct && productGSTData[item.productId]
-        );
+        // ✅ NEW: FETCH FRESH GST DATA FROM DATABASE
+        console.log("\n🔄 FETCHING FRESH GST DATA FROM DATABASE FOR BILLING...");
+        const productIds = [...new Set(cartItems.map(item => item.productId))];
         
-        if (missingGSTData.length > 0) {
-          console.warn('⚠️ Some items missing GST flags, fetching from database...');
-          
-          // Fallback: Fetch GST data again if missing
-          const productIds = missingGSTData.map(item => item.productId);
-          const { data: gstData, error: gstError } = await supabase
-            .from('products')
-            .select('id, gst_5pct, gst_18pct')
-            .in('id', productIds);
-          
-          if (gstError) {
-            throw new Error('Failed to fetch GST data. Please refresh and try again.');
-          }
-          
-          // Update missing GST data
-          gstData.forEach(p => {
-            const item = cartItems.find(i => i.productId === p.id);
-            if (item) {
-              item.gst_5pct = p.gst_5pct || false;
-              item.gst_18pct = p.gst_18pct || false;
-            }
-          });
-          
-          console.log('✅ GST data fetched and updated');
+        const { data: freshGSTData, error: gstError } = await supabase
+          .from('products')
+          .select('id, gst_5pct, gst_18pct, title, catalog_number, price')
+          .in('id', productIds);
+        
+        if (gstError) {
+          console.error('❌ Failed to fetch GST data:', gstError);
+          throw new Error('Failed to load product tax information. Please try again.');
         }
         
-        console.log("\n📦 CART ITEMS (with GST flags):", JSON.stringify(cartItems.map(i => ({
+        const gstDataMap = {};
+        freshGSTData.forEach(p => {
+          gstDataMap[p.id] = p;
+        });
+        
+        console.log('✅ Fresh GST data fetched:', gstDataMap);
+        
+        // ✅ ENRICH CART ITEMS WITH FRESH GST DATA
+        const enrichedItems = cartItems.map(item => ({
+          ...item,
+          gst_5pct: gstDataMap[item.productId]?.gst_5pct || false,
+          gst_18pct: gstDataMap[item.productId]?.gst_18pct || false
+        }));
+        
+        console.log("\n📦 ENRICHED CART ITEMS (with fresh GST flags):", JSON.stringify(enrichedItems.map(i => ({
           id: i.productId,
           name: i.name,
           gst5: i.gst_5pct,
-          gst18: i.gst_18pct
+          gst18: i.gst_18pct,
+          price: i.price,
+          quantity: i.quantity
         })), null, 2));
 
-        const itemsWithoutVariant = cartItems.filter(item => !item.variantId);
+        const itemsWithoutVariant = enrichedItems.filter(item => !item.variantId);
         if (itemsWithoutVariant.length > 0) {
           console.error("❌ Items missing variantId:", itemsWithoutVariant);
           throw new Error(
@@ -786,11 +783,11 @@ export const useCheckoutLogic = () => {
           customer = newCustomer;
         }
 
-        // 💰 RECALCULATE TOTALS FRESH FROM ENRICHED ITEMS (with GST)
+        // 💰 CALCULATE TOTALS FROM ENRICHED ITEMS WITH FRESH GST DATA
         const shippingCost = 0;
-        const recalculatedTotals = calculateOrderTotals(cartItems, shippingCost);
+        const recalculatedTotals = calculateOrderTotals(enrichedItems, shippingCost);
         
-        console.log("\n💰 RECALCULATED ORDER TOTALS (Product-wise GST from checkboxes):");
+        console.log("\n💰 CALCULATED ORDER TOTALS (Product-wise GST from database):");
         console.log(`  Subtotal (Base): ₹${recalculatedTotals.subtotal}`);
         console.log(`  GST @5%: ₹${recalculatedTotals.gst5Total}`);
         console.log(`  GST @18%: ₹${recalculatedTotals.gst18Total}`);
@@ -800,37 +797,21 @@ export const useCheckoutLogic = () => {
         console.log(`\n  ✅ VERIFICATION: Grand Total = Subtotal + Total GST + Shipping`);
         console.log(`     ${recalculatedTotals.grandTotal} = ${recalculatedTotals.subtotal} + ${recalculatedTotals.totalGST} + ${shippingCost}`);
         
-        const customizationDetails = createCustomizationDetails(cartItems);
+        const customizationDetails = createCustomizationDetails(enrichedItems);
 
-        console.log("\n📋 Fetching product & variant data for order snapshot...");
-        const productIds = cartItems.map(item => item.productId);
-        const variantIds = cartItems.map(item => item.variantId);
+        console.log("\n📋 Fetching variant data for order snapshot...");
+        const variantIds = enrichedItems.map(item => item.variantId);
         
-        const { data: productsData, error: productsError } = await supabase
-          .from('products')
-          .select('id, catalog_number, title, gst_5pct, gst_18pct, price')
-          .in('id', productIds);
-
         const { data: variantsData, error: variantsError } = await supabase
           .from('product_variants')
           .select('id, size_display, sku')
           .in('id', variantIds);
 
-        if (productsError) {
-          console.warn('⚠️ Could not fetch product data:', productsError);
-        }
         if (variantsError) {
           console.warn('⚠️ Could not fetch variant data:', variantsError);
         }
 
-        const productDataMap = {};
         const variantDataMap = {};
-        
-        if (productsData) {
-          productsData.forEach(p => {
-            productDataMap[p.id] = p;
-          });
-        }
         
         if (variantsData) {
           variantsData.forEach(v => {
@@ -888,11 +869,17 @@ export const useCheckoutLogic = () => {
 
         console.log("✅ Order created with billing snapshot:", order.id);
         console.log("   💰 Saved grand_total in DB:", order.grand_total);
+        console.log("   📊 Billing breakdown:");
+        console.log(`      Subtotal: ₹${order.subtotal}`);
+        console.log(`      GST @5%: ₹${order.gst_5_total}`);
+        console.log(`      GST @18%: ₹${order.gst_18_total}`);
+        console.log(`      Total GST: ₹${order.total_gst}`);
+        console.log(`      Grand Total: ₹${order.grand_total}`);
 
         console.log("\n📤 UPLOADING CUSTOMIZATION IMAGES...");
         const processedCartItems = [];
         
-        for (const item of cartItems) {
+        for (const item of enrichedItems) {
           let customizationData = item.customization && Object.keys(item.customization).length > 0 
             ? { ...item.customization } 
             : null;
@@ -948,9 +935,16 @@ export const useCheckoutLogic = () => {
         
         // ✅ CREATE ORDER ITEMS WITH PRICING SNAPSHOT - CLEAN SCHEMA
         const orderItemsData = processedCartItems.map(item => {
-          const productData = productDataMap[item.productId] || {};
+          const productData = gstDataMap[item.productId] || {};
           const variantData = variantDataMap[item.variantId] || {};
           const pricing = calculateItemPricing(item, productData);
+          
+          console.log(`  📊 Item pricing for ${item.name}:`, {
+            basePrice: pricing.basePrice,
+            gstRate: pricing.gstRate,
+            gstAmount: pricing.gstAmount,
+            total: pricing.itemTotal
+          });
           
           return {
             order_id: order.id,
@@ -977,8 +971,6 @@ export const useCheckoutLogic = () => {
             customization_data: item.processedCustomization
           };
         });
-
-        console.log("  Order items with pricing snapshot:", JSON.stringify(orderItemsData, null, 2));
 
         const { data: insertedItems, error: itemsError } = await supabase
           .from('order_items')
@@ -1057,7 +1049,7 @@ export const useCheckoutLogic = () => {
         
         try {
           console.log("  📦 Step 1: Creating reservations...");
-          for (const item of cartItems) {
+          for (const item of processedCartItems) {
             console.log(`    - Reserving: ${item.name} (qty: ${item.quantity})`);
             
             if (!item.variantId) {
@@ -1116,11 +1108,11 @@ export const useCheckoutLogic = () => {
           throw new Error(userMessage);
         }
 
-        console.log("\n✅ ORDER CREATION COMPLETE WITH CLEAN SCHEMA");
+        console.log("\n✅ ORDER CREATION COMPLETE WITH GST FROM DATABASE");
         console.log("   💰 Billing totals saved to database (immutable)");
         console.log("   📸 Per-item pricing snapshot saved with correct GST");
         console.log("   🔒 Stock decremented atomically ✅");
-        console.log("   🧹 Clean schema - no redundant columns ✅");
+        console.log("   🏷️ GST data fetched fresh from database ✅");
         console.log("\n🎉 ORDER READY FOR PAYMENT\n");
         
         return order;
@@ -1132,8 +1124,7 @@ export const useCheckoutLogic = () => {
     [
       user?.id, 
       formData, 
-      enrichedCartItems,
-      productGSTData,
+      getCartForCheckout,
       createCustomizationDetails, 
       uploadCustomizationImage, 
       reserveStock,
@@ -1265,7 +1256,7 @@ export const useCheckoutLogic = () => {
         description: `Order #${order.id.slice(
           0,
           8
-        )} has been placed. You'll pay on delivery.`,
+        )} has been placed. You'll pay ₹${order.grand_total.toFixed(2)} on delivery.`,
       });
 
       navigate(`/order/${order.id}`);
