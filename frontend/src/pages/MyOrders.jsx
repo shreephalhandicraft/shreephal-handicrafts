@@ -136,19 +136,18 @@ const getEstimatedArrival = (createdAt, status, estimatedDays = 7) => {
   }
 };
 
-// ✅ FIX: Get order total - all fields now in RUPEES (not paise)
+// ✅ FIX: Get order total - NEW SCHEMA uses grand_total
 const getOrderTotal = (order) => {
-  // Priority: order_total (snapshot) > amount > total_price
-  // 🐛 FIX: All values are now stored in RUPEES, no conversion needed
+  // ✅ NEW SCHEMA: Use grand_total column
+  if (order.grand_total != null) {
+    return Number(order.grand_total);
+  }
+  // Fallback for backward compatibility
   if (order.order_total != null) {
     return Number(order.order_total);
   }
   if (order.amount != null) {
     return Number(order.amount);
-  }
-  if (order.total_price != null) {
-    // 🐛 FIX: No longer divide by 100 - values are in rupees
-    return Number(order.total_price);
   }
   return 0;
 };
@@ -171,42 +170,102 @@ export default function MyOrders() {
     loadOrders();
   }, [user]);
 
-  // ✅ ISSUE #5: Use orders_with_item_summary view instead of direct orders table
+  // ✅ FIXED: Fetch directly from orders and order_items tables
   const loadOrders = async () => {
     try {
       setLoading(true);
 
-      console.log("\n=== FETCHING ORDERS (BILLING SNAPSHOT) ===");
+      console.log("\n=== FETCHING ORDERS (DIRECT QUERY) ===");
       console.log("User ID:", user.id);
 
-      // ✅ Query the view which includes order_total snapshot
+      // ✅ STEP 1: Fetch orders
       const { data: ordersData, error: ordersError } = await supabase
-        .from("orders_with_item_summary")
+        .from("orders")
         .select("*")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
 
-      console.log("Orders from view:", { ordersData, ordersError });
-
       if (ordersError) {
-        console.error("Supabase error:", ordersError);
+        console.error("Orders fetch error:", ordersError);
         throw ordersError;
       }
 
+      console.log(`✅ Fetched ${ordersData?.length || 0} orders`);
+
+      if (!ordersData || ordersData.length === 0) {
+        setOrders([]);
+        setLoading(false);
+        return;
+      }
+
+      // ✅ STEP 2: Fetch order items for all orders
+      const orderIds = ordersData.map(o => o.id);
+      
+      const { data: itemsData, error: itemsError } = await supabase
+        .from("order_items")
+        .select(`
+          *,
+          products (id, title, image_url)
+        `)
+        .in("order_id", orderIds);
+
+      if (itemsError) {
+        console.warn("⚠️ Failed to fetch order items:", itemsError);
+      }
+
+      console.log(`✅ Fetched ${itemsData?.length || 0} order items`);
+
+      // ✅ STEP 3: Build item summary for each order
+      const itemsByOrderId = {};
+      (itemsData || []).forEach(item => {
+        if (!itemsByOrderId[item.order_id]) {
+          itemsByOrderId[item.order_id] = [];
+        }
+        itemsByOrderId[item.order_id].push(item);
+      });
+
+      // ✅ STEP 4: Combine orders with item summaries
+      const ordersWithItems = ordersData.map(order => {
+        const items = itemsByOrderId[order.id] || [];
+        const firstItem = items[0];
+
+        // Calculate totals
+        const totalItems = items.length;
+        const totalQuantity = items.reduce((sum, item) => sum + (item.quantity || 0), 0);
+
+        return {
+          ...order,
+          order_id: order.id,
+          grand_total: order.grand_total,
+          customer_email: order.customer_email || user.email,
+          customer_phone: order.customer_phone || "",
+          customer_name: order.customer_name || user.name,
+          
+          // Item summary
+          total_items: totalItems,
+          total_quantity: totalQuantity,
+          
+          // First item preview (replaces view fields)
+          first_product_name: firstItem?.product_name || firstItem?.products?.title || null,
+          first_product_image: firstItem?.products?.image_url || null,
+          first_catalog_number: firstItem?.product_catalog_number || null,
+        };
+      });
+
       // ✅ Log billing consistency check
-      if (ordersData && ordersData.length > 0) {
+      if (ordersWithItems.length > 0) {
         console.log("\n💰 BILLING SNAPSHOT CHECK:");
-        ordersData.slice(0, 3).forEach(order => {
+        ordersWithItems.slice(0, 3).forEach(order => {
           console.log(`  Order #${order.order_id.slice(0, 8)}:`);
-          console.log(`    order_total (snapshot): ₹${order.order_total}`);
-          console.log(`    total_price (all in rupees): ₹${order.total_price}`);
-          console.log(`    amount (all in rupees): ₹${order.amount}`);
+          console.log(`    grand_total: ₹${order.grand_total}`);
+          console.log(`    subtotal: ₹${order.subtotal}`);
+          console.log(`    total_gst: ₹${order.total_gst}`);
           console.log(`    ✅ Display: ₹${getOrderTotal(order)}`);
         });
       }
 
-      setOrders(ordersData || []);
-      console.log(`✅ Loaded ${ordersData?.length || 0} orders from view`);
+      setOrders(ordersWithItems);
+      console.log(`✅ Loaded ${ordersWithItems.length} orders with item summaries`);
     } catch (error) {
       console.error("Error loading orders:", error);
 
