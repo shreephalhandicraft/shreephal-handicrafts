@@ -12,7 +12,7 @@
  *   - subtotal = Sum of base_prices (WITHOUT GST)
  *   - total_gst = gst_5_total + gst_18_total
  *   - shipping_cost = Delivery charges
- *   - total_price = order_total × 100 (in paise)
+ *   - ALL PRICES IN RUPEES (not paise)
  */
 
 /**
@@ -158,10 +158,17 @@ export const calculateItemPricing = (item, productData = null) => {
     price = item.priceWithGst;
     priceIncludesGST = true;
   }
-  // If unit_price exists (in paise), convert it
+  // ✅ FIXED: If unit_price exists, check if it's in paise (> 1000) or rupees
   else if (item.unit_price) {
-    price = item.unit_price / 100;
-    priceIncludesGST = true;
+    // If unit_price is suspiciously large (> 100000), it's likely in paise
+    if (item.unit_price > 100000) {
+      price = item.unit_price / 100;  // Convert paise to rupees
+      priceIncludesGST = true;
+    } else {
+      // Already in rupees
+      price = item.unit_price;
+      priceIncludesGST = true;
+    }
   }
   
   // Calculate billing
@@ -232,7 +239,8 @@ export const calculateOrderBilling = (orderItems, shippingCost = 0) => {
     order_total: roundTo2Decimals(orderTotal),
     grand_total: roundTo2Decimals(orderTotal),
     amount: roundTo2Decimals(orderTotal),
-    total_price: Math.round(orderTotal * 100)
+    // ✅ FIXED: Store in rupees, not paise
+    total_price: roundTo2Decimals(orderTotal)
   };
 };
 
@@ -290,7 +298,8 @@ export const recalculateOrderBilling = (order) => {
     order_total: roundTo2Decimals(orderTotal),
     grand_total: roundTo2Decimals(orderTotal),
     amount: roundTo2Decimals(orderTotal),
-    total_price: Math.round(orderTotal * 100)
+    // ✅ FIXED: Store in rupees, not paise
+    total_price: roundTo2Decimals(orderTotal)
   };
 };
 
@@ -373,7 +382,8 @@ export const validateBilling = (orderBilling) => {
     correctedValues: {
       total_gst: calculatedTotalGst,
       order_total: calculatedOrderTotal,
-      total_price: Math.round(calculatedOrderTotal * 100)
+      // ✅ FIXED: Store in rupees, not paise
+      total_price: roundTo2Decimals(calculatedOrderTotal)
     }
   };
 };
@@ -397,8 +407,9 @@ export const autoFixBilling = (orderBilling) => {
 };
 
 /**
- * ✅ NEW HELPER: Create item snapshot for order creation
+ * ✅ FIXED: Create item snapshot for order creation
  * Captures all necessary data at checkout time
+ * ALL PRICES IN RUPEES (not paise)
  * 
  * @param {Object} cartItem - Cart item object
  * @param {Object} productData - Product data from database
@@ -414,17 +425,15 @@ export const createItemSnapshot = (cartItem, productData) => {
     catalog_number: productData.catalog_number || null,
     quantity: pricing.quantity,
     
-    // Pricing snapshot
+    // ✅ FIXED: All pricing in RUPEES (not paise)
     base_price: pricing.basePrice,
     gst_rate: gstRate,
     gst_amount: pricing.gstAmount,
     item_subtotal: pricing.itemSubtotal,
     item_gst_total: pricing.itemGSTTotal,
     item_total: pricing.itemTotal,
-    
-    // Legacy fields for compatibility
-    unit_price: Math.round(pricing.unitPriceWithGST * 100),
-    total_price: Math.round(pricing.itemTotal * 100),
+    unit_price: pricing.unitPriceWithGST,  // ✅ In rupees, not paise
+    total_price: pricing.itemTotal,        // ✅ In rupees, not paise
     
     // Customization data
     customization_data: cartItem.customization || null
