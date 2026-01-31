@@ -322,19 +322,26 @@ export default function OrderDetail() {
         const product = item.products || {};
         const variant = item.product_variants || {};
         
+        // ✅ Use correct column names from NEW SCHEMA
+        const basePrice = parseFloat(item.base_price) || 0;
+        const gstAmount = parseFloat(item.gst_amount) || 0;
+        const unitPriceWithGst = parseFloat(item.unit_price_with_gst) || (basePrice + gstAmount);
+        const itemTotal = parseFloat(item.item_total) || 0;
+        
         return {
           id: item.product_id,
           product_id: item.product_id,
           quantity: item.quantity,
-          // 💰 PRICING FROM DATABASE (NEW SCHEMA)
-          item_total: parseFloat(item.item_total_with_gst) || 0,
-          base_price: parseFloat(item.unit_price) || 0,
-          gst_amount: parseFloat(item.gst_amount) || 0,
+          // 💰 PRICING FROM DATABASE (all in rupees)
+          item_total: itemTotal,
+          base_price: basePrice,
+          gst_amount: gstAmount,
           gst_rate: gstRate,
+          unit_price_with_gst: unitPriceWithGst,
           // ✅ Add flags for invoice display
           gst_5pct: gstRate === 5,
           gst_18pct: gstRate === 18,
-          // Product details (NEW SCHEMA: use product_name from order_items)
+          // Product details
           name: item.product_name || product.title,
           title: item.product_name || product.title,
           image: product.image_url,
@@ -681,7 +688,7 @@ export default function OrderDetail() {
                         const gstRate = item.gst_rate;
                         const gstAmount = item.gst_amount;
                         const itemTotal = item.item_total;
-                        const priceWithGst = basePrice + gstAmount;
+                        const priceWithGst = item.unit_price_with_gst;
 
                         return (
                           <div key={item.item_id || index}>
