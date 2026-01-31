@@ -208,17 +208,32 @@ export const calculateOrderBilling = (orderItems, shippingCost = 0) => {
   let gst18Total = 0;
   
   orderItems.forEach(item => {
+    // ✅ FIX: Determine GST rate from boolean flags or numeric field
+    let itemGstRate = 0;
+    
+    // Check for numeric gstRate field first
+    if (typeof item.gstRate === 'number') {
+      itemGstRate = item.gstRate;
+    } else if (typeof item.gst_rate === 'number') {
+      itemGstRate = item.gst_rate;
+    }
+    // ✅ NEW: Check for boolean GST flags (from enriched cart items)
+    else if (item.gst_18pct === true) {
+      itemGstRate = 18;
+    } else if (item.gst_5pct === true) {
+      itemGstRate = 5;
+    }
+    
     const itemBilling = item.billing || calculateItemBilling({
       price: item.price || item.basePrice || item.unit_price_with_gst,
       quantity: item.quantity,
-      gstRate: item.gstRate || item.gst_rate || 0,  // ✅ CHANGED: Default to 0
+      gstRate: itemGstRate,
       priceIncludesGST: item.priceIncludesGST || false
     });
     
     subtotal += itemBilling.item_subtotal;
     
     // Separate GST by rate
-    const itemGstRate = item.gstRate || item.gst_rate || itemBilling.gst_rate || 0;
     if (itemGstRate === 5) {
       gst5Total += itemBilling.item_gst_total;
     } else if (itemGstRate === 18) {
