@@ -200,7 +200,8 @@ export const useCheckoutLogic = () => {
   const [loading, setLoading] = useState(true);
   const [processingPayment, setProcessingPayment] = useState(false);
   const [paymentProcessed, setPaymentProcessed] = useState(false);
-  const [productGSTData, setProductGSTData] = useState({});  // ✅ NEW: Store product GST flags
+  const [productGSTData, setProductGSTData] = useState({});  // ✅ Store product GST flags
+  const [gstDataLoaded, setGstDataLoaded] = useState(false);  // ✅ FIX #1: Track if GST data is loaded
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -212,13 +213,18 @@ export const useCheckoutLogic = () => {
     zipCode: "",
   });
 
-  // ✅ NEW: Fetch product GST data when cart changes
+  // ✅ FIX #1 & #2: Fetch product GST data when cart changes
   useEffect(() => {
     const fetchProductGSTData = async () => {
       const cartItems = getCartForCheckout();
-      if (cartItems.length === 0) return;
+      if (cartItems.length === 0) {
+        setGstDataLoaded(true);
+        return;
+      }
       
       const productIds = [...new Set(cartItems.map(item => item.productId))];
+      
+      console.log('🔄 Fetching GST data for', productIds.length, 'products...');
       
       try {
         const { data: productsData, error } = await supabase
@@ -228,30 +234,45 @@ export const useCheckoutLogic = () => {
         
         if (error) {
           console.warn('⚠️ Could not fetch product GST data:', error);
+          setGstDataLoaded(true); // Mark as loaded even if failed to prevent infinite loops
           return;
         }
         
         const gstDataMap = {};
         productsData.forEach(p => {
           gstDataMap[p.id] = {
-            gst_5pct: p.gst_5pct,
-            gst_18pct: p.gst_18pct
+            gst_5pct: p.gst_5pct || false,
+            gst_18pct: p.gst_18pct || false
           };
         });
         
         setProductGSTData(gstDataMap);
+        setGstDataLoaded(true);
         console.log('✅ Product GST data loaded:', gstDataMap);
       } catch (error) {
         console.error('❌ Failed to fetch product GST data:', error);
+        setGstDataLoaded(true);
       }
     };
     
     fetchProductGSTData();
   }, [items.length, getCartForCheckout]);
 
-  // ✅ FIXED: Calculate totals with enriched cart items (including GST flags)
+  // ✅ FIX #2: Calculate totals with enriched cart items - recalculates when gstDataLoaded changes
   const { enrichedCartItems, orderTotals, subtotal, tax, total } = useMemo(() => {
     const cartItems = getCartForCheckout();
+    
+    // ✅ FIX: Don't calculate until GST data is loaded
+    if (!gstDataLoaded && cartItems.length > 0) {
+      console.log('⏳ Waiting for GST data to load before calculating totals...');
+      return {
+        enrichedCartItems: [],
+        orderTotals: { subtotal: 0, gst5Total: 0, gst18Total: 0, totalGST: 0, grandTotal: 0 },
+        subtotal: 0,
+        tax: 0,
+        total: 0
+      };
+    }
     
     // ✅ Enrich cart items with product GST flags
     const enrichedItems = cartItems.map(item => ({
@@ -269,6 +290,7 @@ export const useCheckoutLogic = () => {
       totalGST: totals.totalGST,
       grandTotal: totals.grandTotal,
       cartItemsCount: enrichedItems.length,
+      gstDataLoaded: gstDataLoaded,
       productGSTData: productGSTData
     });
     
@@ -279,7 +301,7 @@ export const useCheckoutLogic = () => {
       tax: totals.totalGST,
       total: totals.grandTotal
     };
-  }, [getCartForCheckout, productGSTData]);
+  }, [getCartForCheckout, productGSTData, gstDataLoaded]); // ✅ FIX #2: Added gstDataLoaded dependency
 
   const handleChange = useCallback((e) => {
     setFormData((prev) => ({
@@ -453,7 +475,7 @@ export const useCheckoutLogic = () => {
     return true;
   }, [getCartForCheckout, toast]);
 
-  // ✅ NEW: Stock re-validation before checkout
+  // ✅ Stock re-validation before checkout
   const validateStockAvailability = useCallback(async () => {
     console.log('\n🔍 RE-VALIDATING STOCK BEFORE CHECKOUT...');
     
@@ -506,7 +528,6 @@ export const useCheckoutLogic = () => {
         }
       });
       
-      // ✅ FIX: Use string instead of JSX
       const descriptionText = `Some items in your cart are no longer available:\n\n${issueMessages.join('\n')}\n\nPlease update your cart and try again.`;
       
       toast({
@@ -522,6 +543,34 @@ export const useCheckoutLogic = () => {
     console.log('✅ Stock validation passed - All items available');
     return true;
   }, [getCartForCheckout, getAvailableStock, toast]);
+
+  // ✅ FIX #3: Validate GST data is loaded
+  const validateGSTData = useCallback(() => {
+    if (!gstDataLoaded) {
+      toast({
+        title: "Loading...",
+        description: "Please wait while we load product information.",
+        variant: "default",
+      });
+      return false;
+    }
+    
+    const cartItems = getCartForCheckout();
+    const missingGSTData = cartItems.filter(item => !productGSTData[item.productId]);
+    
+    if (missingGSTData.length > 0) {
+      console.error('❌ Missing GST data for products:', missingGSTData.map(i => i.productId));
+      toast({
+        title: "Data Loading Error",
+        description: "Some product information is missing. Please refresh the page and try again.",
+        variant: "destructive",
+      });
+      return false;
+    }
+    
+    console.log('✅ GST data validation passed');
+    return true;
+  }, [gstDataLoaded, getCartForCheckout, productGSTData, toast]);
 
   const createCustomizationDetails = useCallback((cartItems) => {
     const customizationDetails = {};
@@ -648,9 +697,47 @@ export const useCheckoutLogic = () => {
           throw new Error("Authentication failed");
         }
 
-        // ✅ CHANGED: Use enrichedCartItems which include GST flags
+        // ✅ Use enrichedCartItems which include GST flags
         const cartItems = enrichedCartItems;
-        console.log("\n📦 CART ITEMS (with GST flags):", JSON.stringify(cartItems, null, 2));
+        
+        // ✅ FIX #3: Validate GST data before proceeding
+        console.log("\n🔍 VALIDATING GST DATA BEFORE ORDER CREATION...");
+        const missingGSTData = cartItems.filter(item => 
+          !item.gst_5pct && !item.gst_18pct && productGSTData[item.productId]
+        );
+        
+        if (missingGSTData.length > 0) {
+          console.warn('⚠️ Some items missing GST flags, fetching from database...');
+          
+          // Fallback: Fetch GST data again if missing
+          const productIds = missingGSTData.map(item => item.productId);
+          const { data: gstData, error: gstError } = await supabase
+            .from('products')
+            .select('id, gst_5pct, gst_18pct')
+            .in('id', productIds);
+          
+          if (gstError) {
+            throw new Error('Failed to fetch GST data. Please refresh and try again.');
+          }
+          
+          // Update missing GST data
+          gstData.forEach(p => {
+            const item = cartItems.find(i => i.productId === p.id);
+            if (item) {
+              item.gst_5pct = p.gst_5pct || false;
+              item.gst_18pct = p.gst_18pct || false;
+            }
+          });
+          
+          console.log('✅ GST data fetched and updated');
+        }
+        
+        console.log("\n📦 CART ITEMS (with GST flags):", JSON.stringify(cartItems.map(i => ({
+          id: i.productId,
+          name: i.name,
+          gst5: i.gst_5pct,
+          gst18: i.gst_18pct
+        })), null, 2));
 
         const itemsWithoutVariant = cartItems.filter(item => !item.variantId);
         if (itemsWithoutVariant.length > 0) {
@@ -700,8 +787,7 @@ export const useCheckoutLogic = () => {
         }
 
         // 💰 CALCULATE TOTALS ONCE (will be frozen in DB)
-        // ✅ CHANGED: Use already calculated orderTotals from useMemo
-        const shippingCost = 0; // TODO: Implement shipping calculation
+        const shippingCost = 0;
         const finalTotal = orderTotals.grandTotal + shippingCost;
         const customizationDetails = createCustomizationDetails(cartItems);
 
@@ -767,9 +853,7 @@ export const useCheckoutLogic = () => {
           gst_18_total: orderTotals.gst18Total,
           shipping_cost: shippingCost,
           order_total: finalTotal,
-          
-          // 🐛 FIX: Store in RUPEES not paise (consistency with other fields)
-          total_price: finalTotal,  // ✅ Changed from totalPaise
+          total_price: finalTotal,
           amount: finalTotal,
           
           status: "pending",
@@ -871,10 +955,8 @@ export const useCheckoutLogic = () => {
             item_subtotal: pricing.subtotal,
             item_gst_total: pricing.itemGSTTotal,
             item_total: pricing.itemTotal,
-            
-            // 🐛 FIX: Store in RUPEES not paise (consistency)
-            unit_price: pricing.priceWithGST,  // ✅ Changed from paise
-            total_price: pricing.itemTotal,     // ✅ Changed from paise
+            unit_price: pricing.priceWithGST,
+            total_price: pricing.itemTotal,
             
             customization_data: item.processedCustomization
           };
@@ -1034,8 +1116,9 @@ export const useCheckoutLogic = () => {
     [
       user?.id, 
       formData, 
-      enrichedCartItems,  // ✅ CHANGED: Use enrichedCartItems
-      orderTotals,  // ✅ CHANGED: Use memoized orderTotals
+      enrichedCartItems,
+      orderTotals,
+      productGSTData,  // ✅ FIX #3: Added for GST data validation
       createCustomizationDetails, 
       uploadCustomizationImage, 
       reserveStock,
@@ -1046,16 +1129,12 @@ export const useCheckoutLogic = () => {
 
   const handlePayNow = useCallback(async () => {
     if (!validateForm()) return;
+    if (!validateCartItems()) return;
+    if (!validateGSTData()) return;  // ✅ FIX #3: Validate GST data
     
-    if (!validateCartItems()) {
-      return;
-    }
-
-    // ✅ NEW: Re-validate stock before payment
+    // ✅ FIX #4: Move stock validation BEFORE order creation
     const stockAvailable = await validateStockAvailability();
-    if (!stockAvailable) {
-      return;
-    }
+    if (!stockAvailable) return;
 
     setProcessingPayment(true);
 
@@ -1074,11 +1153,20 @@ export const useCheckoutLogic = () => {
       // 💳 PAYMENT GATEWAY: Amount MUST be in paise (external requirement)
       const totalAmount = Math.round(total * 100);
       
-      console.log('💳 PAYMENT AMOUNT:', {
+      // ✅ FIX #5: Add comprehensive logging
+      console.log('\n💳 PAYMENT GATEWAY SUBMISSION:', {
         totalRupees: total,
         totalPaise: totalAmount,
-        orderTotal: order.order_total
+        orderTotalFromDB: order.order_total,
+        subtotal: order.subtotal,
+        totalGST: order.total_gst,
+        match: Math.abs(total - order.order_total) < 0.01
       });
+      
+      if (Math.abs(total - order.order_total) > 0.01) {
+        console.error('❌ AMOUNT MISMATCH DETECTED!');
+        throw new Error('Order amount mismatch. Please refresh and try again.');
+      }
 
       const requiredElements = [
         "pp-order-id",
@@ -1098,7 +1186,7 @@ export const useCheckoutLogic = () => {
       }
 
       document.getElementById("pp-order-id").value = order.id;
-      document.getElementById("pp-amount").value = totalAmount;  // ✅ Still in paise for PhonePe
+      document.getElementById("pp-amount").value = totalAmount;
       document.getElementById("pp-customer-email").value = formData.email;
       document.getElementById("pp-customer-phone").value = formData.phone;
       document.getElementById(
@@ -1130,20 +1218,16 @@ export const useCheckoutLogic = () => {
       });
       setProcessingPayment(false);
     }
-  }, [validateForm, validateCartItems, validateStockAvailability, items, total, formData, createOrder, toast]);
+  }, [validateForm, validateCartItems, validateGSTData, validateStockAvailability, items, total, formData, createOrder, toast]);
 
   const handleCODPayment = useCallback(async () => {
     if (!validateForm()) return;
+    if (!validateCartItems()) return;
+    if (!validateGSTData()) return;  // ✅ FIX #3: Validate GST data
     
-    if (!validateCartItems()) {
-      return;
-    }
-
-    // ✅ NEW: Re-validate stock before COD order
+    // ✅ FIX #4: Move stock validation BEFORE order creation
     const stockAvailable = await validateStockAvailability();
-    if (!stockAvailable) {
-      return;
-    }
+    if (!stockAvailable) return;
 
     setProcessingPayment(true);
 
@@ -1183,7 +1267,7 @@ export const useCheckoutLogic = () => {
     } finally {
       setProcessingPayment(false);
     }
-  }, [validateForm, validateCartItems, validateStockAvailability, createOrder, clearCart, toast, navigate]);
+  }, [validateForm, validateCartItems, validateGSTData, validateStockAvailability, createOrder, clearCart, toast, navigate]);
 
   const clearUrlParams = useCallback(() => {
     const newSearchParams = new URLSearchParams(searchParams);
@@ -1355,7 +1439,7 @@ export const useCheckoutLogic = () => {
   }, [user, fetchUserProfile]);
 
   return {
-    loading,
+    loading: loading || !gstDataLoaded,  // ✅ FIX #1: Show loading until GST data is loaded
     processingPayment,
     formData,
     items,
