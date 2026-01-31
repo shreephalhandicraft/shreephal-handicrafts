@@ -15,139 +15,166 @@ export function useOrders() {
     try {
       setLoading(reset);
 
-      console.log("🔍 Admin: Fetching orders from order_details_full view...");
+      console.log("🔍 Admin: Fetching orders from orders table (direct query)...");
 
-      // ✅ FIXED: Optimized pagination - load reasonable amount
-      const { data, error } = await supabase
-        .from("order_details_full")
-        .select("*")
-        .order("order_date", { ascending: false })
-        .limit(ORDERS_PER_PAGE * 10); // Load max 10 pages worth
+      // ✅ STEP 1: Fetch orders with customer data
+      const { data: ordersData, error: ordersError } = await supabase
+        .from("orders")
+        .select(`
+          *,
+          customers (
+            id,
+            user_id,
+            name,
+            email,
+            phone,
+            address
+          )
+        `)
+        .order("created_at", { ascending: false })
+        .limit(500); // Load reasonable amount
 
-      if (error) throw error;
+      if (ordersError) throw ordersError;
 
-      console.log(`✅ Fetched ${data?.length || 0} order item rows from view`);
+      console.log(`✅ Fetched ${ordersData?.length || 0} orders`);
 
-      // ✅ Group rows by order_id (view returns one row per order item)
-      const groupedOrders = {};
+      // ✅ STEP 2: Get all order_items for these orders
+      const orderIds = ordersData.map(o => o.id);
       
-      (data || []).forEach((row) => {
-        const orderId = row.order_id;
+      const { data: itemsData, error: itemsError } = await supabase
+        .from("order_items")
+        .select(`
+          *,
+          products (id, title, image_url, description),
+          product_variants (id, size_display, sku)
+        `)
+        .in("order_id", orderIds);
 
-        if (!groupedOrders[orderId]) {
-          groupedOrders[orderId] = {
-            id: row.order_id,
-            order_id: row.order_id,
-            user_id: row.user_id,
-            customer_id: row.customer_id,
-            status: row.order_status,
-            payment_status: row.payment_status,
-            // 🐛 FIX: Store DB value but will recalculate after items are added
-            amount: row.order_total,
-            order_total: row.order_total,
-            created_at: row.order_date,
-            order_date: row.order_date,
-            updated_at: row.updated_at,
-            shipping_info: row.shipping_info,
-            delivery_info: row.delivery_info,
-            payment_method: row.payment_method,
-            transaction_id: row.transaction_id,
-            order_notes: row.order_notes,
-            customization_details: row.customization_details, // ✅ Pass through customization
-            customers: {
-              id: row.customer_id,
-              user_id: row.user_id,
-              name: row.customer_name,
-              email: row.customer_email,
-              phone: row.customer_phone,
-              address: row.customer_address,
-            },
-            items: [],
-            customer_name: row.customer_name,
-            customer_email: row.customer_email,
-            customer_phone: row.customer_phone,
-          };
+      if (itemsError) {
+        console.warn("⚠️ Failed to fetch order items:", itemsError);
+      }
+
+      console.log(`✅ Fetched ${itemsData?.length || 0} order items`);
+
+      // ✅ STEP 3: Group items by order_id
+      const itemsByOrderId = {};
+      (itemsData || []).forEach(item => {
+        if (!itemsByOrderId[item.order_id]) {
+          itemsByOrderId[item.order_id] = [];
         }
-
-        // ✅ FIXED BUG #2: Correctly map product snapshot data with fallbacks
-        groupedOrders[orderId].items.push({
-          item_id: row.item_id,
+        
+        // ✅ Map to expected format with new schema column names
+        itemsByOrderId[item.order_id].push({
+          item_id: item.id,
+          product_id: item.product_id,
+          variant_id: item.variant_id,
+          productId: item.product_id,
+          variantId: item.variant_id,
           
-          // ✅ Product references
-          product_id: row.product_id,
-          variant_id: row.variant_id,
-          productId: row.product_id, // For OrderDetailsItems lookup
-          variantId: row.variant_id,
+          // ✅ NEW SCHEMA: Use snapshot data from order_items
+          catalog_number: item.product_catalog_number,
+          name: item.product_name || item.products?.title || "Product Deleted",
+          image: item.products?.image_url || "/placeholder.png",
+          description: item.products?.description,
           
-          // ✅ Snapshot data (stored at order time)
-          catalog_number: row.catalog_number,
-          name: row.product_name || "Product Deleted", // ✅ Fallback
-          image: row.product_image || "/placeholder.png", // ✅ Fallback
-          description: row.product_description,
+          // ✅ NEW SCHEMA: Variant snapshot
+          sku: item.variant_sku,
+          size_display: item.variant_size_display || item.product_variants?.size_display,
           
-          // ✅ Variant details (snapshot)
-          sku: row.sku,
-          size_display: row.size_display,
-          size_numeric: row.size_numeric,
-          size_unit: row.size_unit,
-          price_tier: row.price_tier,
+          // ✅ NEW SCHEMA: Pricing columns
+          quantity: item.quantity,
+          price: item.unit_price_with_gst, // ✅ NEW column name
+          unit_price: item.unit_price_with_gst,
+          base_price: item.base_price,
+          gst_rate: item.gst_rate,
+          gst_amount: item.gst_amount,
+          item_subtotal: item.item_subtotal,
+          item_gst_total: item.item_gst_total,
+          item_total: item.item_total,
           
-          // ✅ Order item details
-          quantity: row.quantity,
-          price: row.unit_price, // ✅ Use unit_price from order_items
-          unit_price: row.unit_price,
-          item_total: row.item_total,
+          // Customization
+          customization_data: item.customization_data,
+          production_notes: item.production_notes,
           
-          // ✅ Customization & production
-          customization_data: row.customization_data,
-          production_notes: row.production_notes,
-          
-          // ✅ Category info
-          category_id: row.category_id,
-          category_name: row.category_name,
-          
-          // ✅ Additional product info for display
-          product_name: row.product_name || "Product Deleted",
-          product_description: row.product_description,
-          product_image: row.product_image || "/placeholder.png",
+          // Display names
+          product_name: item.product_name || item.products?.title || "Product Deleted",
+          product_description: item.products?.description,
+          product_image: item.products?.image_url || "/placeholder.png",
         });
       });
 
-      const ordersArray = Object.values(groupedOrders);
+      // ✅ STEP 4: Combine orders with items
+      const ordersArray = ordersData.map(order => ({
+        id: order.id,
+        order_id: order.id,
+        user_id: order.user_id,
+        customer_id: order.customer_id,
+        status: order.status,
+        payment_status: order.payment_status,
+        payment_method: order.payment_method,
+        transaction_id: order.transaction_id,
+        
+        // ✅ NEW SCHEMA: Use grand_total instead of order_total
+        amount: order.grand_total,
+        order_total: order.grand_total,
+        grand_total: order.grand_total,
+        subtotal: order.subtotal,
+        total_gst: order.total_gst,
+        gst_5_total: order.gst_5_total,
+        gst_18_total: order.gst_18_total,
+        shipping_cost: order.shipping_cost,
+        
+        // Dates
+        created_at: order.created_at,
+        order_date: order.created_at,
+        updated_at: order.updated_at,
+        
+        // Info
+        shipping_info: order.shipping_info,
+        delivery_info: order.delivery_info,
+        order_notes: order.order_notes,
+        customization_details: order.customization_details,
+        requires_customization: order.requires_customization,
+        production_status: order.production_status,
+        estimated_delivery_days: order.estimated_delivery_days,
+        
+        // Customer data
+        customers: order.customers || {
+          id: order.customer_id,
+          user_id: order.user_id,
+          name: "Unknown",
+          email: "",
+          phone: "",
+          address: null,
+        },
+        customer_name: order.customers?.name || "Unknown",
+        customer_email: order.customers?.email || "",
+        customer_phone: order.customers?.phone || "",
+        
+        // Items
+        items: itemsByOrderId[order.id] || [],
+      }));
       
-      // 🐛 FIX: Recalculate order_total from items if DB value is missing/invalid
+      // 🐛 Verify totals match
       ordersArray.forEach(order => {
-        // Calculate total from items
         const calculatedTotal = order.items.reduce((sum, item) => {
-          const itemTotal = parseFloat(item.item_total) || 0;
-          return sum + itemTotal;
+          return sum + (parseFloat(item.item_total) || 0);
         }, 0);
 
-        console.log(`Order ${order.id.slice(0,8)}: DB total = ${order.order_total}, Calculated = ${calculatedTotal}`);
-
-        // Use DB value if valid, otherwise use calculated
-        const dbTotal = parseFloat(order.order_total);
-        if (!dbTotal || isNaN(dbTotal) || dbTotal <= 0) {
-          console.warn(`⚠️ Order ${order.id.slice(0,8)}: Invalid DB total (${order.order_total}), using calculated total (${calculatedTotal})`);
-          order.order_total = calculatedTotal;
-          order.amount = calculatedTotal;
-        } else {
-          // Verify DB total matches calculated (within 1 rupee tolerance for rounding)
-          const difference = Math.abs(dbTotal - calculatedTotal);
-          if (difference > 1) {
-            console.warn(`⚠️ Order ${order.id.slice(0,8)}: DB total (${dbTotal}) differs from calculated (${calculatedTotal}) by ₹${difference.toFixed(2)}`);
-            // Use calculated total as it's more reliable
-            order.order_total = calculatedTotal;
-            order.amount = calculatedTotal;
-          }
+        const dbTotal = parseFloat(order.grand_total) || 0;
+        const difference = Math.abs(dbTotal - calculatedTotal);
+        
+        if (difference > 1 && order.items.length > 0) {
+          console.warn(`⚠️ Order ${order.id.slice(0,8)}: DB total (₹${dbTotal}) differs from items total (₹${calculatedTotal}) by ₹${difference.toFixed(2)}`);
         }
       });
       
-      console.log(`✅ Grouped into ${ordersArray.length} orders`);
-      console.log("Sample order with totals:", {
+      console.log(`✅ Processed ${ordersArray.length} orders with items`);
+      console.log("Sample order:", {
         id: ordersArray[0]?.id?.slice(0,8),
-        order_total: ordersArray[0]?.order_total,
-        items_count: ordersArray[0]?.items?.length
+        grand_total: ordersArray[0]?.grand_total,
+        items_count: ordersArray[0]?.items?.length,
+        customer_name: ordersArray[0]?.customer_name
       });
 
       setOrders(ordersArray);
