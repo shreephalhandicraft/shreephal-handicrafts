@@ -819,7 +819,7 @@ export const useCheckoutLogic = () => {
           });
         }
 
-        // ✅ CREATE ORDER WITH RECALCULATED TOTALS (all in rupees)
+        // ✅ CREATE ORDER WITH CORRECT COLUMN NAME: order_total (not grand_total)
         const orderData = {
           user_id: authUser.id,
           customer_id: customer.id,
@@ -839,12 +839,13 @@ export const useCheckoutLogic = () => {
           },
           
           // 💰 BILLING SNAPSHOT (frozen at order time) - ALL IN RUPEES
+          // ✅ FIX: Using correct database column names
           subtotal: recalculatedTotals.subtotal,
           total_gst: recalculatedTotals.totalGST,
           gst_5_total: recalculatedTotals.gst5Total,
           gst_18_total: recalculatedTotals.gst18Total,
           shipping_cost: shippingCost,
-          grand_total: recalculatedTotals.grandTotal,
+          order_total: recalculatedTotals.grandTotal,  // ✅ FIXED: order_total not grand_total
           
           status: "pending",
           payment_status: "pending",
@@ -868,13 +869,13 @@ export const useCheckoutLogic = () => {
         }
 
         console.log("✅ Order created with billing snapshot:", order.id);
-        console.log("   💰 Saved grand_total in DB:", order.grand_total);
+        console.log("   💰 Saved order_total in DB:", order.order_total);
         console.log("   📊 Billing breakdown:");
         console.log(`      Subtotal: ₹${order.subtotal}`);
         console.log(`      GST @5%: ₹${order.gst_5_total}`);
         console.log(`      GST @18%: ₹${order.gst_18_total}`);
         console.log(`      Total GST: ₹${order.total_gst}`);
-        console.log(`      Grand Total: ₹${order.grand_total}`);
+        console.log(`      Order Total: ₹${order.order_total}`);
 
         console.log("\n📤 UPLOADING CUSTOMIZATION IMAGES...");
         const processedCartItems = [];
@@ -1113,6 +1114,7 @@ export const useCheckoutLogic = () => {
         console.log("   📸 Per-item pricing snapshot saved with correct GST");
         console.log("   🔒 Stock decremented atomically ✅");
         console.log("   🏷️ GST data fetched fresh from database ✅");
+        console.log("   ✅ Using correct column: order_total (not grand_total)");
         console.log("\n🎉 ORDER READY FOR PAYMENT\n");
         
         return order;
@@ -1161,13 +1163,13 @@ export const useCheckoutLogic = () => {
       console.log('\n💳 PAYMENT GATEWAY SUBMISSION:', {
         totalRupees: total,
         totalPaise: totalAmount,
-        orderGrandTotalFromDB: order.grand_total,
+        orderTotalFromDB: order.order_total,  // ✅ FIXED: order_total not grand_total
         subtotal: order.subtotal,
         totalGST: order.total_gst,
-        match: Math.abs(total - order.grand_total) < 0.01
+        match: Math.abs(total - order.order_total) < 0.01  // ✅ FIXED
       });
       
-      if (Math.abs(total - order.grand_total) > 0.01) {
+      if (Math.abs(total - order.order_total) > 0.01) {  // ✅ FIXED
         console.error('❌ AMOUNT MISMATCH DETECTED!');
         throw new Error('Order amount mismatch. Please refresh and try again.');
       }
@@ -1256,7 +1258,7 @@ export const useCheckoutLogic = () => {
         description: `Order #${order.id.slice(
           0,
           8
-        )} has been placed. You'll pay ₹${order.grand_total.toFixed(2)} on delivery.`,
+        )} has been placed. You'll pay ₹${order.order_total.toFixed(2)} on delivery.`,  // ✅ FIXED
       });
 
       navigate(`/order/${order.id}`);
