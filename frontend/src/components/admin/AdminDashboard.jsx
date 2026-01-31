@@ -70,7 +70,7 @@ export function AdminDashboard() {
         recentOrdersResult,
         codOrdersResult,
         payNowOrdersResult,
-        revenueRowsResult,
+        revenueResult,
         totalMessagesResult,
         unreadMessagesResult,
       ] = await Promise.all([
@@ -103,10 +103,10 @@ export function AdminDashboard() {
           .select("*", { count: 'exact', head: true })
           .eq("payment_method", "PayNow"),
         
-        // 6. Revenue calculation (only fetch order_total for completed payments)
+        // 6. ✅ FIXED: Revenue calculation using orders table with grand_total column
         supabase
-          .from("order_details_full")
-          .select("order_id, order_total, payment_status")
+          .from("orders")
+          .select("grand_total")
           .eq("payment_status", "completed"),
         
         // 7. Total messages count
@@ -128,7 +128,7 @@ export function AdminDashboard() {
         recentOrdersResult.error,
         codOrdersResult.error,
         payNowOrdersResult.error,
-        revenueRowsResult.error,
+        revenueResult.error,
         totalMessagesResult.error,
         unreadMessagesResult.error,
       ].filter(Boolean);
@@ -137,16 +137,9 @@ export function AdminDashboard() {
         throw errors[0];
       }
 
-      // ✅ Calculate revenue from unique orders (view returns 1 row per item)
-      const uniqueOrderTotals = {};
-      (revenueRowsResult.data || []).forEach(row => {
-        if (!uniqueOrderTotals[row.order_id]) {
-          uniqueOrderTotals[row.order_id] = parseFloat(row.order_total) || 0;
-        }
-      });
-      
-      const totalRevenue = Object.values(uniqueOrderTotals)
-        .reduce((sum, total) => sum + total, 0);
+      // ✅ Calculate revenue from completed orders
+      const totalRevenue = (revenueResult.data || [])
+        .reduce((sum, order) => sum + (parseFloat(order.grand_total) || 0), 0);
 
       const endTime = performance.now();
       console.log(`✅ Metrics fetched in ${(endTime - startTime).toFixed(2)}ms`);
