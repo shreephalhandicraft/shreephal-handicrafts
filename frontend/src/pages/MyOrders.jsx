@@ -136,18 +136,19 @@ const getEstimatedArrival = (createdAt, status, estimatedDays = 7) => {
   }
 };
 
-// ✅ FIX: Get order total - NEW SCHEMA uses grand_total
+// ✅ FIXED: Get order total from correct database column
 const getOrderTotal = (order) => {
-  // ✅ NEW SCHEMA: Use grand_total column
-  if (order.grand_total != null) {
-    return Number(order.grand_total);
-  }
-  // Fallback for backward compatibility
+  // ✅ CORRECT: Database column is 'order_total' (not grand_total)
   if (order.order_total != null) {
     return Number(order.order_total);
   }
+  // Fallback to old 'amount' column for very old orders
   if (order.amount != null) {
     return Number(order.amount);
+  }
+  // Last resort: calculate from subtotal + GST
+  if (order.subtotal != null && order.total_gst != null) {
+    return Number(order.subtotal) + Number(order.total_gst);
   }
   return 0;
 };
@@ -178,7 +179,7 @@ export default function MyOrders() {
       console.log("\n=== FETCHING ORDERS (DIRECT QUERY) ===");
       console.log("User ID:", user.id);
 
-      // ✅ STEP 1: Fetch orders
+      // ✅ STEP 1: Fetch orders with billing snapshot
       const { data: ordersData, error: ordersError } = await supabase
         .from("orders")
         .select("*")
@@ -236,7 +237,7 @@ export default function MyOrders() {
         return {
           ...order,
           order_id: order.id,
-          grand_total: order.grand_total,
+          order_total: order.order_total,  // ✅ FIXED: Use order_total (not grand_total)
           customer_email: order.customer_email || user.email,
           customer_phone: order.customer_phone || "",
           customer_name: order.customer_name || user.name,
@@ -257,7 +258,7 @@ export default function MyOrders() {
         console.log("\n💰 BILLING SNAPSHOT CHECK:");
         ordersWithItems.slice(0, 3).forEach(order => {
           console.log(`  Order #${order.order_id.slice(0, 8)}:`);
-          console.log(`    grand_total: ₹${order.grand_total}`);
+          console.log(`    order_total: ₹${order.order_total}`);
           console.log(`    subtotal: ₹${order.subtotal}`);
           console.log(`    total_gst: ₹${order.total_gst}`);
           console.log(`    ✅ Display: ₹${getOrderTotal(order)}`);
