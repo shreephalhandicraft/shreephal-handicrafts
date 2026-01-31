@@ -819,7 +819,7 @@ export const useCheckoutLogic = () => {
           });
         }
 
-        // ✅ CREATE ORDER WITH CORRECT COLUMN NAME: order_total (not grand_total)
+        // ✅ CREATE ORDER - Save to BOTH grand_total AND order_total for compatibility
         const orderData = {
           user_id: authUser.id,
           customer_id: customer.id,
@@ -839,13 +839,15 @@ export const useCheckoutLogic = () => {
           },
           
           // 💰 BILLING SNAPSHOT (frozen at order time) - ALL IN RUPEES
-          // ✅ FIX: Using correct database column names
           subtotal: recalculatedTotals.subtotal,
           total_gst: recalculatedTotals.totalGST,
           gst_5_total: recalculatedTotals.gst5Total,
           gst_18_total: recalculatedTotals.gst18Total,
           shipping_cost: shippingCost,
-          order_total: recalculatedTotals.grandTotal,  // ✅ FIXED: order_total not grand_total
+          
+          // ✅ DATABASE COMPATIBILITY: Save to both columns
+          grand_total: recalculatedTotals.grandTotal,   // Old column (for backward compatibility)
+          order_total: recalculatedTotals.grandTotal,   // New column (correct name)
           
           status: "pending",
           payment_status: "pending",
@@ -869,13 +871,14 @@ export const useCheckoutLogic = () => {
         }
 
         console.log("✅ Order created with billing snapshot:", order.id);
-        console.log("   💰 Saved order_total in DB:", order.order_total);
+        console.log("   💰 Saved to BOTH columns:");
+        console.log(`      grand_total: ₹${order.grand_total} (old column)`);
+        console.log(`      order_total: ₹${order.order_total} (new column)`);
         console.log("   📊 Billing breakdown:");
         console.log(`      Subtotal: ₹${order.subtotal}`);
         console.log(`      GST @5%: ₹${order.gst_5_total}`);
         console.log(`      GST @18%: ₹${order.gst_18_total}`);
         console.log(`      Total GST: ₹${order.total_gst}`);
-        console.log(`      Order Total: ₹${order.order_total}`);
 
         console.log("\n📤 UPLOADING CUSTOMIZATION IMAGES...");
         const processedCartItems = [];
@@ -1110,11 +1113,11 @@ export const useCheckoutLogic = () => {
         }
 
         console.log("\n✅ ORDER CREATION COMPLETE WITH GST FROM DATABASE");
-        console.log("   💰 Billing totals saved to database (immutable)");
+        console.log("   💰 Billing totals saved to BOTH database columns (immutable)");
         console.log("   📸 Per-item pricing snapshot saved with correct GST");
         console.log("   🔒 Stock decremented atomically ✅");
         console.log("   🏷️ GST data fetched fresh from database ✅");
-        console.log("   ✅ Using correct column: order_total (not grand_total)");
+        console.log("   ✅ Compatible with both grand_total AND order_total columns");
         console.log("\n🎉 ORDER READY FOR PAYMENT\n");
         
         return order;
@@ -1163,13 +1166,14 @@ export const useCheckoutLogic = () => {
       console.log('\n💳 PAYMENT GATEWAY SUBMISSION:', {
         totalRupees: total,
         totalPaise: totalAmount,
-        orderTotalFromDB: order.order_total,  // ✅ FIXED: order_total not grand_total
+        orderTotalFromDB: order.order_total || order.grand_total,
         subtotal: order.subtotal,
         totalGST: order.total_gst,
-        match: Math.abs(total - order.order_total) < 0.01  // ✅ FIXED
+        match: Math.abs(total - (order.order_total || order.grand_total)) < 0.01
       });
       
-      if (Math.abs(total - order.order_total) > 0.01) {  // ✅ FIXED
+      const orderTotal = order.order_total || order.grand_total;
+      if (Math.abs(total - orderTotal) > 0.01) {
         console.error('❌ AMOUNT MISMATCH DETECTED!');
         throw new Error('Order amount mismatch. Please refresh and try again.');
       }
@@ -1253,12 +1257,13 @@ export const useCheckoutLogic = () => {
         return;
       }
 
+      const orderTotal = order.order_total || order.grand_total;
       toast({
         title: "Order Placed Successfully!",
         description: `Order #${order.id.slice(
           0,
           8
-        )} has been placed. You'll pay ₹${order.order_total.toFixed(2)} on delivery.`,  // ✅ FIXED
+        )} has been placed. You'll pay ₹${orderTotal.toFixed(2)} on delivery.`,
       });
 
       navigate(`/order/${order.id}`);
