@@ -252,36 +252,14 @@ export default function OrderDetail() {
     try {
       setLoading(true);
 
-      console.log("\n=== FETCHING ORDER DETAILS WITH BILLING SNAPSHOT ===");
+      console.log("\n=== FETCHING ORDER DETAILS (DIRECT QUERY) ===");
       console.log("Order ID:", orderId);
       console.log("User ID:", user.id);
 
-      // ✅ STEP 1: Fetch order with billing snapshot from orders table
+      // ✅ STEP 1: Fetch order from orders table
       const { data: orderData, error: orderError } = await supabase
         .from("orders")
-        .select(`
-          id,
-          user_id,
-          status,
-          payment_status,
-          payment_method,
-          order_total,
-          amount,
-          total_price,
-          subtotal,
-          total_gst,
-          gst_5_total,
-          gst_18_total,
-          shipping_cost,
-          created_at,
-          updated_at,
-          shipping_info,
-          delivery_info,
-          order_notes,
-          customization_details,
-          requires_customization,
-          transaction_id
-        `)
+        .select("*")
         .eq("id", orderId)
         .eq("user_id", user.id)
         .single();
@@ -297,29 +275,32 @@ export default function OrderDetail() {
         return;
       }
 
-      // ✅ STEP 2: Fetch order items from order_details_full view
+      // ✅ STEP 2: Fetch order items with product and variant joins
       const { data: itemsData, error: itemsError } = await supabase
-        .from("order_details_full")
-        .select("*")
+        .from("order_items")
+        .select(`
+          *,
+          products (id, title, image_url),
+          product_variants (id, size_display, size_numeric, size_unit)
+        `)
         .eq("order_id", orderId);
 
-      console.log("📋 Items from order_details_full:", { itemsData, itemsError });
+      console.log("📋 Items from order_items:", { itemsData, itemsError });
 
       if (itemsError) {
         console.warn("⚠️ Failed to fetch items:", itemsError);
       }
 
-      // ✅ STEP 3: Map order data with billing snapshot
+      // ✅ STEP 3: Map order data with correct column names
       const mappedOrder = {
         id: orderData.id,
         user_id: orderData.user_id,
         status: orderData.status,
         payment_status: orderData.payment_status,
         payment_method: orderData.payment_method,
-        // 💰 BILLING SNAPSHOT (all in rupees)
-        order_total: parseFloat(orderData.order_total) || 0,
-        amount: parseFloat(orderData.amount) || 0,
-        total_price: orderData.total_price,
+        // 💰 BILLING SNAPSHOT (NEW SCHEMA: grand_total)
+        order_total: parseFloat(orderData.grand_total) || 0,
+        amount: parseFloat(orderData.grand_total) || 0,
         subtotal: parseFloat(orderData.subtotal) || 0,
         total_gst: parseFloat(orderData.total_gst) || 0,
         gst_5_total: parseFloat(orderData.gst_5_total) || 0,
@@ -336,34 +317,34 @@ export default function OrderDetail() {
       };
 
       // ✅ STEP 4: Map order items with pricing from database
-      const mappedItems = itemsData?.map((row) => {
-        const gstRate = parseFloat(row.gst_rate) || 0;
+      const mappedItems = itemsData?.map((item) => {
+        const gstRate = parseFloat(item.gst_rate) || 0;
+        const product = item.products || {};
+        const variant = item.product_variants || {};
         
         return {
-          id: row.product_id,
-          product_id: row.product_id,
-          quantity: row.quantity,
-          // 💰 PRICING FROM DATABASE (all in rupees)
-          item_total: parseFloat(row.item_total) || 0,
-          total_price: row.total_price,
-          unit_price: row.unit_price,
-          base_price: parseFloat(row.base_price) || 0,
-          gst_amount: parseFloat(row.gst_amount) || 0,
+          id: item.product_id,
+          product_id: item.product_id,
+          quantity: item.quantity,
+          // 💰 PRICING FROM DATABASE (NEW SCHEMA)
+          item_total: parseFloat(item.item_total_with_gst) || 0,
+          base_price: parseFloat(item.unit_price) || 0,
+          gst_amount: parseFloat(item.gst_amount) || 0,
           gst_rate: gstRate,
           // ✅ Add flags for invoice display
           gst_5pct: gstRate === 5,
           gst_18pct: gstRate === 18,
-          // Product details
-          name: row.product_name,
-          title: row.product_name,
-          image: row.product_image,
-          catalog_number: row.catalog_number,
-          item_id: row.item_id,
-          customization: row.customization_data,
+          // Product details (NEW SCHEMA: use product_name from order_items)
+          name: item.product_name || product.title,
+          title: item.product_name || product.title,
+          image: product.image_url,
+          catalog_number: item.product_catalog_number,
+          item_id: item.id,
+          customization: item.customization_data,
           variant: {
-            sizeDisplay: row.size_display,
-            sizeNumeric: row.size_numeric,
-            sizeUnit: row.size_unit,
+            sizeDisplay: item.variant_size_display || variant.size_display,
+            sizeNumeric: variant.size_numeric,
+            sizeUnit: variant.size_unit,
           },
         };
       }) || [];
