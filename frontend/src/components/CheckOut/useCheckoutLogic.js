@@ -786,18 +786,21 @@ export const useCheckoutLogic = () => {
           customer = newCustomer;
         }
 
-        // 💰 CALCULATE TOTALS ONCE (will be frozen in DB)
+        // 💰 RECALCULATE TOTALS FRESH FROM ENRICHED ITEMS (with GST)
         const shippingCost = 0;
-        const finalTotal = orderTotals.grandTotal + shippingCost;
-        const customizationDetails = createCustomizationDetails(cartItems);
-
-        console.log("\n💰 ORDER TOTALS (Product-wise GST from checkboxes):");
-        console.log(`  Subtotal (Base): ₹${orderTotals.subtotal}`);
-        console.log(`  GST @5%: ₹${orderTotals.gst5Total}`);
-        console.log(`  GST @18%: ₹${orderTotals.gst18Total}`);
-        console.log(`  Total GST: ₹${orderTotals.totalGST}`);
+        const recalculatedTotals = calculateOrderTotals(cartItems, shippingCost);
+        
+        console.log("\n💰 RECALCULATED ORDER TOTALS (Product-wise GST from checkboxes):");
+        console.log(`  Subtotal (Base): ₹${recalculatedTotals.subtotal}`);
+        console.log(`  GST @5%: ₹${recalculatedTotals.gst5Total}`);
+        console.log(`  GST @18%: ₹${recalculatedTotals.gst18Total}`);
+        console.log(`  Total GST: ₹${recalculatedTotals.totalGST}`);
         console.log(`  Shipping: ₹${shippingCost}`);
-        console.log(`  Grand Total: ₹${finalTotal}`);
+        console.log(`  Grand Total: ₹${recalculatedTotals.grandTotal}`);
+        console.log(`\n  ✅ VERIFICATION: Grand Total = Subtotal + Total GST + Shipping`);
+        console.log(`     ${recalculatedTotals.grandTotal} = ${recalculatedTotals.subtotal} + ${recalculatedTotals.totalGST} + ${shippingCost}`);
+        
+        const customizationDetails = createCustomizationDetails(cartItems);
 
         console.log("\n📋 Fetching product & variant data for order snapshot...");
         const productIds = cartItems.map(item => item.productId);
@@ -835,7 +838,7 @@ export const useCheckoutLogic = () => {
           });
         }
 
-        // ✅ CREATE ORDER WITH CALCULATED TOTALS (all in rupees)
+        // ✅ CREATE ORDER WITH RECALCULATED TOTALS (all in rupees)
         const orderData = {
           user_id: authUser.id,
           customer_id: customer.id,
@@ -855,12 +858,12 @@ export const useCheckoutLogic = () => {
           },
           
           // 💰 BILLING SNAPSHOT (frozen at order time) - ALL IN RUPEES
-          subtotal: orderTotals.subtotal,
-          total_gst: orderTotals.totalGST,
-          gst_5_total: orderTotals.gst5Total,
-          gst_18_total: orderTotals.gst18Total,
+          subtotal: recalculatedTotals.subtotal,
+          total_gst: recalculatedTotals.totalGST,
+          gst_5_total: recalculatedTotals.gst5Total,
+          gst_18_total: recalculatedTotals.gst18Total,
           shipping_cost: shippingCost,
-          grand_total: finalTotal,
+          grand_total: recalculatedTotals.grandTotal,
           
           status: "pending",
           payment_status: "pending",
@@ -884,6 +887,7 @@ export const useCheckoutLogic = () => {
         }
 
         console.log("✅ Order created with billing snapshot:", order.id);
+        console.log("   💰 Saved grand_total in DB:", order.grand_total);
 
         console.log("\n📤 UPLOADING CUSTOMIZATION IMAGES...");
         const processedCartItems = [];
@@ -1129,7 +1133,6 @@ export const useCheckoutLogic = () => {
       user?.id, 
       formData, 
       enrichedCartItems,
-      orderTotals,
       productGSTData,
       createCustomizationDetails, 
       uploadCustomizationImage, 
@@ -1167,7 +1170,7 @@ export const useCheckoutLogic = () => {
       console.log('\n💳 PAYMENT GATEWAY SUBMISSION:', {
         totalRupees: total,
         totalPaise: totalAmount,
-        orderTotalFromDB: order.grand_total,
+        orderGrandTotalFromDB: order.grand_total,
         subtotal: order.subtotal,
         totalGST: order.total_gst,
         match: Math.abs(total - order.grand_total) < 0.01
