@@ -799,21 +799,39 @@ export const useCheckoutLogic = () => {
         console.log(`  Shipping: ₹${shippingCost}`);
         console.log(`  Grand Total: ₹${finalTotal}`);
 
-        console.log("\n📋 Fetching product data for order snapshot...");
+        console.log("\n📋 Fetching product & variant data for order snapshot...");
         const productIds = cartItems.map(item => item.productId);
+        const variantIds = cartItems.map(item => item.variantId);
+        
         const { data: productsData, error: productsError } = await supabase
           .from('products')
-          .select('id, catalog_number, gst_5pct, gst_18pct, price')
+          .select('id, catalog_number, title, gst_5pct, gst_18pct, price')
           .in('id', productIds);
+
+        const { data: variantsData, error: variantsError } = await supabase
+          .from('product_variants')
+          .select('id, size_display, sku')
+          .in('id', variantIds);
 
         if (productsError) {
           console.warn('⚠️ Could not fetch product data:', productsError);
         }
+        if (variantsError) {
+          console.warn('⚠️ Could not fetch variant data:', variantsError);
+        }
 
         const productDataMap = {};
+        const variantDataMap = {};
+        
         if (productsData) {
           productsData.forEach(p => {
             productDataMap[p.id] = p;
+          });
+        }
+        
+        if (variantsData) {
+          variantsData.forEach(v => {
+            variantDataMap[v.id] = v;
           });
         }
 
@@ -821,17 +839,7 @@ export const useCheckoutLogic = () => {
         const orderData = {
           user_id: authUser.id,
           customer_id: customer.id,
-          items: cartItems.map((item) => ({
-            id: item.id,
-            productId: item.productId,
-            variantId: item.variantId,
-            name: item.name,
-            price: item.price,
-            quantity: item.quantity,
-            image: item.image || "",
-            variant: item.variant,
-            customization: item.customization || {},
-          })),
+          
           shipping_info: {
             firstName: formData.firstName || "",
             lastName: formData.lastName || "",
@@ -852,9 +860,7 @@ export const useCheckoutLogic = () => {
           gst_5_total: orderTotals.gst5Total,
           gst_18_total: orderTotals.gst18Total,
           shipping_cost: shippingCost,
-          order_total: finalTotal,
-          total_price: finalTotal,
-          amount: finalTotal,
+          grand_total: finalTotal,
           
           status: "pending",
           payment_status: "pending",
@@ -936,27 +942,33 @@ export const useCheckoutLogic = () => {
 
         console.log("\n📝 Inserting order_items with pricing snapshot...");
         
-        // ✅ CREATE ORDER ITEMS WITH PRICING SNAPSHOT (all in rupees)
+        // ✅ CREATE ORDER ITEMS WITH PRICING SNAPSHOT - CLEAN SCHEMA
         const orderItemsData = processedCartItems.map(item => {
-          const productData = productDataMap[item.productId] || item;
+          const productData = productDataMap[item.productId] || {};
+          const variantData = variantDataMap[item.variantId] || {};
           const pricing = calculateItemPricing(item, productData);
           
           return {
             order_id: order.id,
             product_id: item.productId,
             variant_id: item.variantId,
-            catalog_number: productData.catalog_number || null,
+            
+            // ✅ Product snapshot (at time of order)
+            product_name: item.name || productData.title || 'Unknown Product',
+            product_catalog_number: productData.catalog_number || null,
+            variant_size_display: item.variant || variantData.size_display || 'Unknown Size',
+            variant_sku: variantData.sku || null,
+            
             quantity: pricing.quantity,
             
-            // 💰 PRICING SNAPSHOT (frozen at order time) - ALL IN RUPEES
+            // ✅ CLEAN PRICING SNAPSHOT - ALL IN RUPEES
             base_price: pricing.basePrice,
             gst_rate: pricing.gstRate,
             gst_amount: pricing.gstAmount,
-            item_subtotal: pricing.subtotal,
+            unit_price_with_gst: pricing.unitPriceWithGST,
+            item_subtotal: pricing.itemSubtotal,
             item_gst_total: pricing.itemGSTTotal,
             item_total: pricing.itemTotal,
-            unit_price: pricing.priceWithGST,
-            total_price: pricing.itemTotal,
             
             customization_data: item.processedCustomization
           };
@@ -1100,11 +1112,11 @@ export const useCheckoutLogic = () => {
           throw new Error(userMessage);
         }
 
-        console.log("\n✅ ORDER CREATION COMPLETE WITH BILLING SNAPSHOT");
+        console.log("\n✅ ORDER CREATION COMPLETE WITH CLEAN SCHEMA");
         console.log("   💰 Billing totals saved to database (immutable)");
         console.log("   📸 Per-item pricing snapshot saved with correct GST");
         console.log("   🔒 Stock decremented atomically ✅");
-        console.log("   🐛 FIX: All prices stored in RUPEES (not paise) ✅");
+        console.log("   🧹 Clean schema - no redundant columns ✅");
         console.log("\n🎉 ORDER READY FOR PAYMENT\n");
         
         return order;
@@ -1118,7 +1130,7 @@ export const useCheckoutLogic = () => {
       formData, 
       enrichedCartItems,
       orderTotals,
-      productGSTData,  // ✅ FIX #3: Added for GST data validation
+      productGSTData,
       createCustomizationDetails, 
       uploadCustomizationImage, 
       reserveStock,
@@ -1130,9 +1142,8 @@ export const useCheckoutLogic = () => {
   const handlePayNow = useCallback(async () => {
     if (!validateForm()) return;
     if (!validateCartItems()) return;
-    if (!validateGSTData()) return;  // ✅ FIX #3: Validate GST data
+    if (!validateGSTData()) return;
     
-    // ✅ FIX #4: Move stock validation BEFORE order creation
     const stockAvailable = await validateStockAvailability();
     if (!stockAvailable) return;
 
@@ -1153,17 +1164,16 @@ export const useCheckoutLogic = () => {
       // 💳 PAYMENT GATEWAY: Amount MUST be in paise (external requirement)
       const totalAmount = Math.round(total * 100);
       
-      // ✅ FIX #5: Add comprehensive logging
       console.log('\n💳 PAYMENT GATEWAY SUBMISSION:', {
         totalRupees: total,
         totalPaise: totalAmount,
-        orderTotalFromDB: order.order_total,
+        orderTotalFromDB: order.grand_total,
         subtotal: order.subtotal,
         totalGST: order.total_gst,
-        match: Math.abs(total - order.order_total) < 0.01
+        match: Math.abs(total - order.grand_total) < 0.01
       });
       
-      if (Math.abs(total - order.order_total) > 0.01) {
+      if (Math.abs(total - order.grand_total) > 0.01) {
         console.error('❌ AMOUNT MISMATCH DETECTED!');
         throw new Error('Order amount mismatch. Please refresh and try again.');
       }
@@ -1223,9 +1233,8 @@ export const useCheckoutLogic = () => {
   const handleCODPayment = useCallback(async () => {
     if (!validateForm()) return;
     if (!validateCartItems()) return;
-    if (!validateGSTData()) return;  // ✅ FIX #3: Validate GST data
+    if (!validateGSTData()) return;
     
-    // ✅ FIX #4: Move stock validation BEFORE order creation
     const stockAvailable = await validateStockAvailability();
     if (!stockAvailable) return;
 
@@ -1439,7 +1448,7 @@ export const useCheckoutLogic = () => {
   }, [user, fetchUserProfile]);
 
   return {
-    loading: loading || !gstDataLoaded,  // ✅ FIX #1: Show loading until GST data is loaded
+    loading: loading || !gstDataLoaded,
     processingPayment,
     formData,
     items,
