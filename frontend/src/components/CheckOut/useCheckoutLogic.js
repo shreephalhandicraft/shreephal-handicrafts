@@ -8,6 +8,7 @@ import { useStockReservation } from "@/hooks/useStockReservation";
 import { calculateOrderTotals, calculateItemPricing, createItemSnapshot } from "@/utils/billingUtils";
 import { initiateRazorpayPayment } from '@/utils/razorpayPaymentHandler';
 
+// ❌ Temporarily disabled - Razorpay integration
 // const PHONEPE_PAY_URL = import.meta.env.VITE_BACKEND_URL
 //   ? `${import.meta.env.VITE_BACKEND_URL}/pay`
 //   : "http://localhost:3000/pay";
@@ -1511,6 +1512,7 @@ export const useCheckoutLogic = () => {
     }
   }, [user, fetchUserProfile]);
 
+  // ✅ FIX: Removed PHONEPE_PAY_URL from return statement
   return {
     loading: loading || !gstDataLoaded,
     processingPayment,
@@ -1527,6 +1529,6 @@ export const useCheckoutLogic = () => {
     handlePaymentSuccess,
     handlePaymentFailure,
     validateForm,
-    PHONEPE_PAY_URL,
+    // PHONEPE_PAY_URL removed - no longer needed with Razorpay
   };
 };
