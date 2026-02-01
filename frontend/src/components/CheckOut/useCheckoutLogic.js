@@ -838,6 +838,11 @@ export const useCheckoutLogic = () => {
           });
         }
 
+        // ✅ FIX: Map "razorpay" to "PayNow" for database compatibility
+        // Database CHECK constraint only allows: "PayNow", "COD", "PhonePe"
+        const dbPaymentMethod = paymentMethod === "razorpay" ? "PayNow" : paymentMethod;
+        console.log(`\n💳 Payment method mapping: '${paymentMethod}' -> '${dbPaymentMethod}' (for DB constraint)`);
+
         // ✅ CREATE ORDER - Save to BOTH grand_total AND order_total for compatibility
         const orderData = {
           user_id: authUser.id,
@@ -870,7 +875,7 @@ export const useCheckoutLogic = () => {
           
           status: "pending",
           payment_status: "pending",
-          payment_method: paymentMethod || "PayNow",
+          payment_method: dbPaymentMethod,  // ✅ Use mapped value ("PayNow" instead of "razorpay")
           upi_reference: null,
           transaction_id: null,
           order_notes: null,
@@ -898,6 +903,7 @@ export const useCheckoutLogic = () => {
         console.log(`      GST @5%: ₹${order.gst_5_total}`);
         console.log(`      GST @18%: ₹${order.gst_18_total}`);
         console.log(`      Total GST: ₹${order.total_gst}`);
+        console.log(`      Payment Method: ${order.payment_method} (mapped from '${paymentMethod}')`);
 
         console.log("\n📤 UPLOADING CUSTOMIZATION IMAGES...");
         const processedCartItems = [];
@@ -1137,6 +1143,7 @@ export const useCheckoutLogic = () => {
         console.log("   🔒 Stock decremented atomically ✅");
         console.log("   🏷️ GST data fetched fresh from database ✅");
         console.log("   ✅ Compatible with both grand_total AND order_total columns");
+        console.log("   💳 Payment method mapped to DB-compatible value ✅");
         console.log("\n🎉 ORDER READY FOR PAYMENT\n");
         
         return order;
@@ -1170,7 +1177,7 @@ export const useCheckoutLogic = () => {
   try {
     console.log('\n🚀 STARTING RAZORPAY PAYMENT FLOW');
 
-    // Create order in database first
+    // ✅ Create order with "razorpay" - will be mapped to "PayNow" in createOrder()
     const order = await createOrder("razorpay");
     console.log('✅ Order created:', order.id);
 
