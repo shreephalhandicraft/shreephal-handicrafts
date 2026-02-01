@@ -2,7 +2,8 @@
 
 **Date:** February 1, 2026  
 **Branch:** `razorpay-integration`  
-**Status:** ✅ Ready for Testing
+**Status:** ✅ Ready for Review  
+**Pull Request:** [#4](https://github.com/shreephalhandicraft/shreephal-handicrafts/pull/4)
 
 ---
 
@@ -49,7 +50,13 @@ frontend/api/payments/razorpay-verify.js        ✅ Node.js Serverless
 frontend/src/utils/razorpayPaymentHandler.js     ✅ UPI-first config
 frontend/src/components/CheckOut/PaymentMethods.jsx  ✅ UI updated
 frontend/src/pages/Checkout.jsx                  ✅ PhonePe removed
+frontend/src/pages/MyOrders.jsx                  ✅ Razorpay PayNow
 frontend/src/components/CheckOut/useCheckoutLogic.js ✅ Razorpay flow
+```
+
+### Cleanup
+```
+frontend/src/pages/OrderDetail_FIXED.jsx        🗑️ Removed (duplicate)
 ```
 
 ---
@@ -60,7 +67,7 @@ Ensure these are set in **Vercel Dashboard**:
 
 ```bash
 # Razorpay Credentials
-RAZORPAY_KEY_ID=rzp_live_xxxxx          # Your Razorpay Key ID
+RAZORPAY_KEY_ID=rzp_test_xxxxx          # Your Razorpay Key ID
 RAZORPAY_KEY_SECRET=xxxxxxxxxxxxx      # Your Razorpay Secret
 
 # Supabase (already configured)
@@ -128,7 +135,15 @@ UPI ID: failure@razorpay
 - [ ] **Verify:** Order marked as failed
 - [ ] **Verify:** Stock NOT decremented
 
-### 5. Edge Cases
+### 5. MyOrders PayNow Test
+- [ ] Create pending order (COD or failed payment)
+- [ ] Go to My Orders page
+- [ ] Click "Pay Now" button
+- [ ] **Verify:** Razorpay modal opens
+- [ ] Complete payment
+- [ ] **Verify:** Order status updated
+
+### 6. Edge Cases
 - [ ] User closes modal (cancellation)
 - [ ] Network timeout simulation
 - [ ] Duplicate payment attempt (idempotency)
@@ -163,6 +178,9 @@ Events: payment.captured, payment.failed
    - Broken `btoa()` encoding
    - Web Crypto API limitations
    - Edge-specific bugs
+
+3. **Duplicate Files**
+   - OrderDetail_FIXED.jsx (backup file)
 
 ---
 
@@ -209,27 +227,29 @@ Order status updated → Payment complete!
 ## 🚀 Next Steps
 
 ### Immediate (Testing Phase)
-1. **Test all payment flows** using checklist above
-2. **Verify Razorpay dashboard** shows transactions
-3. **Check order confirmation emails** (if configured)
-4. **Test with real UPI apps** (GPay, PhonePe)
+1. **Review Pull Request:** [#4](https://github.com/shreephalhandicraft/shreephal-handicrafts/pull/4)
+2. **Test all payment flows** using checklist above
+3. **Verify Razorpay dashboard** shows transactions
+4. **Check order confirmation emails** (if configured)
+5. **Test with real UPI apps** (GPay, PhonePe)
 
 ### Before Going Live
-1. **Switch to Live Mode Keys**
-   - Replace `rzp_test_*` with `rzp_live_*`
-   - Update in Vercel environment variables
-   - Redeploy
-
-2. **Configure Webhooks** (Optional but recommended)
-   - Instant payment status updates
-   - Better reliability
-
-3. **Merge to Main**
+1. **Approve & Merge PR #4**
    ```bash
+   # Merge via GitHub UI or CLI
    git checkout main
    git merge razorpay-integration
    git push origin main
    ```
+
+2. **Switch to Live Mode Keys**
+   - Replace `rzp_test_*` with `rzp_live_*`
+   - Update in Vercel environment variables
+   - Redeploy
+
+3. **Configure Webhooks** (Optional but recommended)
+   - Instant payment status updates
+   - Better reliability
 
 4. **Monitor First 24 Hours**
    - Watch Razorpay dashboard
@@ -270,7 +290,7 @@ After going live, monitor:
 
 ## 🎉 Conclusion
 
-**Razorpay integration is COMPLETE and READY FOR TESTING!**
+**Razorpay integration is COMPLETE and READY FOR REVIEW!**
 
 The payment system now:
 - ✅ Works reliably with Node.js Serverless
@@ -278,11 +298,13 @@ The payment system now:
 - ✅ Supports multiple payment methods
 - ✅ Has proper security and verification
 - ✅ Handles errors gracefully
+- ✅ Works in both Checkout and MyOrders pages
 
-**Next:** Test thoroughly, then go live! 🚀
+**Next:** Review PR #4, test thoroughly, then merge and go live! 🚀
 
 ---
 
-**Last Updated:** February 1, 2026  
+**Last Updated:** February 1, 2026, 9:31 PM IST  
 **Version:** 1.0.0  
-**Author:** Razorpay Migration Team
+**Author:** Razorpay Migration Team  
+**Pull Request:** [#4](https://github.com/shreephalhandicraft/shreephal-handicrafts/pull/4)
