@@ -2,8 +2,6 @@
 // Vercel Edge Function for verifying and completing Razorpay payments
 // ✅ WITH IDEMPOTENCY PROTECTION
 
-import crypto from 'crypto';
-
 // CORS headers for frontend
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -14,6 +12,31 @@ const corsHeaders = {
 export const config = {
   runtime: 'edge',
 };
+
+// Helper function to create HMAC-SHA256 signature using Web Crypto API
+async function createHmacSignature(secret, message) {
+  const encoder = new TextEncoder();
+  const keyData = encoder.encode(secret);
+  const messageData = encoder.encode(message);
+
+  // Import key for HMAC
+  const key = await crypto.subtle.importKey(
+    'raw',
+    keyData,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+
+  // Sign the message
+  const signature = await crypto.subtle.sign('HMAC', key, messageData);
+
+  // Convert to hex string
+  const hashArray = Array.from(new Uint8Array(signature));
+  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+  return hashHex;
+}
 
 export default async function handler(req) {
   // Handle CORS preflight
@@ -82,11 +105,9 @@ export default async function handler(req) {
       );
     }
 
-    // ✅ CRITICAL: Verify Razorpay signature
-    const generatedSignature = crypto
-      .createHmac('sha256', RAZORPAY_KEY_SECRET)
-      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
-      .digest('hex');
+    // ✅ CRITICAL: Verify Razorpay signature using Web Crypto API
+    const message = `${razorpay_order_id}|${razorpay_payment_id}`;
+    const generatedSignature = await createHmacSignature(RAZORPAY_KEY_SECRET, message);
 
     const isSignatureValid = generatedSignature === razorpay_signature;
 
