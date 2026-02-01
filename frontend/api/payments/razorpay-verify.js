@@ -1,6 +1,9 @@
 // api/payments/razorpay-verify.js - Razorpay Payment Verification
-// Vercel Edge Function for verifying and completing Razorpay payments
+// Vercel Node.js Serverless Function for verifying and completing Razorpay payments
 // ✅ WITH IDEMPOTENCY PROTECTION
+
+import crypto from 'crypto';
+import { createClient } from '@supabase/supabase-js';
 
 // CORS headers for frontend
 const corsHeaders = {
@@ -9,81 +12,39 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
-export const config = {
-  runtime: 'edge',
-};
-
-// Helper function to create HMAC-SHA256 signature using Web Crypto API
-async function createHmacSignature(secret, message) {
-  const encoder = new TextEncoder();
-  const keyData = encoder.encode(secret);
-  const messageData = encoder.encode(message);
-
-  // Import key for HMAC
-  const key = await crypto.subtle.importKey(
-    'raw',
-    keyData,
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign']
-  );
-
-  // Sign the message
-  const signature = await crypto.subtle.sign('HMAC', key, messageData);
-
-  // Convert to hex string
-  const hashArray = Array.from(new Uint8Array(signature));
-  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-
-  return hashHex;
-}
-
-export default async function handler(req) {
+export default async function handler(req, res) {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
-    return new Response(null, {
-      status: 200,
-      headers: corsHeaders,
-    });
+    return res.status(200).json({});
   }
 
   // Only allow POST
   if (req.method !== 'POST') {
-    return new Response(
-      JSON.stringify({ success: false, message: 'Method not allowed' }),
-      {
-        status: 405,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
-    );
+    return res.status(405).json({
+      success: false,
+      message: 'Method not allowed',
+    });
   }
 
   try {
     console.log('🔍 Razorpay Payment Verification Started');
 
     // Parse request body
-    const body = await req.json();
     const {
       razorpay_order_id,
       razorpay_payment_id,
       razorpay_signature,
       orderId,
-    } = body;
+    } = req.body;
 
     // Validation
     if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature || !orderId) {
-      console.error('❌ Validation failed:', body);
-      return new Response(
-        JSON.stringify({
-          success: false,
-          message: 'Missing required fields',
-          required: ['razorpay_order_id', 'razorpay_payment_id', 'razorpay_signature', 'orderId'],
-        }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
+      console.error('❌ Validation failed:', req.body);
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields',
+        required: ['razorpay_order_id', 'razorpay_payment_id', 'razorpay_signature', 'orderId'],
+      });
     }
 
     console.log('✅ Validation passed for order:', orderId);
@@ -93,21 +54,18 @@ export default async function handler(req) {
 
     if (!RAZORPAY_KEY_SECRET) {
       console.error('❌ Razorpay secret not configured');
-      return new Response(
-        JSON.stringify({
-          success: false,
-          message: 'Payment gateway not configured',
-        }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
+      return res.status(500).json({
+        success: false,
+        message: 'Payment gateway not configured',
+      });
     }
 
-    // ✅ CRITICAL: Verify Razorpay signature using Web Crypto API
+    // ✅ CRITICAL: Verify Razorpay signature using Node.js crypto
     const message = `${razorpay_order_id}|${razorpay_payment_id}`;
-    const generatedSignature = await createHmacSignature(RAZORPAY_KEY_SECRET, message);
+    const generatedSignature = crypto
+      .createHmac('sha256', RAZORPAY_KEY_SECRET)
+      .update(message)
+      .digest('hex');
 
     const isSignatureValid = generatedSignature === razorpay_signature;
 
@@ -118,17 +76,11 @@ export default async function handler(req) {
 
     if (!isSignatureValid) {
       console.error('❌ Invalid signature! Possible tampering detected.');
-      return new Response(
-        JSON.stringify({
-          success: false,
-          message: 'Payment verification failed',
-          error: 'Invalid signature',
-        }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
+      return res.status(400).json({
+        success: false,
+        message: 'Payment verification failed',
+        error: 'Invalid signature',
+      });
     }
 
     // ✅ CRITICAL: IDEMPOTENCY CHECK - Prevent duplicate processing
@@ -139,46 +91,32 @@ export default async function handler(req) {
       throw new Error('Supabase configuration missing');
     }
 
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
     // Check if payment already processed
     console.log('🔍 Checking for existing payment record...');
-    const checkResponse = await fetch(
-      `${supabaseUrl}/rest/v1/payments?payment_gateway_txn_id=eq.${razorpay_order_id}&select=id,status,order_id`,
-      {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': supabaseServiceKey,
-          'Authorization': `Bearer ${supabaseServiceKey}`,
-        },
-      }
-    );
+    const { data: existingPayments } = await supabase
+      .from('payments')
+      .select('id, status, order_id')
+      .eq('payment_gateway_txn_id', razorpay_order_id)
+      .limit(1);
 
-    if (checkResponse.ok) {
-      const existingPayments = await checkResponse.json();
-      
-      if (existingPayments && existingPayments.length > 0) {
-        const existing = existingPayments[0];
-        console.log('⚠️ DUPLICATE REQUEST DETECTED!');
-        console.log('   Payment already processed:', {
-          payment_id: existing.id,
-          status: existing.status,
-          order_id: existing.order_id
-        });
-        
-        // Return success to prevent retry
-        return new Response(
-          JSON.stringify({
-            success: true,
-            message: 'Payment already processed',
-            orderId: existing.order_id,
-            duplicate: true,
-          }),
-          {
-            status: 200,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          }
-        );
-      }
+    if (existingPayments && existingPayments.length > 0) {
+      const existing = existingPayments[0];
+      console.log('⚠️ DUPLICATE REQUEST DETECTED!');
+      console.log('   Payment already processed:', {
+        payment_id: existing.id,
+        status: existing.status,
+        order_id: existing.order_id
+      });
+
+      // Return success to prevent retry
+      return res.status(200).json({
+        success: true,
+        message: 'Payment already processed',
+        orderId: existing.order_id,
+        duplicate: true,
+      });
     }
 
     console.log('✅ No duplicate detected, proceeding with payment completion...');
@@ -192,35 +130,23 @@ export default async function handler(req) {
       console.log('💾 Updating order status...');
 
       // Update orders table
-      const updateData = {
-        status: orderStatus,
-        payment_status: paymentStatus,
-        transaction_id: razorpay_payment_id,
-        upi_reference: razorpay_order_id,
-        updated_at: new Date().toISOString(),
-      };
+      const { data: updatedOrders, error: updateError } = await supabase
+        .from('orders')
+        .update({
+          status: orderStatus,
+          payment_status: paymentStatus,
+          transaction_id: razorpay_payment_id,
+          upi_reference: razorpay_order_id,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', orderId)
+        .select();
 
-      const updateResponse = await fetch(
-        `${supabaseUrl}/rest/v1/orders?id=eq.${orderId}`,
-        {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': supabaseServiceKey,
-            'Authorization': `Bearer ${supabaseServiceKey}`,
-            'Prefer': 'return=representation',
-          },
-          body: JSON.stringify(updateData),
-        }
-      );
-
-      if (!updateResponse.ok) {
-        const errorText = await updateResponse.text();
-        console.error('❌ Failed to update order:', errorText);
-        throw new Error(`Order update failed: ${errorText}`);
+      if (updateError) {
+        console.error('❌ Failed to update order:', updateError);
+        throw new Error(`Order update failed: ${updateError.message}`);
       }
 
-      const updatedOrders = await updateResponse.json();
       console.log('✅ Order updated:', updatedOrders[0]?.id);
 
       // ✅ Create payment record with idempotency protection
@@ -245,35 +171,23 @@ export default async function handler(req) {
         };
 
         console.log('💳 Creating payment record...');
-        const paymentResponse = await fetch(
-          `${supabaseUrl}/rest/v1/payments`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'apikey': supabaseServiceKey,
-              'Authorization': `Bearer ${supabaseServiceKey}`,
-              'Prefer': 'return=representation',
-            },
-            body: JSON.stringify(paymentRecord),
-          }
-        );
+        const { data: createdPayment, error: paymentError } = await supabase
+          .from('payments')
+          .insert(paymentRecord)
+          .select();
 
-        if (paymentResponse.ok) {
-          const createdPayment = await paymentResponse.json();
-          console.log('✅ Payment record created:', createdPayment[0]?.id);
-        } else {
-          const paymentError = await paymentResponse.text();
-          
+        if (paymentError) {
           // ✅ Check if error is due to unique constraint (duplicate)
-          if (paymentError.includes('payment_gateway_txn_id') || 
-              paymentError.includes('duplicate key')) {
+          if (paymentError.message.includes('payment_gateway_txn_id') ||
+              paymentError.message.includes('duplicate key')) {
             console.log('⚠️ Payment record already exists (race condition caught)');
             // This is OK - the unique constraint protected us
           } else {
             console.error('❌ Payment record creation failed:', paymentError);
             // Don't throw - order is already updated, payment can be reconciled later
           }
+        } else {
+          console.log('✅ Payment record created:', createdPayment[0]?.id);
         }
       }
     } catch (dbError) {
@@ -282,30 +196,18 @@ export default async function handler(req) {
     }
 
     // Return success
-    return new Response(
-      JSON.stringify({
-        success: true,
-        message: 'Payment verified successfully',
-        orderId: orderId,
-        paymentId: razorpay_payment_id,
-      }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
-    );
+    return res.status(200).json({
+      success: true,
+      message: 'Payment verified successfully',
+      orderId: orderId,
+      paymentId: razorpay_payment_id,
+    });
   } catch (error) {
     console.error('❌ Payment verification error:', error);
-    return new Response(
-      JSON.stringify({
-        success: false,
-        message: 'Payment verification failed',
-        error: error.message,
-      }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
-    );
+    return res.status(500).json({
+      success: false,
+      message: 'Payment verification failed',
+      error: error.message,
+    });
   }
 }
