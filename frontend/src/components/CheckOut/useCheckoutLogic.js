@@ -735,6 +735,23 @@ export const useCheckoutLogic = () => {
           price: i.price,
           quantity: i.quantity
         })), null, 2));
+        
+        // 🐛 DEBUG: Log exactly what's being passed to calculateOrderTotals
+        console.log("\n🔍 DEBUG: Items being passed to calculateOrderTotals:");
+        enrichedItems.forEach((item, index) => {
+          console.log(`  Item ${index + 1}:`, {
+            productId: item.productId,
+            name: item.name,
+            price: item.price,
+            quantity: item.quantity,
+            gst_5pct: item.gst_5pct,
+            gst_18pct: item.gst_18pct,
+            hasGst5Flag: item.hasOwnProperty('gst_5pct'),
+            hasGst18Flag: item.hasOwnProperty('gst_18pct'),
+            gst5Value: item.gst_5pct,
+            gst18Value: item.gst_18pct
+          });
+        });
 
         const itemsWithoutVariant = enrichedItems.filter(item => !item.variantId);
         if (itemsWithoutVariant.length > 0) {
