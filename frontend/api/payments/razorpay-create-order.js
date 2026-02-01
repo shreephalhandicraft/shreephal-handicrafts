@@ -114,7 +114,9 @@ export default async function handler(req) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Accept': 'application/json',
         'Authorization': `Basic ${auth}`,
+        'User-Agent': 'Shreephal-Handicrafts/1.0',
       },
       body: JSON.stringify(orderPayload),
     });
@@ -134,7 +136,8 @@ export default async function handler(req) {
         JSON.stringify({
           success: false,
           message: 'Invalid response from payment gateway',
-          details: responseText,
+          details: responseText || 'Empty response',
+          status: razorpayResponse.status,
         }),
         {
           status: 500,
