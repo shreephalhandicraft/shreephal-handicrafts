@@ -207,7 +207,9 @@ export const calculateOrderBilling = (orderItems, shippingCost = 0) => {
   let gst5Total = 0;
   let gst18Total = 0;
   
-  orderItems.forEach(item => {
+  console.log('\n📊 calculateOrderBilling called with', orderItems.length, 'items');
+  
+  orderItems.forEach((item, index) => {
     // ✅ FIX: Determine GST rate from boolean flags or numeric field
     let itemGstRate = 0;
     
@@ -224,11 +226,30 @@ export const calculateOrderBilling = (orderItems, shippingCost = 0) => {
       itemGstRate = 5;
     }
     
-    const itemBilling = item.billing || calculateItemBilling({
+    console.log(`  Item ${index + 1} (${item.name || 'Unknown'}):`, {
+      gst_5pct: item.gst_5pct,
+      gst_18pct: item.gst_18pct,
+      detectedRate: itemGstRate,
+      price: item.price,
+      quantity: item.quantity,
+      hasBillingProperty: !!item.billing
+    });
+    
+    // 🐛 FIX: NEVER use item.billing - always recalculate fresh!
+    // The bug was here - it was using stale billing data from cart
+    const itemBilling = calculateItemBilling({
       price: item.price || item.basePrice || item.unit_price_with_gst,
       quantity: item.quantity,
       gstRate: itemGstRate,
       priceIncludesGST: item.priceIncludesGST || false
+    });
+    
+    console.log(`    ➡️ Calculated:`, {
+      basePrice: itemBilling.base_price,
+      gstRate: itemGstRate,
+      gstAmount: itemBilling.gst_amount,
+      itemSubtotal: itemBilling.item_subtotal,
+      itemGstTotal: itemBilling.item_gst_total
     });
     
     subtotal += itemBilling.item_subtotal;
@@ -236,14 +257,26 @@ export const calculateOrderBilling = (orderItems, shippingCost = 0) => {
     // Separate GST by rate
     if (itemGstRate === 5) {
       gst5Total += itemBilling.item_gst_total;
+      console.log(`    ✅ Added to GST @5%: ₹${itemBilling.item_gst_total}`);
     } else if (itemGstRate === 18) {
       gst18Total += itemBilling.item_gst_total;
+      console.log(`    ✅ Added to GST @18%: ₹${itemBilling.item_gst_total}`);
+    } else {
+      console.log(`    ⚪ No GST (rate: ${itemGstRate})`);
     }
     // ✅ ADDED: If gstRate is 0, GST total is 0 (no addition needed)
   });
   
   const totalGst = gst5Total + gst18Total;
   const orderTotal = subtotal + totalGst + shippingCost;
+  
+  console.log('\n📊 FINAL ORDER TOTALS:', {
+    subtotal: roundTo2Decimals(subtotal),
+    gst5Total: roundTo2Decimals(gst5Total),
+    gst18Total: roundTo2Decimals(gst18Total),
+    totalGst: roundTo2Decimals(totalGst),
+    orderTotal: roundTo2Decimals(orderTotal)
+  });
   
   return {
     subtotal: roundTo2Decimals(subtotal),
