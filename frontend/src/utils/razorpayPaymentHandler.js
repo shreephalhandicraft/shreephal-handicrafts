@@ -173,6 +173,43 @@ export const initiateRazorpayPayment = async (options) => {
         contact: customerPhone,
       },
       
+      // ✅ UPI-FIRST CONFIGURATION for Indian users
+      config: {
+        display: {
+          blocks: {
+            // UPI block - shown first
+            upi: {
+              name: 'Pay with UPI',
+              instruments: [
+                {
+                  method: 'upi',
+                },
+              ],
+            },
+            // Other payment methods
+            other: {
+              name: 'Other Payment Methods',
+              instruments: [
+                {
+                  method: 'card',
+                },
+                {
+                  method: 'netbanking',
+                },
+                {
+                  method: 'wallet',
+                },
+              ],
+            },
+          },
+          // Show UPI first, then other methods
+          sequence: ['block.upi', 'block.other'],
+          preferences: {
+            show_default_blocks: false, // Use custom blocks only
+          },
+        },
+      },
+      
       // Theme customization (matching your brand)
       theme: {
         color: '#10b981', // Green theme
@@ -233,7 +270,7 @@ export const initiateRazorpayPayment = async (options) => {
     };
 
     // Step 5: Open Razorpay checkout modal
-    console.log('\n💳 Opening Razorpay Checkout Modal...');
+    console.log('\n💳 Opening Razorpay Checkout Modal with UPI-first...');
     const razorpayInstance = new window.Razorpay(razorpayOptions);
     
     // Handle payment failures
@@ -256,7 +293,7 @@ export const initiateRazorpayPayment = async (options) => {
 
     // Open the modal
     razorpayInstance.open();
-    console.log('✅ Razorpay modal opened');
+    console.log('✅ Razorpay modal opened with UPI as first option');
 
   } catch (error) {
     console.error('❌ RAZORPAY PAYMENT INITIATION FAILED:', error);
