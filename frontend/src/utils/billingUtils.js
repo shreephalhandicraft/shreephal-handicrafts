@@ -16,6 +16,33 @@
  */
 
 /**
+ * 🐛 FIX: Normalize GST rate to percentage (5, 18) from either decimal (0.05, 0.18) or percentage format
+ * @param {number} rate - GST rate (can be 0.05, 0.18, 5, or 18)
+ * @returns {number} Normalized GST rate (0, 5, or 18)
+ */
+const normalizeGSTRate = (rate) => {
+  if (!rate || rate === 0) return 0;
+  
+  // If rate is a decimal (0.05, 0.18), convert to percentage
+  if (rate > 0 && rate < 1) {
+    const percentage = Math.round(rate * 100);
+    // Only accept 5% or 18%
+    if (percentage === 5 || percentage === 18) {
+      return percentage;
+    }
+    return 0;
+  }
+  
+  // If already a percentage (5, 18), return as-is
+  if (rate === 5 || rate === 18) {
+    return rate;
+  }
+  
+  // Invalid rate
+  return 0;
+};
+
+/**
  * ✅ FIXED: Get GST rate for a product based on product flags
  * @param {Object} product - Product object with gst_5pct and gst_18pct flags
  * @returns {number} GST rate (0, 5, or 18)
@@ -40,10 +67,11 @@ export const getGSTRate = (product) => {
  * @returns {string} Description
  */
 export const getGSTDescription = (gstRate) => {
-  if (gstRate === 5) return 'GST @5%';
-  if (gstRate === 18) return 'GST @18%';
-  if (gstRate === 0) return 'No GST';
-  return `GST @${gstRate}%`;
+  const normalized = normalizeGSTRate(gstRate);
+  if (normalized === 5) return 'GST @5%';
+  if (normalized === 18) return 'GST @18%';
+  if (normalized === 0) return 'No GST';
+  return `GST @${normalized}%`;
 };
 
 /**
@@ -57,10 +85,11 @@ export const getGSTDescription = (gstRate) => {
  */
 export const extractBasePrice = (price, gstRate, includesGST = false) => {
   const numPrice = parseFloat(price) || 0;
+  const normalizedRate = normalizeGSTRate(gstRate);
   
-  if (includesGST && gstRate > 0) {
+  if (includesGST && normalizedRate > 0) {
     // Reverse calculate: base_price = price_with_gst / (1 + gst_rate/100)
-    return roundTo2Decimals(numPrice / (1 + gstRate / 100));
+    return roundTo2Decimals(numPrice / (1 + normalizedRate / 100));
   }
   
   return roundTo2Decimals(numPrice);
@@ -73,7 +102,7 @@ export const extractBasePrice = (price, gstRate, includesGST = false) => {
  * @param {Object} params - Calculation parameters
  * @param {number} params.price - Price (can be with or without GST)
  * @param {number} params.quantity - Quantity
- * @param {number} params.gstRate - GST rate (0, 5 or 18)
+ * @param {number} params.gstRate - GST rate (0, 0.05, 0.18, 5 or 18)
  * @param {boolean} params.priceIncludesGST - Whether price includes GST (default: false)
  * @returns {Object} Item billing details
  */
@@ -83,11 +112,14 @@ export const calculateItemBilling = ({
   gstRate = 0,  // ✅ CHANGED: Default to 0% instead of 18%
   priceIncludesGST = false 
 }) => {
+  // 🐛 FIX: Normalize GST rate (handles both 0.05 and 5 formats)
+  const normalizedRate = normalizeGSTRate(gstRate);
+  
   // Extract base price (without GST)
-  const basePrice = extractBasePrice(price, gstRate, priceIncludesGST);
+  const basePrice = extractBasePrice(price, normalizedRate, priceIncludesGST);
   
   // Calculate GST amount per unit
-  const gstAmount = basePrice * (gstRate / 100);
+  const gstAmount = basePrice * (normalizedRate / 100);
   
   // Unit price with GST
   const unitPriceWithGst = basePrice + gstAmount;
@@ -99,7 +131,7 @@ export const calculateItemBilling = ({
   
   return {
     base_price: roundTo2Decimals(basePrice),
-    gst_rate: gstRate,
+    gst_rate: normalizedRate,  // 🐛 FIX: Always return normalized rate
     gst_amount: roundTo2Decimals(gstAmount),
     unit_price_with_gst: roundTo2Decimals(unitPriceWithGst),
     item_subtotal: roundTo2Decimals(itemSubtotal),
@@ -125,7 +157,7 @@ export const calculateItemPricing = (item, productData = null) => {
   
   // Priority 1: Check if item already has gst_rate stored (from database)
   if (typeof item.gst_rate === 'number') {
-    gstRate = item.gst_rate;
+    gstRate = normalizeGSTRate(item.gst_rate);  // 🐛 FIX: Normalize
   }
   // Priority 2: Check productData for GST flags
   else if (productData) {
@@ -140,7 +172,7 @@ export const calculateItemPricing = (item, productData = null) => {
   }
   // Priority 4: Legacy gstRate field
   else if (item.gstRate) {
-    gstRate = item.gstRate;
+    gstRate = normalizeGSTRate(item.gstRate);  // 🐛 FIX: Normalize
   }
   // Default: 0% (no GST)
   
@@ -213,11 +245,11 @@ export const calculateOrderBilling = (orderItems, shippingCost = 0) => {
     // ✅ FIX: Determine GST rate from boolean flags or numeric field
     let itemGstRate = 0;
     
-    // Check for numeric gstRate field first
+    // Check for numeric gstRate field first (normalize it!)
     if (typeof item.gstRate === 'number') {
-      itemGstRate = item.gstRate;
+      itemGstRate = normalizeGSTRate(item.gstRate);  // 🐛 FIX: Normalize!
     } else if (typeof item.gst_rate === 'number') {
-      itemGstRate = item.gst_rate;
+      itemGstRate = normalizeGSTRate(item.gst_rate);  // 🐛 FIX: Normalize!
     }
     // ✅ NEW: Check for boolean GST flags (from enriched cart items)
     else if (item.gst_18pct === true) {
@@ -229,7 +261,8 @@ export const calculateOrderBilling = (orderItems, shippingCost = 0) => {
     console.log(`  Item ${index + 1} (${item.name || 'Unknown'}):`, {
       gst_5pct: item.gst_5pct,
       gst_18pct: item.gst_18pct,
-      detectedRate: itemGstRate,
+      rawGstRate: item.gstRate || item.gst_rate,
+      normalizedRate: itemGstRate,
       price: item.price,
       quantity: item.quantity,
       hasBillingProperty: !!item.billing
@@ -246,7 +279,7 @@ export const calculateOrderBilling = (orderItems, shippingCost = 0) => {
     
     console.log(`    ➡️ Calculated:`, {
       basePrice: itemBilling.base_price,
-      gstRate: itemGstRate,
+      gstRate: itemBilling.gst_rate,
       gstAmount: itemBilling.gst_amount,
       itemSubtotal: itemBilling.item_subtotal,
       itemGstTotal: itemBilling.item_gst_total
@@ -254,15 +287,15 @@ export const calculateOrderBilling = (orderItems, shippingCost = 0) => {
     
     subtotal += itemBilling.item_subtotal;
     
-    // Separate GST by rate
-    if (itemGstRate === 5) {
+    // Separate GST by rate (use normalized rate from billing)
+    if (itemBilling.gst_rate === 5) {
       gst5Total += itemBilling.item_gst_total;
       console.log(`    ✅ Added to GST @5%: ₹${itemBilling.item_gst_total}`);
-    } else if (itemGstRate === 18) {
+    } else if (itemBilling.gst_rate === 18) {
       gst18Total += itemBilling.item_gst_total;
       console.log(`    ✅ Added to GST @18%: ₹${itemBilling.item_gst_total}`);
     } else {
-      console.log(`    ⚪ No GST (rate: ${itemGstRate})`);
+      console.log(`    ⚪ No GST (rate: ${itemBilling.gst_rate})`);
     }
     // ✅ ADDED: If gstRate is 0, GST total is 0 (no addition needed)
   });
