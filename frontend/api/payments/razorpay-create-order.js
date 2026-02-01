@@ -12,6 +12,20 @@ export const config = {
   runtime: 'edge',
 };
 
+// Manual Base64 encoding for Edge Runtime compatibility
+function base64Encode(str) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(str);
+  
+  // Convert to base64 using btoa with binary string
+  let binary = '';
+  for (let i = 0; i < data.length; i++) {
+    binary += String.fromCharCode(data[i]);
+  }
+  
+  return btoa(binary);
+}
+
 export default async function handler(req) {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -90,46 +104,11 @@ export default async function handler(req) {
 
     console.log('📋 Razorpay Order Payload:', JSON.stringify(orderPayload, null, 2));
 
-    // Create Basic Auth header using btoa (Edge Runtime compatible)
-    const auth = btoa(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`);
+    // Create Basic Auth header using manual base64 encoding
+    const auth = base64Encode(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`);
+    console.log('🔐 Auth header created successfully');
 
-    // Update order status in Supabase
-    try {
-      const supabaseUrl = process.env.VITE_SUPABASE_URL;
-      const supabaseServiceKey = process.env.VITE_SUPABASE_SERVICE_KEY;
-
-      if (!supabaseUrl || !supabaseServiceKey) {
-        throw new Error('Supabase configuration missing');
-      }
-
-      // Update order to "payment_initiated"
-      const updateResponse = await fetch(`${supabaseUrl}/rest/v1/orders?id=eq.${orderId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': supabaseServiceKey,
-          'Authorization': `Bearer ${supabaseServiceKey}`,
-          'Prefer': 'return=representation',
-        },
-        body: JSON.stringify({
-          payment_method: 'razorpay',
-          payment_status: 'initiated',
-          transaction_id: orderId,
-          updated_at: new Date().toISOString(),
-        }),
-      });
-
-      if (!updateResponse.ok) {
-        const errorText = await updateResponse.text();
-        console.error('❌ Failed to update order:', errorText);
-      } else {
-        console.log('✅ Order status updated to payment_initiated');
-      }
-    } catch (dbError) {
-      console.error('⚠️ Database update failed (non-critical):', dbError.message);
-    }
-
-    // Make API call to Razorpay
+    // Make API call to Razorpay FIRST (before DB update)
     console.log('📤 Calling Razorpay API...');
     const razorpayResponse = await fetch('https://api.razorpay.com/v1/orders', {
       method: 'POST',
@@ -140,12 +119,67 @@ export default async function handler(req) {
       body: JSON.stringify(orderPayload),
     });
 
-    const razorpayData = await razorpayResponse.json();
-    console.log('📥 Razorpay Response:', JSON.stringify(razorpayData, null, 2));
+    console.log('📥 Razorpay Response Status:', razorpayResponse.status);
+
+    // Get response text first to handle non-JSON errors
+    const responseText = await razorpayResponse.text();
+    console.log('📥 Razorpay Response Body:', responseText);
+
+    let razorpayData;
+    try {
+      razorpayData = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('❌ Failed to parse Razorpay response:', parseError);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          message: 'Invalid response from payment gateway',
+          details: responseText,
+        }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
 
     // Check if order creation was successful
     if (razorpayResponse.ok && razorpayData.id) {
       console.log('✅ Razorpay order created:', razorpayData.id);
+
+      // NOW update order status in Supabase (non-critical)
+      try {
+        const supabaseUrl = process.env.VITE_SUPABASE_URL;
+        const supabaseServiceKey = process.env.VITE_SUPABASE_SERVICE_KEY;
+
+        if (supabaseUrl && supabaseServiceKey) {
+          // Try to update with 'online' instead of 'razorpay' to avoid constraint issue
+          const updateResponse = await fetch(`${supabaseUrl}/rest/v1/orders?id=eq.${orderId}`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': supabaseServiceKey,
+              'Authorization': `Bearer ${supabaseServiceKey}`,
+              'Prefer': 'return=representation',
+            },
+            body: JSON.stringify({
+              payment_method: 'online', // Use 'online' instead of 'razorpay'
+              payment_status: 'initiated',
+              transaction_id: razorpayData.id, // Use Razorpay order ID
+              updated_at: new Date().toISOString(),
+            }),
+          });
+
+          if (!updateResponse.ok) {
+            const errorText = await updateResponse.text();
+            console.error('⚠️ Failed to update order (non-critical):', errorText);
+          } else {
+            console.log('✅ Order status updated to payment_initiated');
+          }
+        }
+      } catch (dbError) {
+        console.error('⚠️ Database update failed (non-critical):', dbError.message);
+      }
 
       return new Response(
         JSON.stringify({
@@ -174,7 +208,7 @@ export default async function handler(req) {
           details: razorpayData,
         }),
         {
-          status: 400,
+          status: razorpayResponse.status || 400,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         }
       );
