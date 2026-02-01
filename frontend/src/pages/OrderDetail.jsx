@@ -35,6 +35,7 @@ import {
   Ruler,
   Loader2,
   ShieldCheck,
+  Receipt,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabaseClient";
@@ -861,6 +862,105 @@ export default function OrderDetail() {
                         <FileText className="h-4 w-4 mr-2" />
                         View Invoice
                       </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* ✨ NEW: Detailed Billing Breakdown */}
+                <Card className="border border-green-200 bg-green-50/30">
+                  <CardHeader className="border-b border-green-200 bg-green-50/50">
+                    <CardTitle className="flex items-center gap-2 text-lg sm:text-xl text-green-900">
+                      <Receipt className="h-5 w-5 text-green-600" />
+                      Billing Breakdown
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-4 sm:p-6">
+                    <div className="space-y-3 text-sm sm:text-base">
+                      {/* Subtotal */}
+                      <div className="flex justify-between">
+                        <span className="text-gray-700">Items Subtotal (Base)</span>
+                        <span className="font-medium text-gray-900">
+                          {formatCurrency(subtotal)}
+                        </span>
+                      </div>
+
+                      <Separator className="bg-green-200" />
+
+                      {/* GST Breakdown */}
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-green-700">
+                          <span className="font-medium">GST Breakdown:</span>
+                        </div>
+                        
+                        {gst5Total > 0 ? (
+                          <div className="flex justify-between pl-4">
+                            <span className="text-gray-600">GST @5%</span>
+                            <span className="font-medium text-green-600">
+                              +{formatCurrency(gst5Total)}
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="flex justify-between pl-4">
+                            <span className="text-gray-400">GST @5%</span>
+                            <span className="text-gray-400">{formatCurrency(0)}</span>
+                          </div>
+                        )}
+
+                        {gst18Total > 0 ? (
+                          <div className="flex justify-between pl-4">
+                            <span className="text-gray-600">GST @18%</span>
+                            <span className="font-medium text-green-600">
+                              +{formatCurrency(gst18Total)}
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="flex justify-between pl-4">
+                            <span className="text-gray-400">GST @18%</span>
+                            <span className="text-gray-400">{formatCurrency(0)}</span>
+                          </div>
+                        )}
+
+                        <div className="flex justify-between pl-4 pt-1 border-t border-green-100">
+                          <span className="font-medium text-green-700">Total GST</span>
+                          <span className="font-semibold text-green-600">
+                            {formatCurrency(totalGST)}
+                          </span>
+                        </div>
+                      </div>
+
+                      <Separator className="bg-green-200" />
+
+                      {/* Shipping */}
+                      {shippingCost > 0 ? (
+                        <div className="flex justify-between">
+                          <span className="text-gray-700">Shipping Charges</span>
+                          <span className="font-medium text-gray-900">
+                            +{formatCurrency(shippingCost)}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Shipping Charges</span>
+                          <span className="text-green-600 font-medium">FREE</span>
+                        </div>
+                      )}
+
+                      <Separator className="bg-green-200" />
+
+                      {/* Grand Total */}
+                      <div className="flex justify-between pt-2">
+                        <span className="text-lg font-bold text-green-900">Grand Total</span>
+                        <span className="text-lg font-bold text-green-600">
+                          {formatCurrency(grandTotal)}
+                        </span>
+                      </div>
+
+                      {/* Verification Formula */}
+                      <div className="mt-3 pt-3 border-t border-green-200 text-xs text-gray-500">
+                        <p className="text-center">
+                          ✓ {formatCurrency(subtotal)} + {formatCurrency(totalGST)} + {formatCurrency(shippingCost)} = {formatCurrency(grandTotal)}
+                        </p>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
