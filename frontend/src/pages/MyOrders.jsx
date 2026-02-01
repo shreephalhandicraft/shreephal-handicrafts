@@ -8,6 +8,7 @@ import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
+import { initiateRazorpayPayment } from "@/utils/razorpayPaymentHandler";
 
 import {
   Package,
@@ -26,12 +27,6 @@ import {
   CreditCard,
   Download,
 } from "lucide-react";
-
-// PayNow configuration
-const PHONEPE_PAY_URL =
-  process.env.NODE_ENV === "production"
-    ? "https://Shreephal-Handicrafts.onrender.com/pay"
-    : "http://localhost:3000/pay";
 
 const getStatusIcon = (status) => {
   switch (status?.toLowerCase()) {
@@ -234,13 +229,19 @@ export default function MyOrders() {
         const totalItems = items.length;
         const totalQuantity = items.reduce((sum, item) => sum + (item.quantity || 0), 0);
 
+        // Extract customer info from shipping_info
+        const shippingInfo = order.shipping_info || {};
+        const customerName = `${shippingInfo.firstName || ''} ${shippingInfo.lastName || ''}`.trim() || user.name;
+        const customerEmail = shippingInfo.email || user.email;
+        const customerPhone = shippingInfo.phone || '';
+
         return {
           ...order,
           order_id: order.id,
           order_total: order.order_total,  // ✅ FIXED: Use order_total (not grand_total)
-          customer_email: order.customer_email || user.email,
-          customer_phone: order.customer_phone || "",
-          customer_name: order.customer_name || user.name,
+          customer_email: customerEmail,
+          customer_phone: customerPhone,
+          customer_name: customerName,
           
           // Item summary
           total_items: totalItems,
@@ -280,47 +281,69 @@ export default function MyOrders() {
     }
   };
 
+  // ✅ UPDATED: Use Razorpay payment handler
   const handlePayNow = async (order) => {
     if (!order) return;
 
     setProcessingPayments((prev) => new Set(prev).add(order.order_id));
 
     try {
+      console.log('\n💳 INITIATING RAZORPAY PAYMENT FROM MY ORDERS');
+      console.log('   Order ID:', order.order_id);
+      console.log('   Amount:', `₹${getOrderTotal(order)}`);
+
       // ✅ Get order total in rupees
       const orderTotal = getOrderTotal(order);
-      // Convert to paise for payment gateway (PhonePe requires paise)
-      const totalAmount = Math.round(orderTotal * 100);
 
-      console.log('💳 PAYMENT:', {
-        order_id: order.order_id.slice(0, 8),
-        order_total_rupees: orderTotal,
-        payment_gateway_paise: totalAmount
-      });
-
-      const form = document.createElement("form");
-      form.method = "POST";
-      form.action = PHONEPE_PAY_URL;
-      form.style.display = "none";
-
-      const fields = {
+      // ✅ Use Razorpay payment handler
+      await initiateRazorpayPayment({
         orderId: order.order_id,
-        amount: totalAmount,  // PhonePe expects paise
-        customerEmail: order.customer_email || user.email,
-        customerPhone: order.customer_phone || "",
+        amount: orderTotal,
         customerName: order.customer_name || user.name,
-      };
+        customerEmail: order.customer_email || user.email,
+        customerPhone: order.customer_phone || '',
+        
+        // Success callback
+        onSuccess: async (paymentData) => {
+          console.log('✅ PAYMENT SUCCESS:', paymentData);
+          
+          toast({
+            title: "Payment Successful! 🎉",
+            description: `Order #${order.order_id.slice(0, 8)} has been confirmed.`,
+            duration: 3000,
+          });
 
-      Object.entries(fields).forEach(([key, value]) => {
-        const input = document.createElement("input");
-        input.type = "hidden";
-        input.name = key;
-        input.value = value;
-        form.appendChild(input);
+          // Reload orders to reflect updated status
+          await loadOrders();
+          
+          setProcessingPayments((prev) => {
+            const newSet = new Set(prev);
+            newSet.delete(order.order_id);
+            return newSet;
+          });
+        },
+        
+        // Failure callback
+        onFailure: async (errorData) => {
+          console.error('❌ PAYMENT FAILURE:', errorData);
+          
+          toast({
+            title: "Payment Failed",
+            description: errorData.error || "Payment could not be completed. Please try again.",
+            variant: "destructive",
+            duration: 8000,
+          });
+          
+          setProcessingPayments((prev) => {
+            const newSet = new Set(prev);
+            newSet.delete(order.order_id);
+            return newSet;
+          });
+        },
       });
 
-      document.body.appendChild(form);
-      form.submit();
-      document.body.removeChild(form);
+      // Don't clear processing state here - will be cleared in callbacks
+
     } catch (error) {
       console.error("PayNow failed:", error);
       toast({
