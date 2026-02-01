@@ -1,8 +1,6 @@
 // api/payments/razorpay-create-order.js - Razorpay Order Creation
 // Vercel Edge Function for creating Razorpay orders
 
-import crypto from 'crypto';
-
 // CORS headers for frontend
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -92,8 +90,8 @@ export default async function handler(req) {
 
     console.log('📋 Razorpay Order Payload:', JSON.stringify(orderPayload, null, 2));
 
-    // Create Basic Auth header
-    const auth = Buffer.from(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`).toString('base64');
+    // Create Basic Auth header using btoa (Edge Runtime compatible)
+    const auth = btoa(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`);
 
     // Update order status in Supabase
     try {
