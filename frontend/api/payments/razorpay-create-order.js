@@ -1,5 +1,7 @@
 // api/payments/razorpay-create-order.js - Razorpay Order Creation
-// Vercel Edge Function for creating Razorpay orders
+// Vercel Node.js Serverless Function for creating Razorpay orders
+
+import { createClient } from '@supabase/supabase-js';
 
 // CORS headers for frontend
 const corsHeaders = {
@@ -8,51 +10,34 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
-export const config = {
-  runtime: 'edge',
-};
-
-export default async function handler(req) {
+export default async function handler(req, res) {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
-    return new Response(null, {
-      status: 200,
-      headers: corsHeaders,
-    });
+    return res.status(200).json({});
   }
 
   // Only allow POST
   if (req.method !== 'POST') {
-    return new Response(
-      JSON.stringify({ success: false, message: 'Method not allowed' }),
-      {
-        status: 405,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
-    );
+    return res.status(405).json({
+      success: false,
+      message: 'Method not allowed',
+    });
   }
 
   try {
     console.log('🚀 Razorpay Order Creation Started');
 
     // Parse request body
-    const body = await req.json();
-    const { orderId, amount, customerEmail, customerPhone, customerName } = body;
+    const { orderId, amount, customerEmail, customerPhone, customerName } = req.body;
 
     // Validation
     if (!orderId || !amount || !customerEmail || !customerPhone || !customerName) {
-      console.error('❌ Validation failed:', body);
-      return new Response(
-        JSON.stringify({
-          success: false,
-          message: 'Missing required fields',
-          required: ['orderId', 'amount', 'customerEmail', 'customerPhone', 'customerName'],
-        }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
+      console.error('❌ Validation failed:', req.body);
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields',
+        required: ['orderId', 'amount', 'customerEmail', 'customerPhone', 'customerName'],
+      });
     }
 
     console.log('✅ Validation passed for order:', orderId);
@@ -63,16 +48,10 @@ export default async function handler(req) {
 
     if (!RAZORPAY_KEY_ID || !RAZORPAY_KEY_SECRET) {
       console.error('❌ Razorpay credentials not configured');
-      return new Response(
-        JSON.stringify({
-          success: false,
-          message: 'Payment gateway not configured',
-        }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
+      return res.status(500).json({
+        success: false,
+        message: 'Payment gateway not configured',
+      });
     }
 
     // Create Razorpay order payload
@@ -90,9 +69,9 @@ export default async function handler(req) {
 
     console.log('📋 Razorpay Order Payload:', JSON.stringify(orderPayload, null, 2));
 
-    // Create Basic Auth using native btoa (should work in Edge Runtime)
+    // Create Basic Auth using Node.js Buffer (proper encoding)
     const credentials = `${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`;
-    const base64Credentials = btoa(credentials);
+    const base64Credentials = Buffer.from(credentials).toString('base64');
     console.log('🔐 Auth header created successfully');
 
     // Make API call to Razorpay FIRST (before DB update)
@@ -117,18 +96,12 @@ export default async function handler(req) {
       razorpayData = JSON.parse(responseText);
     } catch (parseError) {
       console.error('❌ Failed to parse Razorpay response:', parseError);
-      return new Response(
-        JSON.stringify({
-          success: false,
-          message: 'Invalid response from payment gateway',
-          details: responseText || 'Empty response',
-          status: razorpayResponse.status,
-        }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
+      return res.status(500).json({
+        success: false,
+        message: 'Invalid response from payment gateway',
+        details: responseText || 'Empty response',
+        status: razorpayResponse.status,
+      });
     }
 
     // Check if order creation was successful
@@ -141,26 +114,20 @@ export default async function handler(req) {
         const supabaseServiceKey = process.env.VITE_SUPABASE_SERVICE_KEY;
 
         if (supabaseUrl && supabaseServiceKey) {
-          // Try to update with 'online' instead of 'razorpay' to avoid constraint issue
-          const updateResponse = await fetch(`${supabaseUrl}/rest/v1/orders?id=eq.${orderId}`, {
-            method: 'PATCH',
-            headers: {
-              'Content-Type': 'application/json',
-              'apikey': supabaseServiceKey,
-              'Authorization': `Bearer ${supabaseServiceKey}`,
-              'Prefer': 'return=representation',
-            },
-            body: JSON.stringify({
-              payment_method: 'online', // Use 'online' instead of 'razorpay'
-              payment_status: 'initiated',
-              transaction_id: razorpayData.id, // Use Razorpay order ID
-              updated_at: new Date().toISOString(),
-            }),
-          });
+          const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-          if (!updateResponse.ok) {
-            const errorText = await updateResponse.text();
-            console.error('⚠️ Failed to update order (non-critical):', errorText);
+          const { error: updateError } = await supabase
+            .from('orders')
+            .update({
+              payment_method: 'online',
+              payment_status: 'initiated',
+              transaction_id: razorpayData.id,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', orderId);
+
+          if (updateError) {
+            console.error('⚠️ Failed to update order (non-critical):', updateError);
           } else {
             console.log('✅ Order status updated to payment_initiated');
           }
@@ -169,50 +136,32 @@ export default async function handler(req) {
         console.error('⚠️ Database update failed (non-critical):', dbError.message);
       }
 
-      return new Response(
-        JSON.stringify({
-          success: true,
-          razorpayOrderId: razorpayData.id,
-          amount: razorpayData.amount,
-          currency: razorpayData.currency,
-          keyId: RAZORPAY_KEY_ID,
-          orderId: orderId,
-          customerEmail: customerEmail,
-          customerPhone: customerPhone,
-          customerName: customerName,
-          message: 'Razorpay order created successfully',
-        }),
-        {
-          status: 200,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
+      return res.status(200).json({
+        success: true,
+        razorpayOrderId: razorpayData.id,
+        amount: razorpayData.amount,
+        currency: razorpayData.currency,
+        keyId: RAZORPAY_KEY_ID,
+        orderId: orderId,
+        customerEmail: customerEmail,
+        customerPhone: customerPhone,
+        customerName: customerName,
+        message: 'Razorpay order created successfully',
+      });
     } else {
       console.error('❌ Razorpay order creation failed:', razorpayData);
-      return new Response(
-        JSON.stringify({
-          success: false,
-          message: razorpayData.error?.description || 'Order creation failed',
-          details: razorpayData,
-        }),
-        {
-          status: razorpayResponse.status || 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
+      return res.status(razorpayResponse.status || 400).json({
+        success: false,
+        message: razorpayData.error?.description || 'Order creation failed',
+        details: razorpayData,
+      });
     }
   } catch (error) {
     console.error('❌ Razorpay order creation error:', error);
-    return new Response(
-      JSON.stringify({
-        success: false,
-        message: 'Order creation failed',
-        error: error.message,
-      }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
-    );
+    return res.status(500).json({
+      success: false,
+      message: 'Order creation failed',
+      error: error.message,
+    });
   }
 }
