@@ -12,20 +12,6 @@ export const config = {
   runtime: 'edge',
 };
 
-// Manual Base64 encoding for Edge Runtime compatibility
-function base64Encode(str) {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(str);
-  
-  // Convert to base64 using btoa with binary string
-  let binary = '';
-  for (let i = 0; i < data.length; i++) {
-    binary += String.fromCharCode(data[i]);
-  }
-  
-  return btoa(binary);
-}
-
 export default async function handler(req) {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -104,8 +90,9 @@ export default async function handler(req) {
 
     console.log('📋 Razorpay Order Payload:', JSON.stringify(orderPayload, null, 2));
 
-    // Create Basic Auth header using manual base64 encoding
-    const auth = base64Encode(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`);
+    // Create Basic Auth using native btoa (should work in Edge Runtime)
+    const credentials = `${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`;
+    const base64Credentials = btoa(credentials);
     console.log('🔐 Auth header created successfully');
 
     // Make API call to Razorpay FIRST (before DB update)
@@ -114,9 +101,7 @@ export default async function handler(req) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'Authorization': `Basic ${auth}`,
-        'User-Agent': 'Shreephal-Handicrafts/1.0',
+        'Authorization': `Basic ${base64Credentials}`,
       },
       body: JSON.stringify(orderPayload),
     });
