@@ -9,10 +9,6 @@ import { useCheckoutLogic } from "../components/CheckOut/useCheckoutLogic";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertTriangle } from "lucide-react";
 
-const PHONEPE_PAY_URL = import.meta.env.VITE_BACKEND_URL
-  ? `${import.meta.env.VITE_BACKEND_URL}/pay`
-  : "http://localhost:3000/pay";
-
 const Checkout = () => {
   const {
     loading,
@@ -20,7 +16,6 @@ const Checkout = () => {
     formData,
     items,
     searchParams,
-    payFormRef,
     subtotal,
     tax,
     total,
@@ -175,23 +170,6 @@ const Checkout = () => {
           </div>
         </div>
       </div>
-
-      {/* Hidden PhonePe Form */}
-      <form
-        ref={payFormRef}
-        id="phonepe-pay-form"
-        method="POST"
-        action={PHONEPE_PAY_URL}
-        style={{ display: "none" }}
-      >
-        <input type="hidden" id="pp-order-id" name="orderId" />
-        <input type="hidden" id="pp-amount" name="amount" />
-        <input type="hidden" id="pp-customer-email" name="customerEmail" />
-        <input type="hidden" id="pp-customer-phone" name="customerPhone" />
-        <input type="hidden" id="pp-customer-name" name="customerName" />
-        <input type="hidden" id="pp-cart-items" name="cartItems" />
-        <input type="hidden" id="pp-shipping-info" name="shippingInfo" />
-      </form>
     </Layout>
   );
 };

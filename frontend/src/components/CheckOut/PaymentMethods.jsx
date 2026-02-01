@@ -1,7 +1,7 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
 
-const PaymentMethods = ({ onPayNow, onCODPayment, isProcessing, total }) => {
+const PaymentMethods = ({ onPayNow, onCODPayment, isProcessing, total, isFormValid }) => {
   return (
     <div className="bg-white rounded-lg shadow-sm border p-6">
       <h2 className="text-xl font-semibold text-gray-900 mb-4">
@@ -10,7 +10,7 @@ const PaymentMethods = ({ onPayNow, onCODPayment, isProcessing, total }) => {
       <div className="space-y-3">
         <Button
           onClick={onPayNow}
-          disabled={isProcessing}
+          disabled={isProcessing || !isFormValid}
           className="w-full h-12 text-lg"
           size="lg"
         >
@@ -19,7 +19,7 @@ const PaymentMethods = ({ onPayNow, onCODPayment, isProcessing, total }) => {
         <div className="text-center text-gray-500">or</div>
         <Button
           onClick={onCODPayment}
-          disabled={isProcessing}
+          disabled={isProcessing || !isFormValid}
           variant="outline"
           className="w-full h-12 text-lg"
           size="lg"
@@ -28,7 +28,7 @@ const PaymentMethods = ({ onPayNow, onCODPayment, isProcessing, total }) => {
         </Button>
       </div>
       <p className="text-xs text-gray-500 mt-4 text-center">
-        Pay Now: Secure online payment via PhonePe
+        Pay Now: Secure payment via UPI, Cards, Netbanking & Wallets
         <br />
         COD: Pay when your order is delivered
       </p>

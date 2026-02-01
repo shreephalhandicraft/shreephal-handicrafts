@@ -6,10 +6,12 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabaseClient";
 import { useStockReservation } from "@/hooks/useStockReservation";
 import { calculateOrderTotals, calculateItemPricing, createItemSnapshot } from "@/utils/billingUtils";
+import { initiateRazorpayPayment } from '@/utils/razorpayPaymentHandler';
 
-const PHONEPE_PAY_URL = import.meta.env.VITE_BACKEND_URL
-  ? `${import.meta.env.VITE_BACKEND_URL}/pay`
-  : "http://localhost:3000/pay";
+// ❌ Temporarily disabled - Razorpay integration
+// const PHONEPE_PAY_URL = import.meta.env.VITE_BACKEND_URL
+//   ? `${import.meta.env.VITE_BACKEND_URL}/pay`
+//   : "http://localhost:3000/pay";
 
 // ✨ UX #2 FIX: Payment error message mapping
 const PAYMENT_ERROR_MESSAGES = {
@@ -836,6 +838,11 @@ export const useCheckoutLogic = () => {
           });
         }
 
+        // ✅ FIX: Map "razorpay" to "PayNow" for database compatibility
+        // Database CHECK constraint only allows: "PayNow", "COD", "PhonePe"
+        const dbPaymentMethod = paymentMethod === "razorpay" ? "PayNow" : paymentMethod;
+        console.log(`\n💳 Payment method mapping: '${paymentMethod}' -> '${dbPaymentMethod}' (for DB constraint)`);
+
         // ✅ CREATE ORDER - Save to BOTH grand_total AND order_total for compatibility
         const orderData = {
           user_id: authUser.id,
@@ -868,7 +875,7 @@ export const useCheckoutLogic = () => {
           
           status: "pending",
           payment_status: "pending",
-          payment_method: paymentMethod || "PayNow",
+          payment_method: dbPaymentMethod,  // ✅ Use mapped value ("PayNow" instead of "razorpay")
           upi_reference: null,
           transaction_id: null,
           order_notes: null,
@@ -896,6 +903,7 @@ export const useCheckoutLogic = () => {
         console.log(`      GST @5%: ₹${order.gst_5_total}`);
         console.log(`      GST @18%: ₹${order.gst_18_total}`);
         console.log(`      Total GST: ₹${order.total_gst}`);
+        console.log(`      Payment Method: ${order.payment_method} (mapped from '${paymentMethod}')`);
 
         console.log("\n📤 UPLOADING CUSTOMIZATION IMAGES...");
         const processedCartItems = [];
@@ -1135,6 +1143,7 @@ export const useCheckoutLogic = () => {
         console.log("   🔒 Stock decremented atomically ✅");
         console.log("   🏷️ GST data fetched fresh from database ✅");
         console.log("   ✅ Compatible with both grand_total AND order_total columns");
+        console.log("   💳 Payment method mapped to DB-compatible value ✅");
         console.log("\n🎉 ORDER READY FOR PAYMENT\n");
         
         return order;
@@ -1156,97 +1165,142 @@ export const useCheckoutLogic = () => {
   );
 
   const handlePayNow = useCallback(async () => {
-    if (!validateForm()) return;
-    if (!validateCartItems()) return;
-    if (!validateGSTData()) return;
+  if (!validateForm()) return;
+  if (!validateCartItems()) return;
+  if (!validateGSTData()) return;
+  
+  const stockAvailable = await validateStockAvailability();
+  if (!stockAvailable) return;
+
+  setProcessingPayment(true);
+
+  try {
+    console.log('\n🚀 STARTING RAZORPAY PAYMENT FLOW');
+
+    // ✅ Create order with "razorpay" - will be mapped to "PayNow" in createOrder()
+    const order = await createOrder("razorpay");
+    console.log('✅ Order created:', order.id);
+
+    // Get order total (use order_total or grand_total)
+    const orderTotal = order.order_total || order.grand_total;
     
-    const stockAvailable = await validateStockAvailability();
-    if (!stockAvailable) return;
+    console.log('💰 Payment Details:', {
+      orderId: order.id,
+      amount: orderTotal,
+      customer: `${formData.firstName} ${formData.lastName}`,
+      email: formData.email,
+      phone: formData.phone,
+    });
 
-    setProcessingPayment(true);
-
-    try {
-      const cartItemsForPhonePe = items.map((item) => ({
-        id: item.id,
-        name: item.name,
-        price: item.price,
-        quantity: item.quantity,
-        image: item.image,
-        customization: item.customization || {},
-      }));
-
-      const order = await createOrder("PayNow");
-
-      // 💳 PAYMENT GATEWAY: Amount MUST be in paise (external requirement)
-      const totalAmount = Math.round(total * 100);
+    // Initiate Razorpay payment
+    await initiateRazorpayPayment({
+      orderId: order.id,
+      amount: orderTotal,
+      customerName: `${formData.firstName} ${formData.lastName}`,
+      customerEmail: formData.email,
+      customerPhone: formData.phone,
       
-      console.log('\n💳 PAYMENT GATEWAY SUBMISSION:', {
-        totalRupees: total,
-        totalPaise: totalAmount,
-        orderTotalFromDB: order.order_total || order.grand_total,
-        subtotal: order.subtotal,
-        totalGST: order.total_gst,
-        match: Math.abs(total - (order.order_total || order.grand_total)) < 0.01
-      });
-      
-      const orderTotal = order.order_total || order.grand_total;
-      if (Math.abs(total - orderTotal) > 0.01) {
-        console.error('❌ AMOUNT MISMATCH DETECTED!');
-        throw new Error('Order amount mismatch. Please refresh and try again.');
-      }
+      // Success callback
+      onSuccess: async (paymentData) => {
+        console.log('✅ PAYMENT SUCCESS CALLBACK:', paymentData);
+        
+        try {
+          // Clear cart
+          const cartCleared = await clearCart();
+          
+          if (!cartCleared) {
+            toast({
+              title: "Payment Successful - Cart Warning",
+              description: "Payment completed but cart clear failed. Please manually clear your cart.",
+              variant: "default",
+              duration: 8000,
+            });
+          }
 
-      const requiredElements = [
-        "pp-order-id",
-        "pp-amount",
-        "pp-customer-email",
-        "pp-customer-phone",
-        "pp-customer-name",
-        "pp-cart-items",
-        "pp-shipping-info",
-      ];
+          // Show success message
+          toast({
+            title: "Payment Successful! 🎉",
+            description: `Order #${order.id.slice(0, 8)} has been confirmed. Redirecting...`,
+            duration: 3000,
+          });
 
-      for (const elementId of requiredElements) {
-        const element = document.getElementById(elementId);
-        if (!element) {
-          throw new Error(`Required form element ${elementId} not found`);
+          // Redirect to order page
+          setTimeout(() => {
+            navigate(`/order/${order.id}`, { replace: true });
+          }, 2000);
+
+        } catch (error) {
+          console.error('Post-payment processing error:', error);
+          toast({
+            title: "Payment Successful",
+            description: "Your payment was successful. Redirecting to order page...",
+            duration: 3000,
+          });
+          
+          setTimeout(() => {
+            navigate(`/order/${order.id}`, { replace: true });
+          }, 2000);
         }
-      }
+      },
+      
+      // Failure callback
+      onFailure: async (errorData) => {
+        console.error('❌ PAYMENT FAILURE CALLBACK:', errorData);
+        
+        try {
+          // Update order status to failed
+          await supabase
+            .from('orders')
+            .update({
+              payment_status: 'failed',
+              status: 'cancelled',
+              order_notes: errorData.error || 'Payment failed',
+            })
+            .eq('id', order.id);
 
-      document.getElementById("pp-order-id").value = order.id;
-      document.getElementById("pp-amount").value = totalAmount;
-      document.getElementById("pp-customer-email").value = formData.email;
-      document.getElementById("pp-customer-phone").value = formData.phone;
-      document.getElementById(
-        "pp-customer-name"
-      ).value = `${formData.firstName} ${formData.lastName}`;
-      document.getElementById("pp-cart-items").value =
-        JSON.stringify(cartItemsForPhonePe);
-      document.getElementById("pp-shipping-info").value = JSON.stringify({
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        phone: formData.phone,
-        address: formData.address,
-        city: formData.city,
-        state: formData.state,
-        zipCode: formData.zipCode,
-      });
+          // Show error message
+          toast({
+            title: "Payment Failed",
+            description: errorData.error || "Payment could not be completed. Please try again.",
+            variant: "destructive",
+            duration: 8000,
+          });
+        } catch (dbError) {
+          console.error('Failed to update order status:', dbError);
+        }
+        
+        setProcessingPayment(false);
+      },
+    });
 
-      if (payFormRef.current) {
-        payFormRef.current.submit();
-      } else {
-        throw new Error("Payment form reference not found");
-      }
-    } catch (error) {
-      console.error("PayNow failed:", error);
-      toast({
-        title: "Payment Error",
-        description: error.message || "Payment initialization failed",
-        variant: "destructive",
-      });
-      setProcessingPayment(false);
-    }
-  }, [validateForm, validateCartItems, validateGSTData, validateStockAvailability, items, total, formData, createOrder, toast]);
+    // Note: Don't set processingPayment to false here - modal is still open
+    // It will be set to false in the callbacks
 
+  } catch (error) {
+    console.error('❌ Payment initiation failed:', error);
+    
+    toast({
+      title: "Payment Error",
+      description: error.message || "Failed to initiate payment. Please try again.",
+      variant: "destructive",
+    });
+    
+    setProcessingPayment(false);
+  }
+}, [
+  validateForm, 
+  validateCartItems, 
+  validateGSTData, 
+  validateStockAvailability, 
+  formData, 
+  total,
+  createOrder, 
+  clearCart,
+  toast, 
+  navigate,
+  supabase
+  ]);
+  
   const handleCODPayment = useCallback(async () => {
     if (!validateForm()) return;
     if (!validateCartItems()) return;
@@ -1465,6 +1519,7 @@ export const useCheckoutLogic = () => {
     }
   }, [user, fetchUserProfile]);
 
+  // ✅ FIX: Removed PHONEPE_PAY_URL from return statement
   return {
     loading: loading || !gstDataLoaded,
     processingPayment,
@@ -1481,6 +1536,6 @@ export const useCheckoutLogic = () => {
     handlePaymentSuccess,
     handlePaymentFailure,
     validateForm,
-    PHONEPE_PAY_URL,
+    // PHONEPE_PAY_URL removed - no longer needed with Razorpay
   };
 };
