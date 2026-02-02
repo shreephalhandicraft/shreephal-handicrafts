@@ -3,10 +3,21 @@ import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import ImageUploadDirect from "@/components/ImageUploadDirect.jsx";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabaseClient";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2, Trash2, AlertTriangle } from "lucide-react";
 
 export default function EditProductPage() {
   const { productId } = useParams();
@@ -14,6 +25,8 @@ export default function EditProductPage() {
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  
   // Form states
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -23,12 +36,16 @@ export default function EditProductPage() {
   const [imageUrl, setImageUrl] = useState("");
   const [uploading, setUploading] = useState(false);
   const [inStock, setInStock] = useState(false);
+  
+  // ✅ 2️⃣ NEW: Is Active toggle
+  const [isActive, setIsActive] = useState(true);
+  
   const [featured, setFeatured] = useState(false);
   const [featuredCount, setFeaturedCount] = useState(0);
-  const [customizableFields, setCustomizableFields] = useState({
-    text_input: false,
-    image_upload: false,
-  });
+  
+  // ❌ 1️⃣ REMOVED: customizableFields state (UI-only removal)
+  // const [customizableFields, setCustomizableFields] = useState({ text_input: false, image_upload: false });
+  
   const [gst_5pct, setGst5pct] = useState(false);
   const [gst_18pct, setGst18pct] = useState(false);
   const [catalogNumber, setCatalogNumber] = useState("");
@@ -58,13 +75,13 @@ export default function EditProductPage() {
         setCategoryId(product.category_id || "");
         setImageUrl(product.image_url || "");
         setInStock(product.in_stock || false);
+        setIsActive(product.is_active !== false); // ✅ Default true if not set
         setFeatured(product.featured || false);
-        setCustomizableFields(product.customizable_fields || { text_input: false, image_upload: false });
+        // ❌ Removed: setCustomizableFields
         setGst5pct(product.gst_5pct || false);
         setGst18pct(product.gst_18pct || false);
         setCatalogNumber(product.catalog_number || "");
 
-        // ✅ FIXED: Fetch variants using size_display instead of size_code
         const { data: variantData, error: variantError } = await supabase
           .from("product_variants")
           .select("*")
@@ -75,7 +92,7 @@ export default function EditProductPage() {
           setVariants(
             variantData.map((v) => ({
               id: v.id,
-              size: v.size_display,  // ✅ FIXED: Was size_code
+              size: v.size_display,
               price: v.price,
               stock_quantity: v.stock_quantity,
             }))
@@ -96,7 +113,7 @@ export default function EditProductPage() {
           .from("products")
           .select("*", { count: "exact", head: true })
           .eq("featured", true)
-          .neq("id", productId); // Exclude current product
+          .neq("id", productId);
 
         if (!countError) setFeaturedCount(count);
       } catch (error) {
@@ -141,9 +158,7 @@ export default function EditProductPage() {
     }
   };
 
-  const handleCustomizableFieldChange = (field) => (e) => {
-    setCustomizableFields((prev) => ({ ...prev, [field]: e.target.checked }));
-  };
+  // ❌ 1️⃣ REMOVED: handleCustomizableFieldChange (UI-only)
 
   const validateAndSubmit = async (e) => {
     e.preventDefault();
@@ -157,13 +172,6 @@ export default function EditProductPage() {
       return;
     }
     
-    // ✅ REMOVED: Price validation (price is now auto-computed from variants)
-    // Old code:
-    // if (!price || Number(price) < 0) {
-    //   toast({ title: "Validation Error", description: "Price must be a positive number.", variant: "destructive" });
-    //   return;
-    // }
-    
     if (!categoryId) {
       toast({
         title: "Validation Error",
@@ -172,16 +180,16 @@ export default function EditProductPage() {
       });
       return;
     }
+    
     if (featured && featuredCount >= 4) {
       toast({
         title: "Featured limit reached",
-        description: "Maximum 4 featured products allowed. Unfeature one before adding.",
+        description: "Maximum 4 featured products allowed.",
         variant: "destructive",
       });
       return;
     }
 
-    // Validate variants
     if (
       variants.some(
         (v) =>
@@ -194,30 +202,31 @@ export default function EditProductPage() {
     ) {
       toast({
         title: "Validation Error",
-        description: "Each variant must have size, price (>0), and stock quantity (>=0).",
+        description: "Each variant must have size, price (>0), and stock (>=0).",
         variant: "destructive",
       });
       return;
     }
+    
     if (variants.length > 3) {
       toast({
         title: "Validation Error",
-        description: "You can add a maximum of 3 sizes only.",
+        description: "Maximum 3 sizes allowed.",
         variant: "destructive",
       });
       return;
     }
 
-    // Update main product (price will be auto-computed by trigger)
+    // Update main product
     const updatedProduct = {
       title: title.trim(),
       description: description.trim(),
-      // ✅ Price is now optional - trigger will compute it from variants
       price: price ? parseFloat(price) : null,
       category_id: categoryId,
       image_url: imageUrl,
       in_stock: inStock,
-      customizable_fields: customizableFields,
+      is_active: isActive, // ✅ 2️⃣ NEW: Save is_active state
+      // ❌ Removed: customizable_fields
       featured,
       catalog_number: catalogNumber.trim(),
       gst_5pct,
@@ -239,8 +248,7 @@ export default function EditProductPage() {
       return;
     }
 
-    // Handle variants: delete old ones and insert new
-    // First, delete all existing variants
+    // Handle variants
     const { error: deleteError } = await supabase
       .from("product_variants")
       .delete()
@@ -255,10 +263,9 @@ export default function EditProductPage() {
       return;
     }
 
-    // ✅ FIXED: Insert new variants using size_display instead of size_code
     const variantsToInsert = variants.map((v) => ({
       product_id: productId,
-      size_display: v.size,  // ✅ FIXED: Was size_code
+      size_display: v.size,
       price: parseFloat(v.price),
       stock_quantity: Number(v.stock_quantity),
       created_at: new Date().toISOString(),
@@ -280,6 +287,39 @@ export default function EditProductPage() {
 
     toast({ title: "Product updated successfully" });
     navigate("/admin/products");
+  };
+
+  // ✅ 3️⃣ NEW: Hard delete function
+  const handleHardDelete = async () => {
+    try {
+      // Delete variants first (foreign key constraint)
+      const { error: variantError } = await supabase
+        .from("product_variants")
+        .delete()
+        .eq("product_id", productId);
+
+      if (variantError) throw variantError;
+
+      // Delete product
+      const { error: productError } = await supabase
+        .from("products")
+        .delete()
+        .eq("id", productId);
+
+      if (productError) throw productError;
+
+      toast({
+        title: "Product deleted permanently",
+        description: "This action cannot be undone.",
+      });
+      navigate("/admin/products");
+    } catch (error) {
+      toast({
+        title: "Failed to delete product",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
   };
 
   if (loading) {
@@ -322,7 +362,6 @@ export default function EditProductPage() {
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             required
-            className="placeholder-gray-400"
           />
         </div>
 
@@ -338,32 +377,28 @@ export default function EditProductPage() {
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             required
-            className="resize-none rounded-md border border-gray-300 px-3 py-2 placeholder-gray-400 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+            className="resize-none rounded-md border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
           />
         </div>
 
-        {/* Base Price - ✅ OPTIONAL (auto-computed) */}
+        {/* Base Price */}
         <div className="flex flex-col">
           <Label htmlFor="price" className="mb-1 font-medium text-gray-700">
-            Base Price (₹) <span className="text-gray-500 text-sm">(optional - auto-computed from variants)</span>
+            Base Price (₹) <span className="text-gray-500 text-sm">(auto-computed)</span>
           </Label>
           <Input
             id="price"
             type="number"
-            min="0"
-            step="0.01"
             placeholder="Auto-computed from variants"
             value={price}
-            onChange={(e) => setPrice(e.target.value)}
-            className="placeholder-gray-400"
             disabled
           />
           <p className="text-xs text-gray-500 mt-1">
-            ℹ️ Price will be automatically calculated from the lowest variant price.
+            ℹ️ Calculated from lowest variant price
           </p>
         </div>
 
-        {/* Category select */}
+        {/* Category */}
         <div className="flex flex-col">
           <Label htmlFor="category" className="mb-1 font-medium text-gray-700">
             Category <span className="text-red-500">*</span>
@@ -372,12 +407,10 @@ export default function EditProductPage() {
             id="category"
             value={categoryId}
             onChange={(e) => setCategoryId(e.target.value)}
-            className="border border-gray-300 rounded-md p-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+            className="border rounded-md p-2 focus:ring-2 focus:ring-indigo-500"
             required
           >
-            <option value="" disabled>
-              -- Select a Category --
-            </option>
+            <option value="">-- Select Category --</option>
             {categories.map((cat) => (
               <option value={cat.id} key={cat.id}>
                 {cat.name}
@@ -389,123 +422,73 @@ export default function EditProductPage() {
         {/* Image Upload */}
         <div className="flex flex-col">
           <Label className="mb-1 font-medium text-gray-700">Product Image</Label>
-          <div className="w-full max-w-xs">
-            <ImageUploadDirect
-              onUploadSuccess={onUploadSuccess}
-              maxFiles={1}
-              folder="shreephal-handicrafts/products"
+          <ImageUploadDirect
+            onUploadSuccess={onUploadSuccess}
+            maxFiles={1}
+            folder="shreephal-handicrafts/products"
+          />
+          {imageUrl && (
+            <img
+              src={imageUrl}
+              alt="Product"
+              className="mt-4 w-32 h-32 object-cover rounded-md shadow-sm"
             />
-            {uploading && (
-              <p className="text-sm text-blue-600 mt-1 animate-pulse">
-                Uploading image...
-              </p>
-            )}
-            {imageUrl && (
-              <img
-                src={imageUrl}
-                alt="Current product"
-                className="mt-4 w-32 h-32 object-cover rounded-md shadow-sm border"
-              />
-            )}
-          </div>
+          )}
         </div>
 
         {/* Sizes & Variants */}
-        <fieldset className="border border-gray-300 rounded-md p-4">
-          <legend className="text-lg font-semibold text-gray-700 mb-4">
+        <fieldset className="border rounded-md p-4">
+          <legend className="text-lg font-semibold mb-4">
             Sizes & Variants (max 3) <span className="text-red-500">*</span>
           </legend>
           {variants.map((variant, idx) => (
-            <div
-              key={idx}
-              className="mb-4 flex flex-wrap gap-4 items-end border p-4 rounded-md shadow-sm"
-            >
-              <div className="flex-1 min-w-[6rem]">
-                <Label
-                  htmlFor={`size-${idx}`}
-                  className="block mb-1 font-medium text-gray-600"
-                >
-                  Size <span className="text-red-500">*</span>
-                </Label>
+            <div key={idx} className="mb-4 flex gap-4 border p-4 rounded-md">
+              <div className="flex-1">
+                <Label htmlFor={`size-${idx}`}>Size *</Label>
                 <Input
                   id={`size-${idx}`}
-                  placeholder="e.g. 6 INCH, 8 INCH"
+                  placeholder="e.g. 6 INCH"
                   value={variant.size}
-                  onChange={(e) =>
-                    handleVariantChange(idx, "size", e.target.value)
-                  }
+                  onChange={(e) => handleVariantChange(idx, "size", e.target.value)}
                   required
-                  className="placeholder-gray-400"
                 />
               </div>
-
-              <div className="flex-1 min-w-[8rem]">
-                <Label
-                  htmlFor={`price-${idx}`}
-                  className="block mb-1 font-medium text-gray-600"
-                >
-                  Price (₹) <span className="text-red-500">*</span>
-                </Label>
+              <div className="flex-1">
+                <Label htmlFor={`price-${idx}`}>Price (₹) *</Label>
                 <Input
                   id={`price-${idx}`}
                   type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="Price for size"
+                  placeholder="Price"
                   value={variant.price}
-                  onChange={(e) =>
-                    handleVariantChange(idx, "price", e.target.value)
-                  }
+                  onChange={(e) => handleVariantChange(idx, "price", e.target.value)}
                   required
-                  className="placeholder-gray-400"
                 />
               </div>
-
-              <div className="flex-1 min-w-[10rem]">
-                <Label
-                  htmlFor={`stock-${idx}`}
-                  className="block mb-1 font-medium text-gray-600"
-                >
-                  Stock Quantity <span className="text-red-500">*</span>
-                </Label>
+              <div className="flex-1">
+                <Label htmlFor={`stock-${idx}`}>Stock *</Label>
                 <Input
                   id={`stock-${idx}`}
                   type="number"
-                  min="0"
-                  step="1"
-                  placeholder="Stock qty"
+                  placeholder="Stock"
                   value={variant.stock_quantity}
-                  onChange={(e) =>
-                    handleVariantChange(idx, "stock_quantity", e.target.value)
-                  }
+                  onChange={(e) => handleVariantChange(idx, "stock_quantity", e.target.value)}
                   required
-                  className="placeholder-gray-400"
                 />
               </div>
-
               {variants.length > 1 && (
-                <div className="flex items-center">
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    className="h-10 px-3 py-2"
-                    onClick={() => removeVariant(idx)}
-                    aria-label={`Remove variant ${idx + 1}`}
-                  >
-                    Remove
-                  </Button>
-                </div>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => removeVariant(idx)}
+                >
+                  Remove
+                </Button>
               )}
             </div>
           ))}
-
           {variants.length < 3 && (
-            <Button
-              type="button"
-              onClick={addVariant}
-              className="mt-2 w-full sm:w-auto"
-              variant="outline"
-            >
+            <Button type="button" onClick={addVariant} variant="outline">
               Add Size
             </Button>
           )}
@@ -513,115 +496,69 @@ export default function EditProductPage() {
 
         {/* In Stock */}
         <div className="flex items-center space-x-2">
-          <input
+          <Switch
             id="inStock"
-            type="checkbox"
             checked={inStock}
-            onChange={(e) => setInStock(e.target.checked)}
-            className="h-5 w-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+            onCheckedChange={setInStock}
           />
-          <Label
-            htmlFor="inStock"
-            className="font-medium text-gray-700 cursor-pointer"
-          >
+          <Label htmlFor="inStock" className="cursor-pointer">
             In Stock
+          </Label>
+        </div>
+
+        {/* ✅ 2️⃣ NEW: Is Active Toggle */}
+        <div className="flex items-center space-x-2">
+          <Switch
+            id="isActive"
+            checked={isActive}
+            onCheckedChange={setIsActive}
+          />
+          <Label htmlFor="isActive" className="cursor-pointer">
+            Is Active (Product visible to customers)
           </Label>
         </div>
 
         {/* Featured */}
         <div className="flex items-center space-x-2">
-          <input
+          <Switch
             id="featured"
-            type="checkbox"
             checked={featured}
-            onChange={(e) => setFeatured(e.target.checked)}
+            onCheckedChange={setFeatured}
             disabled={featuredCount >= 4 && !featured}
-            className="h-5 w-5 rounded border-gray-300 text-yellow-400 focus:ring-yellow-400"
           />
-          <Label
-            htmlFor="featured"
-            className="font-medium text-gray-700 cursor-pointer select-none"
-          >
+          <Label htmlFor="featured" className="cursor-pointer">
             Featured (max 4)
           </Label>
         </div>
 
-        {/* Customizable Fields */}
-        <fieldset className="border border-gray-300 rounded-md p-4 space-y-4">
-          <legend className="text-lg font-semibold text-gray-700">
-            Customization Options
-          </legend>
-          <div className="flex items-center space-x-2">
-            <input
-              id="custom-text-input"
-              type="checkbox"
-              checked={customizableFields.text_input}
-              onChange={handleCustomizableFieldChange("text_input")}
-              className="h-5 w-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-            />
-            <Label
-              htmlFor="custom-text-input"
-              className="font-medium text-gray-700 cursor-pointer"
-            >
-              Allow Custom Text Input
-            </Label>
-          </div>
-
-          <div className="flex items-center space-x-2">
-            <input
-              id="custom-image-upload"
-              type="checkbox"
-              checked={customizableFields.image_upload}
-              onChange={handleCustomizableFieldChange("image_upload")}
-              className="h-5 w-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-            />
-            <Label
-              htmlFor="custom-image-upload"
-              className="font-medium text-gray-700 cursor-pointer"
-            >
-              Allow Custom Image Upload
-            </Label>
-          </div>
-        </fieldset>
+        {/* ❌ 1️⃣ REMOVED: Customization Options Fieldset */}
 
         {/* GST */}
-        <fieldset className="border border-gray-300 rounded-md p-4 space-y-4">
-          <legend className="text-lg font-semibold text-gray-700 mb-4">
-            GST Tax Rate
-          </legend>
+        <fieldset className="border rounded-md p-4 space-y-4">
+          <legend className="text-lg font-semibold">GST Tax Rate</legend>
           <div className="flex items-center space-x-2">
-            <input
+            <Switch
               id="gst-5pct"
-              type="checkbox"
-              checked={gst_5pct || false}
-              onChange={(e) => {
-                setGst5pct(e.target.checked);
-                if (e.target.checked) setGst18pct(false);
+              checked={gst_5pct}
+              onCheckedChange={(checked) => {
+                setGst5pct(checked);
+                if (checked) setGst18pct(false);
               }}
-              className="h-5 w-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
             />
-            <Label
-              htmlFor="gst-5pct"
-              className="font-medium text-gray-700 cursor-pointer"
-            >
+            <Label htmlFor="gst-5pct" className="cursor-pointer">
               GST 5%
             </Label>
           </div>
           <div className="flex items-center space-x-2">
-            <input
+            <Switch
               id="gst-18pct"
-              type="checkbox"
-              checked={gst_18pct || false}
-              onChange={(e) => {
-                setGst18pct(e.target.checked);
-                if (e.target.checked) setGst5pct(false);
+              checked={gst_18pct}
+              onCheckedChange={(checked) => {
+                setGst18pct(checked);
+                if (checked) setGst5pct(false);
               }}
-              className="h-5 w-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
             />
-            <Label
-              htmlFor="gst-18pct"
-              className="font-medium text-gray-700 cursor-pointer"
-            >
+            <Label htmlFor="gst-18pct" className="cursor-pointer">
               GST 18%
             </Label>
           </div>
@@ -629,22 +566,16 @@ export default function EditProductPage() {
 
         {/* Catalog Number */}
         <div className="flex flex-col">
-          <Label
-            htmlFor="catalogNumber"
-            className="mb-1 font-medium text-gray-700"
-          >
-            Catalog Number (optional)
-          </Label>
+          <Label htmlFor="catalogNumber">Catalog Number (optional)</Label>
           <Input
             id="catalogNumber"
             placeholder="Enter catalog number"
             value={catalogNumber}
             onChange={(e) => setCatalogNumber(e.target.value)}
-            className="placeholder-gray-400"
           />
         </div>
 
-        {/* Submit Button */}
+        {/* Submit Buttons */}
         <div className="flex gap-4">
           <Button
             type="button"
@@ -654,14 +585,74 @@ export default function EditProductPage() {
           >
             Cancel
           </Button>
-          <Button
-            type="submit"
-            className="flex-1 py-3 text-lg font-semibold bg-indigo-600 hover:bg-indigo-700 transition-colors rounded-md shadow-md"
-          >
+          <Button type="submit" className="flex-1 bg-indigo-600 hover:bg-indigo-700">
             Update Product
           </Button>
         </div>
+
+        {/* ✅ 3️⃣ NEW: Danger Zone - Hard Delete */}
+        <div className="border-t-2 border-red-100 pt-6 mt-8">
+          <div className="bg-red-50 rounded-lg p-4 border border-red-200">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <h3 className="font-semibold text-red-900 mb-1">Danger Zone</h3>
+                <p className="text-sm text-red-700 mb-3">
+                  Permanently delete this product. This action cannot be undone.
+                </p>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setDeleteDialogOpen(true)}
+                  className="bg-red-600 hover:bg-red-700"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete Product Permanently
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
       </form>
+
+      {/* ✅ 3️⃣ NEW: Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertTriangle className="h-5 w-5" />
+              Are you absolutely sure?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <p className="font-medium text-gray-900">
+                This will permanently delete "{title}" and all its variants.
+              </p>
+              <p className="text-sm">
+                This action <strong>cannot be undone</strong>. All product data, including:
+              </p>
+              <ul className="text-sm list-disc list-inside space-y-1 text-gray-700">
+                <li>Product details and images</li>
+                <li>All size variants and stock</li>
+                <li>Sales history (if any)</li>
+              </ul>
+              <p className="text-sm font-medium text-red-600">
+                will be permanently removed from the database.
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleHardDelete}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Yes, Delete Permanently
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
