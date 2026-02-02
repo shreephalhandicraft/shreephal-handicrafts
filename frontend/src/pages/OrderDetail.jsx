@@ -60,6 +60,30 @@ const getRelativeTime = (dateString) => {
   return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 };
 
+// 🐛 FIX: Extract clean size display from variant
+const getCleanSizeDisplay = (variant) => {
+  if (!variant) return null;
+  
+  // If variant is already a string, return it
+  if (typeof variant === 'string') {
+    try {
+      // Try to parse if it's a JSON string
+      const parsed = JSON.parse(variant);
+      return parsed.sizeDisplay || parsed.size_display || null;
+    } catch {
+      // If not JSON, return as-is
+      return variant;
+    }
+  }
+  
+  // If variant is an object, extract sizeDisplay
+  if (typeof variant === 'object' && variant !== null) {
+    return variant.sizeDisplay || variant.size_display || null;
+  }
+  
+  return null;
+};
+
 // Status configuration
 const getStatusConfig = (status) => {
   const configs = {
@@ -293,7 +317,6 @@ export default function OrderDetail() {
         payment_status: orderData.payment_status,
         payment_method: orderData.payment_method,
         production_status: orderData.production_status,
-        // 🚨 CRITICAL FIX: Use order_total, NOT grand_total
         order_total: parseFloat(orderData.order_total) || 0,
         amount: parseFloat(orderData.order_total) || 0,
         subtotal: parseFloat(orderData.subtotal) || 0,
@@ -311,7 +334,7 @@ export default function OrderDetail() {
         transaction_id: orderData.transaction_id,
       };
 
-      // ✅ STEP 4: Map items
+      // ✅ STEP 4: Map items with FIXED variant handling
       const mappedItems = itemsData?.map((item) => {
         const gstRate = parseFloat(item.gst_rate) || 0;
         const product = item.products || {};
@@ -321,6 +344,19 @@ export default function OrderDetail() {
         const gstAmount = parseFloat(item.gst_amount) || 0;
         const unitPriceWithGst = parseFloat(item.unit_price_with_gst) || (basePrice + gstAmount);
         const itemTotal = parseFloat(item.item_total) || 0;
+        
+        // 🐛 FIX: Extract clean size display from variant_size_display
+        let cleanSizeDisplay = null;
+        
+        // First try: variant_size_display from order_items table
+        if (item.variant_size_display) {
+          cleanSizeDisplay = getCleanSizeDisplay(item.variant_size_display);
+        }
+        
+        // Second try: size_display from product_variants join
+        if (!cleanSizeDisplay && variant.size_display) {
+          cleanSizeDisplay = variant.size_display;
+        }
         
         return {
           id: item.product_id,
@@ -338,7 +374,7 @@ export default function OrderDetail() {
           item_id: item.id,
           customization: item.customization_data,
           variant: {
-            sizeDisplay: item.variant_size_display || variant.size_display,
+            sizeDisplay: cleanSizeDisplay,  // 🐛 FIX: Use cleaned size display
             sizeNumeric: variant.size_numeric,
             sizeUnit: variant.size_unit,
           },
@@ -654,74 +690,79 @@ export default function OrderDetail() {
                   </CardHeader>
                   <CardContent className="p-6">
                     <div className="space-y-6">
-                      {items.map((item, index) => (
-                        <div key={item.item_id || index}>
-                          <div className="flex gap-4">
-                            {item.image ? (
-                              <img
-                                src={item.image}
-                                alt={item.name}
-                                className="h-24 w-24 sm:h-32 sm:w-32 object-cover rounded-xl shadow-md border-2 border-gray-100 flex-shrink-0"
-                                onError={(e) => {
-                                  e.target.style.display = "none";
-                                  e.target.nextSibling.style.display = "flex";
-                                }}
+                      {items.map((item, index) => {
+                        // 🐛 FIX: Clean size display
+                        const sizeDisplay = item.variant?.sizeDisplay;
+                        
+                        return (
+                          <div key={item.item_id || index}>
+                            <div className="flex gap-4">
+                              {item.image ? (
+                                <img
+                                  src={item.image}
+                                  alt={item.name}
+                                  className="h-24 w-24 sm:h-32 sm:w-32 object-cover rounded-xl shadow-md border-2 border-gray-100 flex-shrink-0"
+                                  onError={(e) => {
+                                    e.target.style.display = "none";
+                                    e.target.nextSibling.style.display = "flex";
+                                  }}
+                                />
+                              ) : null}
+                              <ProductFallbackIcon
+                                className="h-24 w-24 sm:h-32 sm:w-32 flex-shrink-0"
+                                style={{ display: item.image ? "none" : "flex" }}
                               />
-                            ) : null}
-                            <ProductFallbackIcon
-                              className="h-24 w-24 sm:h-32 sm:w-32 flex-shrink-0"
-                              style={{ display: item.image ? "none" : "flex" }}
-                            />
 
-                            <div className="flex-1 min-w-0">
-                              <h4 className="font-bold text-base sm:text-lg text-gray-900 mb-2">
-                                {item.name || item.title || "Product"}
-                              </h4>
+                              <div className="flex-1 min-w-0">
+                                <h4 className="font-bold text-base sm:text-lg text-gray-900 mb-2">
+                                  {item.name || item.title || "Product"}
+                                </h4>
 
-                              <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600 mb-3">
-                                {item.catalog_number && <span>SKU: {item.catalog_number}</span>}
-                                {item.variant?.sizeDisplay && (
-                                  <>
-                                    <span>•</span>
-                                    <span>Size: {item.variant.sizeDisplay}</span>
-                                  </>
-                                )}
-                                <span>•</span>
-                                <span className="font-medium">Qty: {item.quantity}</span>
-                                {item.gst_rate > 0 && (
-                                  <>
-                                    <span>•</span>
-                                    <Badge variant="outline" className="text-xs bg-orange-50 text-orange-700 border-orange-200">
-                                      GST @{item.gst_rate}%
-                                    </Badge>
-                                  </>
-                                )}
-                              </div>
+                                <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600 mb-3">
+                                  {item.catalog_number && <span>SKU: {item.catalog_number}</span>}
+                                  {sizeDisplay && (
+                                    <>
+                                      <span>•</span>
+                                      <span>Size: {sizeDisplay}</span>
+                                    </>
+                                  )}
+                                  <span>•</span>
+                                  <span className="font-medium">Qty: {item.quantity}</span>
+                                  {item.gst_rate > 0 && (
+                                    <>
+                                      <span>•</span>
+                                      <Badge variant="outline" className="text-xs bg-orange-50 text-orange-700 border-orange-200">
+                                        GST @{item.gst_rate}%
+                                      </Badge>
+                                    </>
+                                  )}
+                                </div>
 
-                              <div className="flex items-baseline gap-2">
-                                <span className="text-xl sm:text-2xl font-bold text-gray-900">
-                                  {formatCurrency(item.item_total)}
-                                </span>
-                                {item.quantity > 1 && (
-                                  <span className="text-sm text-gray-500">
-                                    ({formatCurrency(item.unit_price_with_gst)} each)
+                                <div className="flex items-baseline gap-2">
+                                  <span className="text-xl sm:text-2xl font-bold text-gray-900">
+                                    {formatCurrency(item.item_total)}
                                   </span>
-                                )}
+                                  {item.quantity > 1 && (
+                                    <span className="text-sm text-gray-500">
+                                      ({formatCurrency(item.unit_price_with_gst)} each)
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                             </div>
+
+                            {item.customization && Object.keys(item.customization).length > 0 && (
+                              <div className="mt-4">
+                                {renderCustomizationDetails(item, {
+                                  [item.product_id]: { customizations: item.customization },
+                                })}
+                              </div>
+                            )}
+
+                            {index < items.length - 1 && <Separator className="mt-6" />}
                           </div>
-
-                          {item.customization && Object.keys(item.customization).length > 0 && (
-                            <div className="mt-4">
-                              {renderCustomizationDetails(item, {
-                                [item.product_id]: { customizations: item.customization },
-                              })}
-                            </div>
-                          )}
-
-                          {index < items.length - 1 && <Separator className="mt-6" />}
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </CardContent>
                 </Card>
