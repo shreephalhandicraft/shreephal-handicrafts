@@ -10,9 +10,11 @@ import {
   AlertTriangle,
   Shield,
   Truck,
-  RotateCcw
+  RotateCcw,
+  Package
 } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useState } from "react";
 import { SEOHead } from "@/components/SEO/SEOHead";
 import { PAGE_SEO } from "@/config/seoConfig";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -43,6 +45,41 @@ const formatPrice = (price) => {
     minimumFractionDigits: 2, 
     maximumFractionDigits: 2 
   });
+};
+
+// 🖼️ Product Image Component with proper fallback
+const ProductImage = ({ item }) => {
+  const [hasError, setHasError] = useState(false);
+  
+  const handleImageError = () => {
+    if (!hasError) {
+      setHasError(true);
+    }
+  };
+  
+  // If image failed to load, show placeholder
+  if (hasError || !item.image) {
+    return (
+      <div className="w-32 h-32 rounded-xl bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center">
+        <div className="text-center">
+          <Package className="h-12 w-12 text-gray-400 mx-auto mb-1" />
+          <span className="text-xs text-gray-500 font-medium">
+            {item.name?.charAt(0) || 'P'}
+          </span>
+        </div>
+      </div>
+    );
+  }
+  
+  return (
+    <img 
+      src={item.image} 
+      alt={item.name} 
+      className="w-32 h-32 object-cover rounded-xl hover:scale-105 transition-transform cursor-pointer" 
+      onError={handleImageError}
+      loading="lazy"
+    />
+  );
 };
 
 const Cart = () => {
@@ -155,19 +192,12 @@ const Cart = () => {
                       }`}
                     >
                       <div className="flex gap-6">
-                        {/* Product Image - Clickable */}
+                        {/* Product Image - Clickable with Fallback */}
                         <Link 
                           to={`/category/${item.categorySlug || 'products'}/products/${item.productId}`}
                           className="flex-shrink-0"
                         >
-                          <img 
-                            src={item.image} 
-                            alt={item.name} 
-                            className="w-32 h-32 object-cover rounded-xl hover:scale-105 transition-transform cursor-pointer" 
-                            onError={(e) => {
-                              e.target.src = '/placeholder-product.jpg';
-                            }}
-                          />
+                          <ProductImage item={item} />
                         </Link>
                         
                         {/* Item Details */}
