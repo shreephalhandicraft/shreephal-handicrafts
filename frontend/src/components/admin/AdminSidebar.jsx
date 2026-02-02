@@ -9,7 +9,7 @@ import {
   MessageSquare,
   ChevronDown,
   ChevronRight,
-  Palette,
+  // ✅ REMOVED: Palette - no longer needed
 } from "lucide-react";
 
 import {
@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 
+// ✅ REMOVED: Customizations menu item
 const menuItems = [
   {
     title: "Dashboard",
@@ -46,11 +47,12 @@ const menuItems = [
     url: "/admin/orders",
     icon: ShoppingCart,
   },
-  {
-    title: "Customizations",
-    url: "/admin/customizations",
-    icon: Palette,
-  },
+  // ❌ REMOVED: Customizations item
+  // {
+  //   title: "Customizations",
+  //   url: "/admin/customizations",
+  //   icon: Palette,
+  // },
   {
     title: "Customers",
     url: "/admin/customers",
@@ -101,7 +103,7 @@ export function AdminSidebar() {
             {!collapsed && (
               <div className="flex flex-col">
                 <span className="text-sm font-semibold text-sidebar-foreground">
-                  Shreephal-Handicraftss
+                  Shreephal-Handicrafts
                 </span>
                 <span className="text-xs text-sidebar-foreground/70">
                   Admin Panel
