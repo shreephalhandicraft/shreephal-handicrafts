@@ -189,9 +189,13 @@ const ProductDetail = () => {
   const getStockQuantity = () => selectedVariant ? selectedVariant.stock_quantity || 0 : product?.quantity || 0;
   const minQuantity = product?.min_order_qty || 1;
   const maxQuantity = product?.max_order_qty || 50;
-  const formatPrice = (priceInPaise) => {
-    const price = (priceInPaise || 0) / 100;
-    return price.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  
+  // 🐛 FIX: Price formatting - prices are already in rupees, not paise!
+  const formatPrice = (price) => {
+    return (price || 0).toLocaleString("en-IN", { 
+      minimumFractionDigits: 2, 
+      maximumFractionDigits: 2 
+    });
   };
 
   const handleVariantSelect = (variant) => setSelectedVariant(variant);
