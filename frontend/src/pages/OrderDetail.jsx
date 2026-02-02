@@ -276,10 +276,11 @@ export default function OrderDetail() {
   const [copiedField, setCopiedField] = useState(null);
   const [showInvoice, setShowInvoice] = useState(false);
 
+  // ✅ FIX: Use user.id instead of user object to prevent unnecessary re-fetches
   useEffect(() => {
-    if (!orderId || !user) return;
+    if (!orderId || !user?.id) return;
     fetchOrder();
-  }, [orderId, user]);
+  }, [orderId, user?.id]);
 
   const fetchOrder = async () => {
     try {

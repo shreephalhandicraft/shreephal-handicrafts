@@ -143,10 +143,11 @@ export default function MyOrders() {
   const [loading, setLoading] = useState(true);
   const [processingPayments, setProcessingPayments] = useState(new Set());
 
+  // ✅ FIX: Use user.id instead of user object to prevent unnecessary re-fetches
   useEffect(() => {
-    if (!user) return;
+    if (!user?.id) return;
     loadOrders();
-  }, [user]);
+  }, [user?.id]);
 
   const loadOrders = async () => {
     try {
