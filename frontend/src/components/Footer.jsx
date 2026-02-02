@@ -11,6 +11,7 @@ import {
   Shield,
   Truck,
   HeadphonesIcon,
+  Code2,
 } from "lucide-react";
 
 export const Footer = () => {
@@ -285,6 +286,27 @@ export const Footer = () => {
 
             <div className="text-xs sm:text-sm text-gray-400 text-center sm:text-right">
               <p>Made with ❤️ for celebrating your achievements</p>
+            </div>
+          </div>
+
+          {/* Developer Credit - Professional & Subtle */}
+          <div className="mt-6 pt-6 border-t border-gray-800/30">
+            <div className="flex flex-col sm:flex-row justify-center items-center space-y-2 sm:space-y-0 sm:space-x-3 text-center">
+              <div className="flex items-center space-x-2 text-xs text-gray-500">
+                <Code2 className="h-3 w-3 text-gray-600" aria-hidden="true" />
+                <span>Designed & Developed by</span>
+              </div>
+              <a
+                href="mailto:ayush.shrivastava@example.com"
+                className="group inline-flex items-center space-x-2 text-xs text-gray-400 hover:text-primary transition-all duration-300 px-3 py-1 rounded-full hover:bg-white/5"
+              >
+                <span className="font-medium">Ayush Shrivastava</span>
+                <Mail className="h-3 w-3 opacity-0 group-hover:opacity-100 transform translate-x-0 group-hover:translate-x-1 transition-all duration-300" aria-hidden="true" />
+              </a>
+              <span className="hidden sm:inline text-gray-700" aria-hidden="true">•</span>
+              <span className="text-xs text-gray-600">
+                Crafting digital excellence
+              </span>
             </div>
           </div>
         </div>
