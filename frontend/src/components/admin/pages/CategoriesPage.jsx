@@ -501,20 +501,20 @@ export function CategoriesPage() {
               {filteredCategories.map((category) => (
                 <Card
                   key={category.id}
-                  className="bg-surface-light border-border hover:shadow-lg transition-all duration-200 group"
+                  className="bg-surface-light border-border hover:shadow-lg transition-all duration-200 group overflow-hidden"
                 >
                   <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between mb-3 gap-2">
-                      {/* Category Image */}
+                    <div className="flex items-start justify-between mb-3 gap-3">
+                      {/* Category Image - BIGGER */}
                       {category.image ? (
                         <img
                           src={category.image}
                           alt={category.name}
-                          className="w-14 h-14 sm:w-16 sm:h-16 object-cover rounded-md border flex-shrink-0 group-hover:scale-105 transition-transform"
+                          className="w-20 h-20 sm:w-24 sm:h-24 object-cover rounded-lg border-2 border-border flex-shrink-0 group-hover:scale-110 transition-transform duration-300 shadow-md"
                         />
                       ) : (
-                        <div className="w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-700 rounded-md flex items-center justify-center flex-shrink-0">
-                          <ImageIcon className="h-6 w-6 sm:h-8 sm:w-8 text-gray-400" />
+                        <div className="w-20 h-20 sm:w-24 sm:h-24 bg-gradient-to-br from-primary/10 via-primary/5 to-primary/20 dark:from-primary/20 dark:via-primary/10 dark:to-primary/30 rounded-lg flex items-center justify-center flex-shrink-0 border-2 border-dashed border-primary/30 group-hover:scale-105 transition-transform duration-300">
+                          <Package className="h-10 w-10 sm:h-12 sm:w-12 text-primary/40" />
                         </div>
                       )}
                       
