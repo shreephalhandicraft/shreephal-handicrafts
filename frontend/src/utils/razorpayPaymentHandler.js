@@ -183,6 +183,7 @@ export const initiateRazorpayPayment = async (options) => {
               instruments: [
                 {
                   method: 'upi',
+                  flows: ['collect', 'qr', 'intent'],  // ✅ FIX: Enable all UPI flows (QR, ID, Apps)
                 },
               ],
             },
