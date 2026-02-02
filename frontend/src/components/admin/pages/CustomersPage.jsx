@@ -70,7 +70,7 @@ export function CustomersPage() {
   const [deleteCustomer, setDeleteCustomer] = useState(null);
   const { toast } = useToast();
 
-  // ✅ FIXED: Fetch customer stats from order_details_full view
+  // ✅ FIXED: Fetch customer stats from orders table (not non-existent view)
   const fetchData = async () => {
     try {
       setLoading(true);
@@ -83,42 +83,40 @@ export function CustomersPage() {
 
       if (customersError) throw customersError;
 
-      // ✅ Fetch order stats using order_details_full view
+      // ✅ Fetch orders using the actual orders table
       const { data: orderData, error: orderError } = await supabase
-        .from("order_details_full")
-        .select("customer_id, order_id, order_total, order_status");
+        .from("orders")
+        .select("id, customer_id, order_total, grand_total, status, payment_status")
+        .in("status", ["delivered", "completed", "confirmed", "shipped"]); // Include reasonable statuses
 
       if (orderError) throw orderError;
 
       // ✅ Calculate stats per customer
       const stats = {};
-      (orderData || []).forEach(row => {
-        const customerId = row.customer_id;
+      (orderData || []).forEach(order => {
+        const customerId = order.customer_id;
         if (!stats[customerId]) {
           stats[customerId] = {
-            orders: new Set(), // Use Set to avoid counting duplicate order_ids
+            orderIds: new Set(),
             totalSpent: 0
           };
         }
         
-        // Only count delivered/completed orders
-        if (row.order_status === 'delivered' || row.order_status === 'completed') {
-          stats[customerId].orders.add(row.order_id);
-          // Add order total only once per order
-          if (!stats[customerId][`order_${row.order_id}_counted`]) {
-            stats[customerId].totalSpent += parseFloat(row.order_total || 0);
-            stats[customerId][`order_${row.order_id}_counted`] = true;
-          }
-        }
+        // Add unique order
+        stats[customerId].orderIds.add(order.id);
+        
+        // Use order_total or grand_total
+        const orderAmount = parseFloat(order.order_total || order.grand_total || 0);
+        stats[customerId].totalSpent += orderAmount;
       });
 
-      // Convert Set to count
+      // Convert to final format
       const processedStats = {};
       Object.keys(stats).forEach(customerId => {
         processedStats[customerId] = {
-          orders: stats[customerId].orders.size,
+          orders: stats[customerId].orderIds.size,
           spent: stats[customerId].totalSpent,
-          status: stats[customerId].orders.size > 0 ? 'active' : 'inactive'
+          status: stats[customerId].orderIds.size > 0 ? 'active' : 'inactive'
         };
       });
 
@@ -567,7 +565,6 @@ export function CustomersPage() {
 
                         <div className="text-center">
                           <div className="flex items-center gap-1 justify-center">
-                            <IndianRupee className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
                             <p className="font-medium text-foreground text-sm sm:text-base">
                               {formatPrice(stats.spent)}
                             </p>
@@ -597,8 +594,7 @@ export function CustomersPage() {
                           className="hover:bg-blue-50 hover:border-blue-300 flex-1 sm:flex-none text-xs"
                         >
                           <Eye className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                          <span className="hidden sm:inline">View</span>
-                          <span className="sm:hidden">View</span>
+                          View
                         </Button>
                         <Button
                           variant="outline"
@@ -610,8 +606,7 @@ export function CustomersPage() {
                           className="hover:bg-green-50 hover:border-green-300 flex-1 sm:flex-none text-xs"
                         >
                           <Edit className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                          <span className="hidden sm:inline">Edit</span>
-                          <span className="sm:hidden">Edit</span>
+                          Edit
                         </Button>
                         <Button
                           variant="outline"
@@ -620,8 +615,7 @@ export function CustomersPage() {
                           onClick={() => setDeleteCustomer(customer)}
                         >
                           <Trash2 className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                          <span className="hidden sm:inline">Delete</span>
-                          <span className="sm:hidden">Del</span>
+                          Del
                         </Button>
                       </div>
                     </div>
