@@ -59,7 +59,7 @@ import { useToast } from "@/hooks/use-toast";
 
 export function CustomersPage() {
   const [customers, setCustomers] = useState([]);
-  const [orders, setOrders] = useState([]);
+  const [customerStats, setCustomerStats] = useState({}); // ✅ Store stats separately
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -70,7 +70,7 @@ export function CustomersPage() {
   const [deleteCustomer, setDeleteCustomer] = useState(null);
   const { toast } = useToast();
 
-  // Fetch customers and orders from Supabase
+  // ✅ FIXED: Fetch customer stats from order_details_full view
   const fetchData = async () => {
     try {
       setLoading(true);
@@ -83,16 +83,47 @@ export function CustomersPage() {
 
       if (customersError) throw customersError;
 
-      // Fetch orders to calculate customer stats
-      const { data: ordersData, error: ordersError } = await supabase
-        .from("orders")
-        .select("customer_id, amount, payment_status")
-        .eq("payment_status", "completed");
+      // ✅ Fetch order stats using order_details_full view
+      const { data: orderData, error: orderError } = await supabase
+        .from("order_details_full")
+        .select("customer_id, order_id, order_total, order_status");
 
-      if (ordersError) throw ordersError;
+      if (orderError) throw orderError;
+
+      // ✅ Calculate stats per customer
+      const stats = {};
+      (orderData || []).forEach(row => {
+        const customerId = row.customer_id;
+        if (!stats[customerId]) {
+          stats[customerId] = {
+            orders: new Set(), // Use Set to avoid counting duplicate order_ids
+            totalSpent: 0
+          };
+        }
+        
+        // Only count delivered/completed orders
+        if (row.order_status === 'delivered' || row.order_status === 'completed') {
+          stats[customerId].orders.add(row.order_id);
+          // Add order total only once per order
+          if (!stats[customerId][`order_${row.order_id}_counted`]) {
+            stats[customerId].totalSpent += parseFloat(row.order_total || 0);
+            stats[customerId][`order_${row.order_id}_counted`] = true;
+          }
+        }
+      });
+
+      // Convert Set to count
+      const processedStats = {};
+      Object.keys(stats).forEach(customerId => {
+        processedStats[customerId] = {
+          orders: stats[customerId].orders.size,
+          spent: stats[customerId].totalSpent,
+          status: stats[customerId].orders.size > 0 ? 'active' : 'inactive'
+        };
+      });
 
       setCustomers(customersData || []);
-      setOrders(ordersData || []);
+      setCustomerStats(processedStats);
     } catch (error) {
       console.error("Error fetching data:", error);
       toast({
@@ -109,21 +140,12 @@ export function CustomersPage() {
     fetchData();
   }, []);
 
-  // Calculate customer statistics
+  // ✅ Get customer statistics from pre-calculated stats
   const getCustomerStats = (customerId) => {
-    const customerOrders = orders.filter(
-      (order) => order.customer_id === customerId
-    );
-    const totalOrders = customerOrders.length;
-    const totalSpent = customerOrders.reduce(
-      (sum, order) => sum + (parseFloat(order.amount) || 0),
-      0
-    );
-
-    return {
-      orders: totalOrders,
-      spent: totalSpent,
-      status: totalOrders > 0 ? "active" : "inactive",
+    return customerStats[customerId] || {
+      orders: 0,
+      spent: 0,
+      status: 'inactive'
     };
   };
 
@@ -226,6 +248,15 @@ export function CustomersPage() {
   ).length;
   const inactiveCustomers = totalCustomers - activeCustomers;
   const completedProfiles = customers.filter((c) => c.profile_completed).length;
+
+  // ✅ Price formatting function
+  const formatPrice = (price) => {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      minimumFractionDigits: 0,
+    }).format(price || 0);
+  };
 
   if (loading) {
     return (
@@ -538,7 +569,7 @@ export function CustomersPage() {
                           <div className="flex items-center gap-1 justify-center">
                             <IndianRupee className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
                             <p className="font-medium text-foreground text-sm sm:text-base">
-                              {stats.spent.toFixed(0)}
+                              {formatPrice(stats.spent)}
                             </p>
                           </div>
                           <p className="text-xs text-muted-foreground">
@@ -727,11 +758,8 @@ export function CustomersPage() {
                       </div>
                       <div className="text-center p-4 bg-muted/30 rounded-lg">
                         <div className="text-xl sm:text-2xl font-bold flex items-center justify-center gap-1">
-                          <IndianRupee className="h-4 w-4 sm:h-5 sm:w-5" />
                           <span className="truncate">
-                            {getCustomerStats(
-                              selectedCustomer.id
-                            ).spent.toFixed(2)}
+                            {formatPrice(getCustomerStats(selectedCustomer.id).spent)}
                           </span>
                         </div>
                         <div className="text-sm text-muted-foreground">
