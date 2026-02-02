@@ -3,7 +3,6 @@ import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,6 +17,28 @@ import ImageUploadDirect from "@/components/ImageUploadDirect.jsx";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabaseClient";
 import { ArrowLeft, Loader2, Trash2, AlertTriangle } from "lucide-react";
+
+// ✅ Custom Toggle Component (no Radix UI dependency)
+const Toggle = ({ id, checked, onChange, disabled = false, children }) => (
+  <div className="flex items-center space-x-2">
+    <label htmlFor={id} className="relative inline-flex items-center cursor-pointer">
+      <input
+        type="checkbox"
+        id={id}
+        className="sr-only peer"
+        checked={checked}
+        onChange={onChange}
+        disabled={disabled}
+      />
+      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed"></div>
+    </label>
+    {children && (
+      <Label htmlFor={id} className="cursor-pointer">
+        {children}
+      </Label>
+    )}
+  </div>
+);
 
 export default function EditProductPage() {
   const { productId } = useParams();
@@ -44,7 +65,6 @@ export default function EditProductPage() {
   const [featuredCount, setFeaturedCount] = useState(0);
   
   // ❌ 1️⃣ REMOVED: customizableFields state (UI-only removal)
-  // const [customizableFields, setCustomizableFields] = useState({ text_input: false, image_upload: false });
   
   const [gst_5pct, setGst5pct] = useState(false);
   const [gst_18pct, setGst18pct] = useState(false);
@@ -77,7 +97,6 @@ export default function EditProductPage() {
         setInStock(product.in_stock || false);
         setIsActive(product.is_active !== false); // ✅ Default true if not set
         setFeatured(product.featured || false);
-        // ❌ Removed: setCustomizableFields
         setGst5pct(product.gst_5pct || false);
         setGst18pct(product.gst_18pct || false);
         setCatalogNumber(product.catalog_number || "");
@@ -158,8 +177,6 @@ export default function EditProductPage() {
     }
   };
 
-  // ❌ 1️⃣ REMOVED: handleCustomizableFieldChange (UI-only)
-
   const validateAndSubmit = async (e) => {
     e.preventDefault();
 
@@ -226,7 +243,6 @@ export default function EditProductPage() {
       image_url: imageUrl,
       in_stock: inStock,
       is_active: isActive, // ✅ 2️⃣ NEW: Save is_active state
-      // ❌ Removed: customizable_fields
       featured,
       catalog_number: catalogNumber.trim(),
       gst_5pct,
@@ -495,73 +511,58 @@ export default function EditProductPage() {
         </fieldset>
 
         {/* In Stock */}
-        <div className="flex items-center space-x-2">
-          <Switch
-            id="inStock"
-            checked={inStock}
-            onCheckedChange={setInStock}
-          />
-          <Label htmlFor="inStock" className="cursor-pointer">
-            In Stock
-          </Label>
-        </div>
+        <Toggle
+          id="inStock"
+          checked={inStock}
+          onChange={(e) => setInStock(e.target.checked)}
+        >
+          In Stock
+        </Toggle>
 
         {/* ✅ 2️⃣ NEW: Is Active Toggle */}
-        <div className="flex items-center space-x-2">
-          <Switch
-            id="isActive"
-            checked={isActive}
-            onCheckedChange={setIsActive}
-          />
-          <Label htmlFor="isActive" className="cursor-pointer">
-            Is Active (Product visible to customers)
-          </Label>
-        </div>
+        <Toggle
+          id="isActive"
+          checked={isActive}
+          onChange={(e) => setIsActive(e.target.checked)}
+        >
+          Is Active (Product visible to customers)
+        </Toggle>
 
         {/* Featured */}
-        <div className="flex items-center space-x-2">
-          <Switch
-            id="featured"
-            checked={featured}
-            onCheckedChange={setFeatured}
-            disabled={featuredCount >= 4 && !featured}
-          />
-          <Label htmlFor="featured" className="cursor-pointer">
-            Featured (max 4)
-          </Label>
-        </div>
+        <Toggle
+          id="featured"
+          checked={featured}
+          onChange={(e) => setFeatured(e.target.checked)}
+          disabled={featuredCount >= 4 && !featured}
+        >
+          Featured (max 4)
+        </Toggle>
 
         {/* ❌ 1️⃣ REMOVED: Customization Options Fieldset */}
 
         {/* GST */}
         <fieldset className="border rounded-md p-4 space-y-4">
           <legend className="text-lg font-semibold">GST Tax Rate</legend>
-          <div className="flex items-center space-x-2">
-            <Switch
-              id="gst-5pct"
-              checked={gst_5pct}
-              onCheckedChange={(checked) => {
-                setGst5pct(checked);
-                if (checked) setGst18pct(false);
-              }}
-            />
-            <Label htmlFor="gst-5pct" className="cursor-pointer">
-              GST 5%
-            </Label>
-          </div>
-          <div className="flex items-center space-x-2">
-            <Switch
-              id="gst-18pct"
-              checked={gst_18pct}
-              onCheckedChange={(checked) => {
-                setGst18pct(checked);
-                if (checked) setGst5pct(false);
-              }}
-            />
-            <Label htmlFor="gst-18pct" className="cursor-pointer">
-              GST 18%
-            </Label>
-          </div>
+          <Toggle
+            id="gst-5pct"
+            checked={gst_5pct}
+            onChange={(e) => {
+              setGst5pct(e.target.checked);
+              if (e.target.checked) setGst18pct(false);
+            }}
+          >
+            GST 5%
+          </Toggle>
+          <Toggle
+            id="gst-18pct"
+            checked={gst_18pct}
+            onChange={(e) => {
+              setGst18pct(e.target.checked);
+              if (e.target.checked) setGst5pct(false);
+            }}
+          >
+            GST 18%
+          </Toggle>
         </fieldset>
 
         {/* Catalog Number */}
