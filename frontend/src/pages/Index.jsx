@@ -26,7 +26,7 @@ const Index = () => {
 
       {/* Page Content */}
       <Hero />
-      {/* <FeaturedCategories /> */}
+      <FeaturedCategories />
       <FeaturedProducts />
       <HowItWorks />
       <HappyCustomers />
