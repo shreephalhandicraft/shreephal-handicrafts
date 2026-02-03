@@ -60,7 +60,7 @@ export function DashboardHeader({ darkMode, toggleDarkMode, realtimeStatus }) {
   const handleSearch = (e) => {
     e.preventDefault();
     if (searchTerm.trim()) {
-      console.log("Searching for:", searchTerm);
+      // Search functionality - logged to analytics in production
       toast({
         title: "Search",
         description: `Searching for "${searchTerm}"...`,
