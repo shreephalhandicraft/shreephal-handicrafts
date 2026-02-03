@@ -50,20 +50,14 @@ export function AdminDashboard() {
     document.documentElement.classList.toggle("dark", newDarkMode);
   };
 
-  // ✅ FIX BUG #5: Optimized dashboard data fetching with targeted queries
   const fetchDashboardData = async () => {
     try {
       setDashboardData((prev) => ({ ...prev, loading: true }));
-      
-      console.log("📊 Fetching dashboard metrics (optimized)...");
-      const startTime = performance.now();
 
-      // Calculate 30 days ago timestamp
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       const thirtyDaysAgoISO = thirtyDaysAgo.toISOString();
 
-      // ✅ OPTIMIZATION: Run all queries in parallel
       const [
         totalOrdersResult,
         pendingOrdersResult,
@@ -74,54 +68,45 @@ export function AdminDashboard() {
         totalMessagesResult,
         unreadMessagesResult,
       ] = await Promise.all([
-        // 1. Total orders count (fast COUNT query)
         supabase
           .from("orders")
           .select("*", { count: 'exact', head: true }),
         
-        // 2. Pending orders count
         supabase
           .from("orders")
           .select("*", { count: 'exact', head: true })
           .eq("status", "pending"),
         
-        // 3. Recent orders (last 30 days) count
         supabase
           .from("orders")
           .select("*", { count: 'exact', head: true })
           .gte("created_at", thirtyDaysAgoISO),
         
-        // 4. COD orders count
         supabase
           .from("orders")
           .select("*", { count: 'exact', head: true })
           .eq("payment_method", "COD"),
         
-        // 5. PayNow orders count
         supabase
           .from("orders")
           .select("*", { count: 'exact', head: true })
           .eq("payment_method", "PayNow"),
         
-        // 6. ✅ FIXED: Revenue calculation using orders table with grand_total column
         supabase
           .from("orders")
           .select("grand_total")
           .eq("payment_status", "completed"),
         
-        // 7. Total messages count
         supabase
           .from("messages")
           .select("*", { count: 'exact', head: true }),
         
-        // 8. Unread messages count
         supabase
           .from("messages")
           .select("*", { count: 'exact', head: true })
           .eq("is_read", false),
       ]);
 
-      // Check for errors
       const errors = [
         totalOrdersResult.error,
         pendingOrdersResult.error,
@@ -137,18 +122,8 @@ export function AdminDashboard() {
         throw errors[0];
       }
 
-      // ✅ Calculate revenue from completed orders
       const totalRevenue = (revenueResult.data || [])
         .reduce((sum, order) => sum + (parseFloat(order.grand_total) || 0), 0);
-
-      const endTime = performance.now();
-      console.log(`✅ Metrics fetched in ${(endTime - startTime).toFixed(2)}ms`);
-      console.log("📊 Metrics:", {
-        totalOrders: totalOrdersResult.count,
-        pendingOrders: pendingOrdersResult.count,
-        recentOrders: recentOrdersResult.count,
-        totalRevenue: totalRevenue.toFixed(2),
-      });
 
       setDashboardData({
         totalOrders: totalOrdersResult.count || 0,
@@ -163,7 +138,6 @@ export function AdminDashboard() {
       });
       
     } catch (error) {
-      console.error("❌ Error fetching dashboard data:", error);
       toast({
         title: "Error loading dashboard",
         description: error.message,
@@ -176,8 +150,6 @@ export function AdminDashboard() {
   useEffect(() => {
     fetchDashboardData();
 
-    console.log("🔄 Setting up realtime subscriptions...");
-
     const ordersSubscription = supabase
       .channel("orders-channel")
       .on(
@@ -187,14 +159,11 @@ export function AdminDashboard() {
           schema: "public",
           table: "orders",
         },
-        (payload) => {
-          console.log("✅ Orders change received:", payload.eventType, payload.new?.id);
+        () => {
           fetchDashboardData();
         }
       )
       .subscribe((status, err) => {
-        console.log("📡 Orders subscription status:", status);
-        
         if (status === 'SUBSCRIBED') {
           setRealtimeStatus(prev => ({ ...prev, orders: 'connected' }));
           toast({
@@ -204,7 +173,6 @@ export function AdminDashboard() {
           });
         } else if (status === 'CHANNEL_ERROR') {
           setRealtimeStatus(prev => ({ ...prev, orders: 'error' }));
-          console.error("❌ Orders subscription error:", err);
           toast({
             title: "Live Updates Unavailable",
             description: "Orders won't update automatically. Please refresh manually.",
@@ -213,7 +181,6 @@ export function AdminDashboard() {
           });
         } else if (status === 'TIMED_OUT') {
           setRealtimeStatus(prev => ({ ...prev, orders: 'error' }));
-          console.warn("⏱️ Orders subscription timed out");
           toast({
             title: "Connection Timeout",
             description: "Realtime updates may be delayed",
@@ -221,7 +188,6 @@ export function AdminDashboard() {
           });
         } else if (status === 'CLOSED') {
           setRealtimeStatus(prev => ({ ...prev, orders: 'disconnected' }));
-          console.log("🔌 Orders subscription closed");
         }
       });
 
@@ -234,19 +200,15 @@ export function AdminDashboard() {
           schema: "public",
           table: "messages",
         },
-        (payload) => {
-          console.log("✅ Messages change received:", payload.eventType, payload.new?.id);
+        () => {
           fetchDashboardData();
         }
       )
       .subscribe((status, err) => {
-        console.log("📡 Messages subscription status:", status);
-        
         if (status === 'SUBSCRIBED') {
           setRealtimeStatus(prev => ({ ...prev, messages: 'connected' }));
         } else if (status === 'CHANNEL_ERROR') {
           setRealtimeStatus(prev => ({ ...prev, messages: 'error' }));
-          console.error("❌ Messages subscription error:", err);
         } else if (status === 'TIMED_OUT') {
           setRealtimeStatus(prev => ({ ...prev, messages: 'error' }));
         } else if (status === 'CLOSED') {
@@ -255,7 +217,6 @@ export function AdminDashboard() {
       });
 
     return () => {
-      console.log("🧹 Cleaning up subscriptions...");
       supabase.removeChannel(ordersSubscription);
       supabase.removeChannel(messagesSubscription);
     };
