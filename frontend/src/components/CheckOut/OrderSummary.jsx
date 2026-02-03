@@ -1,5 +1,71 @@
-import React from "react";
+import React, { useState } from "react";
 import { useCart } from "@/contexts/CartContext";
+import { Separator } from "@/components/ui/separator";
+import { Shield, Truck, RotateCcw, Package } from "lucide-react";
+
+// 💰 Price formatting helper
+const formatPrice = (price) => {
+  return (price || 0).toLocaleString("en-IN", { 
+    minimumFractionDigits: 2, 
+    maximumFractionDigits: 2 
+  });
+};
+
+// 🐛 Clean size display helper (same as Cart & ProductDetail)
+const getCleanSize = (item) => {
+  const variant = item.variant;
+  
+  if (!variant) return 'N/A';
+  
+  // If variant is a string, try to parse it
+  if (typeof variant === 'string') {
+    try {
+      const parsed = JSON.parse(variant);
+      return parsed.sizeDisplay || parsed.size_display || parsed.size || 'N/A';
+    } catch {
+      return variant;
+    }
+  }
+  
+  // If variant is an object
+  if (typeof variant === 'object' && variant !== null) {
+    return variant.sizeDisplay || variant.size_display || variant.size || 'N/A';
+  }
+  
+  return 'N/A';
+};
+
+// 🖼️ Product Image Component with proper fallback
+const ProductImage = ({ item }) => {
+  const [hasError, setHasError] = useState(false);
+  
+  const handleImageError = () => {
+    if (!hasError) {
+      setHasError(true);
+    }
+  };
+  
+  // If image failed to load, show placeholder
+  if (hasError || !item.image) {
+    return (
+      <div className="w-16 h-16 rounded-lg bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center flex-shrink-0">
+        <div className="text-center">
+          <Package className="h-6 w-6 text-gray-400 mx-auto" />
+        </div>
+      </div>
+    );
+  }
+  
+  return (
+    <img 
+      src={item.image} 
+      alt={item.name} 
+      className="w-16 h-16 object-cover rounded-lg flex-shrink-0" 
+      onError={handleImageError}
+      loading="lazy"
+    />
+  );
+};
 
 const OrderSummary = () => {
   const {
@@ -11,104 +77,128 @@ const OrderSummary = () => {
   } = useCart();
 
   return (
-    <div className="bg-gray-50 rounded-lg p-6 h-fit">
-      <h2 className="text-xl font-semibold text-gray-900 mb-4">
-        Order Summary ({getTotalItems()} items)
+    <div className="bg-gradient-to-br from-gray-50 to-white rounded-2xl shadow-lg border-2 border-gray-200 p-8 h-fit sticky top-8">
+      <h2 className="text-2xl font-bold text-gray-900 mb-6">
+        Order Summary
+        <span className="text-primary ml-2">({getTotalItems()} items)</span>
       </h2>
 
-      {/* Items Table - Professional Bill Format */}
-      <div className="space-y-3 mb-6 overflow-x-auto">
-        <div className="grid grid-cols-[2fr_1fr_1fr_1fr] gap-2 text-xs font-medium text-gray-700 bg-gray-100 p-2 rounded-t-lg">
-          <span>Item</span>
-          <span>Qty</span>
-          <span>Rate</span>
-          <span>Total</span>
-        </div>
-
+      {/* Items List - Enhanced Cards */}
+      <div className="space-y-4 mb-6">
         {items.map((item) => {
-          const basePrice = item.price || 0; // CartContext base price
-          const gstAmount = item.gstAmount || 0; // CartContext computed GST
-          const gstRate = item.gstRate || 0; // CartContext 0.05/0.18
-          const itemSubtotal = basePrice * item.quantity;
-          const itemGst = gstAmount * item.quantity;
-          const itemTotal = item.priceWithGst * item.quantity; // CartContext total
+          const basePrice = item.price || 0;
+          const gstRate = item.gstRate || 0;
+          const itemTotal = item.priceWithGst * item.quantity;
 
           return (
             <div
               key={`${item.id}-${JSON.stringify(item.customization)}`}
-              className="grid grid-cols-[2fr_1fr_1fr_1fr] gap-2 border-b border-gray-200 py-3 items-center"
+              className="flex gap-4 p-4 bg-white rounded-xl border border-gray-200 hover:shadow-md transition-shadow"
             >
-              <div className="flex items-center space-x-2">
-                <img
-                  src={item.image}
-                  alt={item.name}
-                  className="w-10 h-10 object-cover rounded border"
-                  onError={(e) => {
-                    e.target.src = "/placeholder.jpg";
-                  }}
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium text-sm truncate">{item.name}</p>
-                  {item.variant && (
-                    <p className="text-xs text-gray-500">
-                      {typeof item.variant === "object"
-                        ? Object.entries(item.variant)
-                            .map(([k, v]) => `${k}:${v}`)
-                            .join(", ")
-                        : item.variant}
-                    </p>
+              <ProductImage item={item} />
+              
+              <div className="flex-1 min-w-0">
+                <h3 className="font-semibold text-gray-900 text-sm line-clamp-2 mb-1">
+                  {item.name}
+                </h3>
+                
+                {/* Size Badge */}
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="inline-flex px-2 py-0.5 bg-primary/10 text-primary rounded-full text-xs font-medium">
+                    {getCleanSize(item)}
+                  </span>
+                  {item.customization && Object.keys(item.customization).length > 0 && (
+                    <span className="inline-flex px-2 py-0.5 bg-orange-100 text-orange-600 rounded-full text-xs font-medium">
+                      Customized
+                    </span>
                   )}
-                  {item.customization &&
-                    Object.keys(item.customization).length > 0 && (
-                      <p className="text-xs text-orange-600">Customized</p>
-                    )}
                 </div>
-              </div>
-              <div className="text-sm font-medium">{item.quantity}</div>
-              <div className="space-y-0.5">
-                <div>₹{basePrice.toFixed(2)}</div>
-                {gstRate > 0 && (
-                  <div className="text-orange-600 text-xs">
-                    GST @{Math.round(gstRate * 100)}%
+                
+                {/* Price & Quantity */}
+                <div className="flex justify-between items-center mt-2">
+                  <div className="text-xs text-gray-600">
+                    <span className="font-medium">Qty: {item.quantity}</span>
+                    {gstRate > 0 && (
+                      <span className="text-orange-600 ml-2">
+                        • GST @{Math.round(gstRate * 100)}%
+                      </span>
+                    )}
                   </div>
-                )}
-              </div>
-              <div className="font-semibold text-sm text-right">
-                ₹{itemTotal.toFixed(2)}
+                  <div className="text-right">
+                    <div className="font-bold text-primary">
+                      ₹{formatPrice(itemTotal)}
+                    </div>
+                    {item.quantity > 1 && (
+                      <div className="text-xs text-gray-500">
+                        ₹{formatPrice(item.priceWithGst)} each
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           );
         })}
       </div>
 
-      {/* Bill Summary - Matches CartContext math exactly */}
-      <div className="space-y-2 p-4 bg-white rounded-lg border shadow-sm mb-4">
+      {/* Price Breakdown - Enhanced */}
+      <div className="space-y-3 p-6 bg-white rounded-xl border border-gray-200 shadow-sm mb-6">
         <div className="flex justify-between text-sm">
-          <span>Subtotal (Base Price)</span>
-          <span>₹{getBasePrice().toFixed(2)}</span>
+          <span className="text-gray-700">Subtotal (Base Price)</span>
+          <span className="font-semibold text-gray-900">₹{formatPrice(getBasePrice())}</span>
         </div>
-        <div className="flex justify-between text-sm text-orange-600 font-medium">
-          <span>GST (Product-wise)</span>
-          <span>+ ₹{getTotalGST().toFixed(2)}</span>
+        
+        <div className="flex justify-between text-sm">
+          <span className="text-orange-600 font-medium">GST (Product-wise)</span>
+          <span className="text-orange-600 font-semibold">+₹{formatPrice(getTotalGST())}</span>
         </div>
-        <div className="flex justify-between text-sm text-gray-500 line-through">
-          <span>MRP (if applicable)</span>
-          <span>—</span>
+        
+        <Separator />
+        
+        <div className="flex justify-between text-sm">
+          <span className="text-gray-600">Shipping</span>
+          <span className="text-green-600 font-semibold">FREE</span>
         </div>
-        <div className="flex justify-between pt-2 border-t font-bold text-base">
-          <span>NET TOTAL</span>
-          <span className="text-primary">₹{getTotalPrice().toFixed(2)}</span>
+        
+        <Separator className="border-gray-300" />
+        
+        <div className="flex justify-between items-baseline pt-2">
+          <span className="text-xl font-bold text-gray-900">Total</span>
+          <div className="text-right">
+            <div className="text-3xl font-bold text-primary">
+              ₹{formatPrice(getTotalPrice())}
+            </div>
+            <div className="text-xs text-gray-500 mt-1">
+              (Incl. all taxes)
+            </div>
+          </div>
         </div>
       </div>
 
-      <div className="text-xs text-gray-500 text-center p-3 bg-blue-50 rounded border">
-        <p>
-          <strong>✅ GST Breakdown:</strong> Applied per product (5% or 18% as
-          per HSN code)
-        </p>
-        <p>
-          <strong>🚚 Shipping:</strong> FREE | <strong>💳 Payment:</strong>{" "}
-          Secure UPI/PhonePe
+      {/* Trust Badges */}
+      <div className="space-y-3 pt-6 border-t border-gray-200 mb-6">
+        <div className="flex items-center gap-3 text-sm text-gray-700">
+          <Shield className="h-5 w-5 text-green-600 flex-shrink-0" />
+          <span className="font-medium">Secure Payment</span>
+        </div>
+        <div className="flex items-center gap-3 text-sm text-gray-700">
+          <Truck className="h-5 w-5 text-blue-600 flex-shrink-0" />
+          <span className="font-medium">Free Shipping</span>
+        </div>
+        <div className="flex items-center gap-3 text-sm text-gray-700">
+          <RotateCcw className="h-5 w-5 text-purple-600 flex-shrink-0" />
+          <span className="font-medium">7-Day Returns</span>
+        </div>
+      </div>
+
+      {/* Info Card */}
+      <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
+        <p className="text-xs text-gray-700 text-center leading-relaxed">
+          <strong className="text-blue-700">✅ GST Breakdown:</strong> Applied per product (5% or 18%)
+          <br />
+          <strong className="text-blue-700">🚚 Shipping:</strong> FREE on all orders
+          <br />
+          <strong className="text-blue-700">💳 Payment:</strong> Secure UPI/PhonePe
         </p>
       </div>
     </div>

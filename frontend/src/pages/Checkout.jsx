@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from "react";
 import { Layout } from "@/components/Layout";
+import { Link } from "react-router-dom";
 import CheckoutForm from "../components/CheckOut/CheckoutForm";
 import PaymentMethods from "../components/CheckOut/PaymentMethods";
 import OrderSummary from "../components/CheckOut/OrderSummary";
@@ -7,7 +8,8 @@ import PaymentStatusHandler from "../components/CheckOut/PaymentStatusHandler";
 import LoadingState from "../components/CheckOut/LoadingState";
 import { useCheckoutLogic } from "../components/CheckOut/useCheckoutLogic";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertTriangle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { AlertTriangle, ShoppingBag } from "lucide-react";
 
 const Checkout = () => {
   const {
@@ -55,8 +57,6 @@ const Checkout = () => {
   // ✅ FIX: Wrap in useCallback for stability
   // Handle data loaded from database
   const handleDataLoaded = useCallback((loadedData) => {
-    console.log("Customer data loaded in checkout:", loadedData);
-
     // Update checkout logic with loaded data
     Object.keys(loadedData).forEach((key) => {
       if (key !== "isValid") {
@@ -90,20 +90,32 @@ const Checkout = () => {
   if (items.length === 0 && !loading) {
     return (
       <Layout>
-        <div className="py-12">
-          <div className="container mx-auto px-4 text-center">
-            <h1 className="text-3xl font-bold text-gray-900 mb-4">
-              Your Cart is Empty
-            </h1>
-            <p className="text-gray-600 mb-8">
-              Add some items to your cart before checking out.
-            </p>
-            <a
-              href="/products"
-              className="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-primary hover:bg-primary/90"
-            >
-              Continue Shopping
-            </a>
+        <div className="min-h-screen bg-gradient-to-br from-gray-50 to-white py-12">
+          <div className="container mx-auto px-4">
+            <div className="text-center py-20 bg-white rounded-2xl shadow-lg max-w-2xl mx-auto">
+              <div className="bg-gradient-to-br from-primary/10 to-primary/5 w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6">
+                <ShoppingBag className="h-12 w-12 text-primary" />
+              </div>
+              <h1 className="text-3xl font-bold text-gray-900 mb-4">
+                Your Cart is Empty
+              </h1>
+              <p className="text-gray-600 mb-8 max-w-md mx-auto">
+                Add some items to your cart before checking out.
+                Start shopping to find amazing handicrafts!
+              </p>
+              <div className="flex gap-4 justify-center flex-wrap">
+                <Link to="/shop">
+                  <Button size="lg" className="px-8">
+                    Browse Products
+                  </Button>
+                </Link>
+                <Link to="/categories">
+                  <Button size="lg" variant="outline" className="px-8">
+                    View Categories
+                  </Button>
+                </Link>
+              </div>
+            </div>
           </div>
         </div>
       </Layout>
@@ -127,7 +139,7 @@ const Checkout = () => {
         onPaymentFailure={handlePaymentFailure}
       />
 
-      <div className="py-12">
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-white py-12">
         <div className="container mx-auto px-4">
           <h1 className="text-3xl font-bold text-gray-900 mb-8">Checkout</h1>
 

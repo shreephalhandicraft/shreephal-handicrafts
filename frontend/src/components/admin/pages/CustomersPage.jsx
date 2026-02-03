@@ -59,7 +59,7 @@ import { useToast } from "@/hooks/use-toast";
 
 export function CustomersPage() {
   const [customers, setCustomers] = useState([]);
-  const [orders, setOrders] = useState([]);
+  const [customerStats, setCustomerStats] = useState({}); // ✅ Store stats separately
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -70,7 +70,7 @@ export function CustomersPage() {
   const [deleteCustomer, setDeleteCustomer] = useState(null);
   const { toast } = useToast();
 
-  // Fetch customers and orders from Supabase
+  // ✅ FIXED: Fetch customer stats from orders table (not non-existent view)
   const fetchData = async () => {
     try {
       setLoading(true);
@@ -83,16 +83,45 @@ export function CustomersPage() {
 
       if (customersError) throw customersError;
 
-      // Fetch orders to calculate customer stats
-      const { data: ordersData, error: ordersError } = await supabase
+      // ✅ Fetch orders using the actual orders table
+      const { data: orderData, error: orderError } = await supabase
         .from("orders")
-        .select("customer_id, amount, payment_status")
-        .eq("payment_status", "completed");
+        .select("id, customer_id, order_total, grand_total, status, payment_status")
+        .in("status", ["delivered", "completed", "confirmed", "shipped"]); // Include reasonable statuses
 
-      if (ordersError) throw ordersError;
+      if (orderError) throw orderError;
+
+      // ✅ Calculate stats per customer
+      const stats = {};
+      (orderData || []).forEach(order => {
+        const customerId = order.customer_id;
+        if (!stats[customerId]) {
+          stats[customerId] = {
+            orderIds: new Set(),
+            totalSpent: 0
+          };
+        }
+        
+        // Add unique order
+        stats[customerId].orderIds.add(order.id);
+        
+        // Use order_total or grand_total
+        const orderAmount = parseFloat(order.order_total || order.grand_total || 0);
+        stats[customerId].totalSpent += orderAmount;
+      });
+
+      // Convert to final format
+      const processedStats = {};
+      Object.keys(stats).forEach(customerId => {
+        processedStats[customerId] = {
+          orders: stats[customerId].orderIds.size,
+          spent: stats[customerId].totalSpent,
+          status: stats[customerId].orderIds.size > 0 ? 'active' : 'inactive'
+        };
+      });
 
       setCustomers(customersData || []);
-      setOrders(ordersData || []);
+      setCustomerStats(processedStats);
     } catch (error) {
       console.error("Error fetching data:", error);
       toast({
@@ -109,21 +138,12 @@ export function CustomersPage() {
     fetchData();
   }, []);
 
-  // Calculate customer statistics
+  // ✅ Get customer statistics from pre-calculated stats
   const getCustomerStats = (customerId) => {
-    const customerOrders = orders.filter(
-      (order) => order.customer_id === customerId
-    );
-    const totalOrders = customerOrders.length;
-    const totalSpent = customerOrders.reduce(
-      (sum, order) => sum + (parseFloat(order.amount) || 0),
-      0
-    );
-
-    return {
-      orders: totalOrders,
-      spent: totalSpent,
-      status: totalOrders > 0 ? "active" : "inactive",
+    return customerStats[customerId] || {
+      orders: 0,
+      spent: 0,
+      status: 'inactive'
     };
   };
 
@@ -226,6 +246,15 @@ export function CustomersPage() {
   ).length;
   const inactiveCustomers = totalCustomers - activeCustomers;
   const completedProfiles = customers.filter((c) => c.profile_completed).length;
+
+  // ✅ Price formatting function
+  const formatPrice = (price) => {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      minimumFractionDigits: 0,
+    }).format(price || 0);
+  };
 
   if (loading) {
     return (
@@ -536,9 +565,8 @@ export function CustomersPage() {
 
                         <div className="text-center">
                           <div className="flex items-center gap-1 justify-center">
-                            <IndianRupee className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
                             <p className="font-medium text-foreground text-sm sm:text-base">
-                              {stats.spent.toFixed(0)}
+                              {formatPrice(stats.spent)}
                             </p>
                           </div>
                           <p className="text-xs text-muted-foreground">
@@ -566,8 +594,7 @@ export function CustomersPage() {
                           className="hover:bg-blue-50 hover:border-blue-300 flex-1 sm:flex-none text-xs"
                         >
                           <Eye className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                          <span className="hidden sm:inline">View</span>
-                          <span className="sm:hidden">View</span>
+                          View
                         </Button>
                         <Button
                           variant="outline"
@@ -579,8 +606,7 @@ export function CustomersPage() {
                           className="hover:bg-green-50 hover:border-green-300 flex-1 sm:flex-none text-xs"
                         >
                           <Edit className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                          <span className="hidden sm:inline">Edit</span>
-                          <span className="sm:hidden">Edit</span>
+                          Edit
                         </Button>
                         <Button
                           variant="outline"
@@ -589,8 +615,7 @@ export function CustomersPage() {
                           onClick={() => setDeleteCustomer(customer)}
                         >
                           <Trash2 className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                          <span className="hidden sm:inline">Delete</span>
-                          <span className="sm:hidden">Del</span>
+                          Del
                         </Button>
                       </div>
                     </div>
@@ -727,11 +752,8 @@ export function CustomersPage() {
                       </div>
                       <div className="text-center p-4 bg-muted/30 rounded-lg">
                         <div className="text-xl sm:text-2xl font-bold flex items-center justify-center gap-1">
-                          <IndianRupee className="h-4 w-4 sm:h-5 sm:w-5" />
                           <span className="truncate">
-                            {getCustomerStats(
-                              selectedCustomer.id
-                            ).spent.toFixed(2)}
+                            {formatPrice(getCustomerStats(selectedCustomer.id).spent)}
                           </span>
                         </div>
                         <div className="text-sm text-muted-foreground">

@@ -2,10 +2,25 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Layout } from "@/components/Layout";
 import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 import { useCart } from "@/contexts/CartContext";
 import { useFavourites } from "@/contexts/FavouritesContext";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Package, ImageOff } from "lucide-react";
+import { 
+  ArrowLeft, 
+  Package, 
+  ImageOff, 
+  Tag, 
+  CheckCircle, 
+  XCircle,
+  Ruler,
+  Loader2,
+  ShoppingCart,
+  Shield,
+  Truck,
+  RotateCcw,
+  Award
+} from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import Breadcrumbs from "@/components/Breadcrumbs";
 
@@ -27,6 +42,32 @@ import DeliveryInfo from "../components/product/DeliveryInfo";
 import CustomizationOptions from "../components/product/CustomizationOptions";
 import QuantitySelector from "../components/product/QuantitySelector";
 import ProductActions from "../components/product/ProductActions";
+
+// 🐛 FIX: Clean variant size display helper
+const getCleanVariantSize = (variant) => {
+  if (!variant) return null;
+  
+  const sizeDisplay = variant.size_display;
+  
+  // If it's already a string, return it
+  if (typeof sizeDisplay === 'string') {
+    try {
+      // Try to parse if it's a JSON string
+      const parsed = JSON.parse(sizeDisplay);
+      return parsed.sizeDisplay || parsed.size_display || sizeDisplay;
+    } catch {
+      // If not JSON, return as-is
+      return sizeDisplay;
+    }
+  }
+  
+  // If it's an object, extract the display value
+  if (typeof sizeDisplay === 'object' && sizeDisplay !== null) {
+    return sizeDisplay.sizeDisplay || sizeDisplay.size_display || sizeDisplay.size || null;
+  }
+  
+  return null;
+};
 
 const ProductDetail = () => {
   const { slug, productId } = useParams();
@@ -132,12 +173,30 @@ const ProductDetail = () => {
     }
   }, [productId, slug]);
 
+  // ✨ NEW: GST Calculation Functions
+  const getGSTAmount = () => {
+    const basePrice = getCurrentPrice();
+    const gstRate = product?.gst_rate || 0;
+    return Math.round((basePrice * gstRate) / 100);
+  };
+
+  const getPriceWithGST = () => {
+    return getCurrentPrice() + getGSTAmount();
+  };
+
   const getCurrentPrice = () => selectedVariant ? selectedVariant.price : product?.price || 0;
   const getCurrentStock = () => selectedVariant ? (selectedVariant.stock_quantity || 0) > 0 : product?.in_stock || false;
   const getStockQuantity = () => selectedVariant ? selectedVariant.stock_quantity || 0 : product?.quantity || 0;
   const minQuantity = product?.min_order_qty || 1;
   const maxQuantity = product?.max_order_qty || 50;
-  const formatPrice = (priceInPaise) => (priceInPaise || 0).toLocaleString("en-IN");
+  
+  // 🐛 FIX: Price formatting - prices are already in rupees, not paise!
+  const formatPrice = (price) => {
+    return (price || 0).toLocaleString("en-IN", { 
+      minimumFractionDigits: 2, 
+      maximumFractionDigits: 2 
+    });
+  };
 
   const handleVariantSelect = (variant) => setSelectedVariant(variant);
   const handleQuantityChange = (change) => {
@@ -217,11 +276,11 @@ const ProductDetail = () => {
       productId: product.id,
       variantId: selectedVariant.id,
       name: product.title,
-      price: getCurrentPrice(),
+      price: getPriceWithGST(), // ✨ NEW: Include GST in cart price
       image: product.image_url,
       quantity: quantity,
       variant: { 
-        size: selectedVariant.size_display, 
+        size: getCleanVariantSize(selectedVariant), // 🐛 FIX: Use clean size
         weight: selectedVariant.weight_grams 
       },
       customization: productCustomization,
@@ -362,29 +421,39 @@ const ProductDetail = () => {
     { question: "Is bulk ordering available?", answer: "Yes! Contact us for bulk order discounts and custom quotes." },
   ] : [];
 
+  // ⚡ Better Loading Skeleton
   if (loading) {
     return (
       <Layout>
-        <div className="py-8">
+        <div className="py-8 bg-gradient-to-br from-gray-50 to-white min-h-screen">
           <div className="container mx-auto px-4">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 animate-pulse">
+              {/* Image Skeleton */}
               <div className="space-y-4">
-                <div className="aspect-square bg-gradient-to-br from-gray-200 to-gray-300 rounded-2xl animate-pulse flex items-center justify-center">
-                  <Package className="h-16 w-16 text-gray-400" />
+                <div className="aspect-square bg-gradient-to-br from-gray-200 via-gray-300 to-gray-200 rounded-2xl relative overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer" />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <Package className="h-16 w-16 text-gray-400" />
+                  </div>
                 </div>
-                <div className="grid grid-cols-4 gap-2">
+                <div className="grid grid-cols-4 gap-3">
                   {[...Array(4)].map((_, i) => (
-                    <div key={i} className="aspect-square bg-gray-200 rounded-lg animate-pulse" />
+                    <div key={i} className="aspect-square bg-gray-200 rounded-xl" />
                   ))}
                 </div>
               </div>
+              
+              {/* Content Skeleton */}
               <div className="space-y-6">
-                <div className="space-y-4">
-                  <div className="h-6 bg-gray-200 rounded w-32 animate-pulse" />
-                  <div className="h-10 bg-gray-200 rounded w-full animate-pulse" />
-                  <div className="h-6 bg-gray-200 rounded w-48 animate-pulse" />
-                  <div className="h-8 bg-gray-200 rounded w-32 animate-pulse" />
+                <div className="space-y-3">
+                  <div className="h-8 bg-gray-200 rounded-lg w-3/4" />
+                  <div className="h-12 bg-gray-200 rounded-lg w-full" />
+                  <div className="h-6 bg-gray-200 rounded w-1/2" />
                 </div>
+                <div className="h-32 bg-gray-200 rounded-2xl" />
+                <div className="h-20 bg-gray-200 rounded-xl" />
+                <div className="h-16 bg-gray-200 rounded-xl" />
+                <div className="h-12 bg-gray-200 rounded-xl w-2/3" />
               </div>
             </div>
           </div>
@@ -435,7 +504,7 @@ const ProductDetail = () => {
       <BreadcrumbSchema items={breadcrumbs} />
       <FAQSchema faqs={productFAQs} />
 
-      <div className="py-8 bg-gradient-to-br from-gray-50 to-white min-h-screen">
+      <div className="py-8 bg-gradient-to-br from-gray-50 to-white min-h-screen pb-24 lg:pb-8">
         <div className="container mx-auto px-4">
           {/* Breadcrumbs */}
           <Breadcrumbs items={breadcrumbs} className="mb-4" />
@@ -460,6 +529,69 @@ const ProductDetail = () => {
                 formatPrice={formatPrice} 
               />
 
+              {/* ✨ NEW: Product Info Badges (SKU & Stock) */}
+              <div className="flex flex-wrap items-center gap-4 text-sm border-t border-b border-gray-200 py-4">
+                {/* SKU */}
+                {product.catalog_number && (
+                  <div className="flex items-center gap-2">
+                    <Tag className="h-4 w-4 text-gray-500" />
+                    <span className="text-gray-600">SKU:</span>
+                    <span className="font-medium text-gray-900">{product.catalog_number}</span>
+                  </div>
+                )}
+                
+                {/* Stock Status */}
+                <div className="flex items-center gap-2">
+                  {getCurrentStock() ? (
+                    <>
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                      <span className="text-green-700 font-medium">
+                        In Stock ({getStockQuantity()} units)
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <XCircle className="h-4 w-4 text-red-600" />
+                      <span className="text-red-700 font-medium">Out of Stock</span>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* ✨ NEW: Enhanced Price Breakdown Card */}
+              <div className="bg-gradient-to-br from-primary/5 to-primary/10 p-6 rounded-2xl border-2 border-primary/20 shadow-md">
+                <div className="space-y-3">
+                  {/* Base Price */}
+                  <div className="flex justify-between items-center text-base">
+                    <span className="text-gray-700">Base Price:</span>
+                    <span className="font-semibold text-gray-900">₹{formatPrice(getCurrentPrice())}</span>
+                  </div>
+                  
+                  {/* GST Breakdown */}
+                  {product.gst_rate > 0 && (
+                    <div className="flex justify-between items-center text-base">
+                      <span className="text-orange-700">GST @{product.gst_rate}%:</span>
+                      <span className="font-semibold text-orange-600">+₹{formatPrice(getGSTAmount())}</span>
+                    </div>
+                  )}
+                  
+                  <Separator className="bg-primary/20" />
+                  
+                  {/* Total Price */}
+                  <div className="flex justify-between items-center">
+                    <span className="text-xl font-bold text-gray-900">Total Price:</span>
+                    <span className="text-2xl font-bold text-primary">₹{formatPrice(getPriceWithGST())}</span>
+                  </div>
+                  
+                  {/* Price per unit if quantity > 1 */}
+                  {quantity > 1 && (
+                    <div className="text-sm text-gray-600 text-right pt-2 border-t border-primary/10">
+                      ₹{formatPrice(getPriceWithGST())} × {quantity} = <span className="font-bold text-primary">₹{formatPrice(getPriceWithGST() * quantity)}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {product.description && (
                 <div className="prose prose-gray max-w-none bg-gray-50 p-6 rounded-2xl border border-gray-200">
                   <p className="text-gray-700 leading-relaxed text-lg m-0">
@@ -470,16 +602,57 @@ const ProductDetail = () => {
 
               <ProductSpecs product={product} selectedVariant={selectedVariant} />
               
+              {/* 🎯 Modernized Variant Selector */}
               {productVariants.length > 0 && (
-                <ProductVariants 
-                  variants={productVariants} 
-                  selectedVariant={selectedVariant} 
-                  onVariantSelect={handleVariantSelect} 
-                />
+                <div className="space-y-3 bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
+                  <label className="text-base font-semibold text-gray-900 flex items-center gap-2">
+                    <Ruler className="h-5 w-5 text-primary" />
+                    Select Size:
+                    {selectedVariant && (
+                      <span className="text-primary ml-2">({getCleanVariantSize(selectedVariant)})</span>
+                    )}
+                  </label>
+                  
+                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                    {productVariants.map((variant) => (
+                      <Button
+                        key={variant.id}
+                        variant={selectedVariant?.id === variant.id ? "default" : "outline"}
+                        className={`h-14 text-base font-semibold transition-all ${
+                          selectedVariant?.id === variant.id
+                            ? "bg-primary text-white ring-2 ring-primary ring-offset-2 shadow-lg"
+                            : "hover:border-primary hover:text-primary hover:shadow-md"
+                        }`}
+                        onClick={() => handleVariantSelect(variant)}
+                      >
+                        {getCleanVariantSize(variant)}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
               )}
               
               <DeliveryInfo product={product} estimatedDays={7} />
               <ProductFeatures product={product} />
+              
+              {/* 🛡️ Trust Badges Section */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 py-6 border-t border-gray-200">
+                {[
+                  { icon: Shield, text: "Secure Payment", color: "text-green-600", bg: "bg-green-50" },
+                  { icon: Truck, text: "Free Shipping", color: "text-blue-600", bg: "bg-blue-50" },
+                  { icon: RotateCcw, text: "7-Day Returns", color: "text-purple-600", bg: "bg-purple-50" },
+                  { icon: Award, text: "Premium Quality", color: "text-orange-600", bg: "bg-orange-50" },
+                ].map((badge, idx) => {
+                  const Icon = badge.icon;
+                  return (
+                    <div key={idx} className={`flex flex-col items-center text-center gap-2 p-4 rounded-xl ${badge.bg}`}>
+                      <Icon className={`h-8 w-8 ${badge.color}`} />
+                      <span className="text-xs font-medium text-gray-700">{badge.text}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              
               <CustomizationOptions 
                 product={product} 
                 customization={customizations[product.id] || {}} 
@@ -492,7 +665,7 @@ const ProductDetail = () => {
                   minQuantity={minQuantity} 
                   maxQuantity={maxQuantity} 
                   onQuantityChange={handleQuantityChange} 
-                  getCurrentPrice={getCurrentPrice} 
+                  getCurrentPrice={getPriceWithGST} // ✨ NEW: Use price with GST
                   formatPrice={formatPrice} 
                 />
                 <ProductActions 
@@ -510,6 +683,41 @@ const ProductDetail = () => {
                 />
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 📱 Sticky Mobile Buy Section */}
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t-2 border-gray-200 p-4 shadow-2xl z-50">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <div className="text-xs text-gray-600">Total Price</div>
+            <div className="text-2xl font-bold text-primary">
+              ₹{formatPrice(getPriceWithGST() * quantity)}
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="lg"
+              className="px-6 h-14"
+              onClick={handleAddToCart}
+              disabled={!getCurrentStock() || isAddingToCart}
+            >
+              {isAddingToCart ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <ShoppingCart className="h-5 w-5" />
+              )}
+            </Button>
+            <Button
+              size="lg"
+              className="px-8 h-14 bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600 shadow-lg"
+              onClick={handleBuyNow}
+              disabled={!getCurrentStock() || isBuying}
+            >
+              {isBuying ? <Loader2 className="h-5 w-5 animate-spin" /> : "Buy Now"}
+            </Button>
           </div>
         </div>
       </div>
