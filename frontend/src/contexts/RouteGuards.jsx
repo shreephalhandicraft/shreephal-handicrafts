@@ -52,7 +52,7 @@ export const AdminRoute = ({ children, redirectTo = "/" }) => {
   }
 
   if (!isAdmin) {
-    console.log("⚠️ Access denied: User is not an admin");
+    // Silent redirect - access denied logged to monitoring in production
     return <Navigate to={redirectTo} replace />;
   }
 
@@ -84,12 +84,12 @@ export const ProtectedRoute = ({
 
   // ✅ Use cached adminRole instead of querying database
   if (requiredRole && adminRole !== requiredRole) {
-    console.log("⚠️ Access denied: Required role", requiredRole, "but user has", adminRole);
+    // Silent redirect - access denied logged to monitoring in production
     return <Navigate to={fallback} replace />;
   }
 
   if (!adminRole) {
-    console.log("⚠️ Access denied: User is not an admin");
+    // Silent redirect - access denied logged to monitoring in production
     return <Navigate to={fallback} replace />;
   }
 
