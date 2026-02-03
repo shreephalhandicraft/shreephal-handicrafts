@@ -149,22 +149,14 @@ export const FeaturedCategories = () => {
         setLoading(true);
         setError(null);
 
-        console.log("Fetching featured categories...");
-
         // Test basic connection first
         const { data: testData, error: testError } = await supabase
           .from("categories")
           .select("count", { count: "exact", head: true });
 
         if (testError) {
-          console.error("Connection test failed:", testError);
           throw new Error(`Database connection failed: ${testError.message}`);
         }
-
-        console.log(
-          "Database connection successful. Total categories:",
-          testData
-        );
 
         // Fetch only featured categories from Supabase
         const { data, error } = await supabase
@@ -174,18 +166,11 @@ export const FeaturedCategories = () => {
           .order("name", { ascending: true });
 
         if (error) {
-          console.error("Error fetching featured categories:", error);
           throw new Error(`Failed to fetch categories: ${error.message}`);
         }
 
-        console.log("Featured categories fetched:", data);
-
         // If no featured categories, fetch all categories as fallback
         if (!data || data.length === 0) {
-          console.log(
-            "No featured categories found, fetching all categories..."
-          );
-
           const { data: allData, error: allError } = await supabase
             .from("categories")
             .select("id, name, slug, price, image, rating, featured")
@@ -193,17 +178,14 @@ export const FeaturedCategories = () => {
             .limit(4);
 
           if (allError) {
-            console.error("Error fetching all categories:", allError);
             throw new Error(`Failed to fetch categories: ${allError.message}`);
           }
 
-          console.log("All categories fetched:", allData);
           setCategories(allData || []);
         } else {
           setCategories(data);
         }
       } catch (err) {
-        console.error("Error in fetchFeaturedCategories:", err);
         setError(err.message || "Failed to load categories. Please try again.");
       } finally {
         setLoading(false);
