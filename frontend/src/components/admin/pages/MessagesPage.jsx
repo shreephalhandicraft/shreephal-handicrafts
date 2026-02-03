@@ -40,36 +40,17 @@ export function MessagesPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const { toast } = useToast();
 
-  // Fetch all messages first, then filter by unread
   const fetchMessages = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      console.log("Fetching messages...");
-
-      // First, let's try to fetch ALL messages to see if the connection works
-      const { data: allData, error: allError } = await supabase
-        .from("messages")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      console.log("All messages:", allData);
-      console.log("All messages error:", allError);
-
-      if (allError) {
-        throw allError;
-      }
-
-      // Now filter for unread messages
+      // Fetch all unread messages
       const { data, error } = await supabase
         .from("messages")
         .select("*")
         .eq("is_read", false)
         .order("created_at", { ascending: false });
-
-      console.log("Unread messages:", data);
-      console.log("Unread messages error:", error);
 
       if (error) {
         throw error;
@@ -77,7 +58,6 @@ export function MessagesPage() {
 
       setMessages(data || []);
     } catch (err) {
-      console.error("Fetch error:", err);
       setError(err.message);
       toast({
         title: "Error fetching messages",
@@ -89,11 +69,8 @@ export function MessagesPage() {
     }
   };
 
-  // Mark one message as read
   const markAsRead = async (id) => {
     try {
-      console.log("Marking message as read:", id);
-
       const { error } = await supabase
         .from("messages")
         .update({ is_read: true })
@@ -108,16 +85,13 @@ export function MessagesPage() {
         description: "Message marked as read",
       });
 
-      // Close dialog if this message was being viewed
       if (selectedMessage && selectedMessage.id === id) {
         setIsDialogOpen(false);
         setSelectedMessage(null);
       }
 
-      // Refetch messages to update the list
       await fetchMessages();
     } catch (err) {
-      console.error("Mark as read error:", err);
       toast({
         title: "Error",
         description: err.message,
@@ -126,27 +100,11 @@ export function MessagesPage() {
     }
   };
 
-  // View message details
   const viewMessage = (message) => {
     setSelectedMessage(message);
     setIsDialogOpen(true);
   };
 
-  // Test Supabase connection
-  const testConnection = async () => {
-    try {
-      const { data, error } = await supabase
-        .from("messages")
-        .select("count(*)", { count: "exact" });
-
-      console.log("Connection test - count:", data);
-      console.log("Connection test - error:", error);
-    } catch (err) {
-      console.error("Connection test failed:", err);
-    }
-  };
-
-  // Format date for better readability
   const formatDate = (dateString) => {
     const date = new Date(dateString);
     const now = new Date();
@@ -165,7 +123,6 @@ export function MessagesPage() {
   };
 
   useEffect(() => {
-    testConnection();
     fetchMessages();
   }, []);
 
