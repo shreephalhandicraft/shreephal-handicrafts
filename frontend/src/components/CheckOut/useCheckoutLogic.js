@@ -8,11 +8,6 @@ import { useStockReservation } from "@/hooks/useStockReservation";
 import { calculateOrderTotals, calculateItemPricing, createItemSnapshot } from "@/utils/billingUtils";
 import { initiateRazorpayPayment } from '@/utils/razorpayPaymentHandler';
 
-// ❌ Temporarily disabled - Razorpay integration
-// const PHONEPE_PAY_URL = import.meta.env.VITE_BACKEND_URL
-//   ? `${import.meta.env.VITE_BACKEND_URL}/pay`
-//   : "http://localhost:3000/pay";
-
 // ✨ UX #2 FIX: Payment error message mapping
 const PAYMENT_ERROR_MESSAGES = {
   // Insufficient funds
@@ -202,8 +197,8 @@ export const useCheckoutLogic = () => {
   const [loading, setLoading] = useState(true);
   const [processingPayment, setProcessingPayment] = useState(false);
   const [paymentProcessed, setPaymentProcessed] = useState(false);
-  const [productGSTData, setProductGSTData] = useState({});  // ✅ Store product GST flags
-  const [gstDataLoaded, setGstDataLoaded] = useState(false);  // ✅ FIX #1: Track if GST data is loaded
+  const [productGSTData, setProductGSTData] = useState({});
+  const [gstDataLoaded, setGstDataLoaded] = useState(false);
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -215,7 +210,7 @@ export const useCheckoutLogic = () => {
     zipCode: "",
   });
 
-  // ✅ FIX #1 & #2: Fetch product GST data when cart changes
+  // Fetch product GST data when cart changes
   useEffect(() => {
     const fetchProductGSTData = async () => {
       const cartItems = getCartForCheckout();
@@ -226,8 +221,6 @@ export const useCheckoutLogic = () => {
       
       const productIds = [...new Set(cartItems.map(item => item.productId))];
       
-      console.log('🔄 Fetching GST data for', productIds.length, 'products...');
-      
       try {
         const { data: productsData, error } = await supabase
           .from('products')
@@ -235,8 +228,7 @@ export const useCheckoutLogic = () => {
           .in('id', productIds);
         
         if (error) {
-          console.warn('⚠️ Could not fetch product GST data:', error);
-          setGstDataLoaded(true); // Mark as loaded even if failed to prevent infinite loops
+          setGstDataLoaded(true);
           return;
         }
         
@@ -250,9 +242,7 @@ export const useCheckoutLogic = () => {
         
         setProductGSTData(gstDataMap);
         setGstDataLoaded(true);
-        console.log('✅ Product GST data loaded:', gstDataMap);
       } catch (error) {
-        console.error('❌ Failed to fetch product GST data:', error);
         setGstDataLoaded(true);
       }
     };
@@ -260,13 +250,11 @@ export const useCheckoutLogic = () => {
     fetchProductGSTData();
   }, [items.length, getCartForCheckout]);
 
-  // ✅ FIX #2: Calculate totals with enriched cart items - recalculates when gstDataLoaded changes
+  // Calculate totals with enriched cart items
   const { enrichedCartItems, orderTotals, subtotal, tax, total } = useMemo(() => {
     const cartItems = getCartForCheckout();
     
-    // ✅ FIX: Don't calculate until GST data is loaded
     if (!gstDataLoaded && cartItems.length > 0) {
-      console.log('⏳ Waiting for GST data to load before calculating totals...');
       return {
         enrichedCartItems: [],
         orderTotals: { subtotal: 0, gst5Total: 0, gst18Total: 0, totalGST: 0, grandTotal: 0 },
@@ -276,7 +264,6 @@ export const useCheckoutLogic = () => {
       };
     }
     
-    // ✅ Enrich cart items with product GST flags
     const enrichedItems = cartItems.map(item => ({
       ...item,
       gst_5pct: productGSTData[item.productId]?.gst_5pct || false,
@@ -285,17 +272,6 @@ export const useCheckoutLogic = () => {
     
     const totals = calculateOrderTotals(enrichedItems);
     
-    console.log('💰 CHECKOUT TOTALS (with GST flags):', {
-      subtotal: totals.subtotal,
-      gst5Total: totals.gst5Total,
-      gst18Total: totals.gst18Total,
-      totalGST: totals.totalGST,
-      grandTotal: totals.grandTotal,
-      cartItemsCount: enrichedItems.length,
-      gstDataLoaded: gstDataLoaded,
-      productGSTData: productGSTData
-    });
-    
     return {
       enrichedCartItems: enrichedItems,
       orderTotals: totals,
@@ -303,7 +279,7 @@ export const useCheckoutLogic = () => {
       tax: totals.totalGST,
       total: totals.grandTotal
     };
-  }, [getCartForCheckout, productGSTData, gstDataLoaded]); // ✅ FIX #2: Added gstDataLoaded dependency
+  }, [getCartForCheckout, productGSTData, gstDataLoaded]);
 
   const handleChange = useCallback((e) => {
     setFormData((prev) => ({
@@ -384,7 +360,6 @@ export const useCheckoutLogic = () => {
 
       setFormData(mappedFormData);
     } catch (error) {
-      console.error("Profile fetch error:", error);
       toast({
         title: "Error",
         description:
@@ -461,8 +436,6 @@ export const useCheckoutLogic = () => {
     if (itemsWithoutVariant.length > 0) {
       const itemNames = itemsWithoutVariant.map(i => i.name || 'Unknown').join(', ');
       
-      console.error('❌ Cart validation failed - Missing variantId:', itemsWithoutVariant);
-      
       toast({
         title: "Cart Validation Failed",
         description: `Some items are missing size selection: ${itemNames}. Please remove and re-add these items with proper size selection.`,
@@ -473,14 +446,11 @@ export const useCheckoutLogic = () => {
       return false;
     }
     
-    console.log('✅ Cart validation passed - All items have variantId');
     return true;
   }, [getCartForCheckout, toast]);
 
-  // ✅ Stock re-validation before checkout
+  // Stock re-validation before checkout
   const validateStockAvailability = useCallback(async () => {
-    console.log('\n🔍 RE-VALIDATING STOCK BEFORE CHECKOUT...');
-    
     const cartItems = getCartForCheckout();
     const stockIssues = [];
     
@@ -494,10 +464,7 @@ export const useCheckoutLogic = () => {
       }
       
       try {
-        // Get real-time available stock (total - active reservations)
         const availableStock = await getAvailableStock(item.variantId);
-        
-        console.log(`  📦 ${item.name}: Requested ${item.quantity}, Available ${availableStock}`);
         
         if (availableStock < item.quantity) {
           stockIssues.push({
@@ -508,7 +475,6 @@ export const useCheckoutLogic = () => {
           });
         }
       } catch (error) {
-        console.error(`  ❌ Failed to check stock for ${item.name}:`, error);
         stockIssues.push({
           item: item.name,
           issue: 'Could not verify stock availability',
@@ -517,9 +483,6 @@ export const useCheckoutLogic = () => {
     }
     
     if (stockIssues.length > 0) {
-      console.error('❌ STOCK VALIDATION FAILED:', stockIssues);
-      
-      // Build detailed error message
       const issueMessages = stockIssues.map(issue => {
         if (issue.issue === 'Out of stock') {
           return `• ${issue.item}: Out of stock`;
@@ -542,11 +505,10 @@ export const useCheckoutLogic = () => {
       return false;
     }
     
-    console.log('✅ Stock validation passed - All items available');
     return true;
   }, [getCartForCheckout, getAvailableStock, toast]);
 
-  // ✅ FIX #3: Validate GST data is loaded
+  // Validate GST data is loaded
   const validateGSTData = useCallback(() => {
     if (!gstDataLoaded) {
       toast({
@@ -561,7 +523,6 @@ export const useCheckoutLogic = () => {
     const missingGSTData = cartItems.filter(item => !productGSTData[item.productId]);
     
     if (missingGSTData.length > 0) {
-      console.error('❌ Missing GST data for products:', missingGSTData.map(i => i.productId));
       toast({
         title: "Data Loading Error",
         description: "Some product information is missing. Please refresh the page and try again.",
@@ -570,7 +531,6 @@ export const useCheckoutLogic = () => {
       return false;
     }
     
-    console.log('✅ GST data validation passed');
     return true;
   }, [gstDataLoaded, getCartForCheckout, productGSTData, toast]);
 
@@ -621,8 +581,6 @@ export const useCheckoutLogic = () => {
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        console.log(`  📤 Uploading customization image for: ${itemName} (Attempt ${attempt}/${maxRetries})`);
-        
         const formData = new FormData();
         formData.append('file', file);
         formData.append('upload_preset', import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || 'shrifal_handicrafts');
@@ -644,7 +602,6 @@ export const useCheckoutLogic = () => {
           
           if (attempt < maxRetries && isRetryableError(new Error(errorMessage), statusCode)) {
             const delayMs = baseDelay * Math.pow(2, attempt - 1);
-            console.warn(`  ⚠️ Upload failed (${errorMessage}), retrying in ${delayMs}ms...`);
             await delay(delayMs);
             continue;
           }
@@ -653,8 +610,6 @@ export const useCheckoutLogic = () => {
         }
         
         const cloudinaryData = await cloudinaryResponse.json();
-        
-        console.log(`  ✅ Image uploaded successfully: ${cloudinaryData.secure_url}`);
         
         return {
           url: cloudinaryData.secure_url,
@@ -668,12 +623,10 @@ export const useCheckoutLogic = () => {
       } catch (error) {
         if (attempt < maxRetries && isRetryableError(error, null)) {
           const delayMs = baseDelay * Math.pow(2, attempt - 1);
-          console.warn(`  ⚠️ Upload error (${error.message}), retrying in ${delayMs}ms...`);
           await delay(delayMs);
           continue;
         }
         
-        console.error(`  ❌ Cloudinary upload failed after ${attempt} attempt(s) for ${itemName}:`, error);
         throw new Error(`Failed to upload customization image for ${itemName}: ${error.message}`);
       }
     }
@@ -684,8 +637,6 @@ export const useCheckoutLogic = () => {
   const createOrder = useCallback(
     async (paymentMethod = "PayNow") => {
       try {
-        console.log("\n=== CREATING ORDER WITH FRESH GST DATA FROM DATABASE ===");
-
         if (!user?.id) {
           throw new Error("User not authenticated");
         }
@@ -701,8 +652,7 @@ export const useCheckoutLogic = () => {
 
         const cartItems = getCartForCheckout();
         
-        // ✅ NEW: FETCH FRESH GST DATA FROM DATABASE
-        console.log("\n🔄 FETCHING FRESH GST DATA FROM DATABASE FOR BILLING...");
+        // Fetch fresh GST data from database
         const productIds = [...new Set(cartItems.map(item => item.productId))];
         
         const { data: freshGSTData, error: gstError } = await supabase
@@ -711,7 +661,6 @@ export const useCheckoutLogic = () => {
           .in('id', productIds);
         
         if (gstError) {
-          console.error('❌ Failed to fetch GST data:', gstError);
           throw new Error('Failed to load product tax information. Please try again.');
         }
         
@@ -720,50 +669,19 @@ export const useCheckoutLogic = () => {
           gstDataMap[p.id] = p;
         });
         
-        console.log('✅ Fresh GST data fetched:', gstDataMap);
-        
-        // ✅ ENRICH CART ITEMS WITH FRESH GST DATA
+        // Enrich cart items with fresh GST data
         const enrichedItems = cartItems.map(item => ({
           ...item,
           gst_5pct: gstDataMap[item.productId]?.gst_5pct || false,
           gst_18pct: gstDataMap[item.productId]?.gst_18pct || false
         }));
-        
-        console.log("\n📦 ENRICHED CART ITEMS (with fresh GST flags):", JSON.stringify(enrichedItems.map(i => ({
-          id: i.productId,
-          name: i.name,
-          gst5: i.gst_5pct,
-          gst18: i.gst_18pct,
-          price: i.price,
-          quantity: i.quantity
-        })), null, 2));
-        
-        // 🐛 DEBUG: Log exactly what's being passed to calculateOrderTotals
-        console.log("\n🔍 DEBUG: Items being passed to calculateOrderTotals:");
-        enrichedItems.forEach((item, index) => {
-          console.log(`  Item ${index + 1}:`, {
-            productId: item.productId,
-            name: item.name,
-            price: item.price,
-            quantity: item.quantity,
-            gst_5pct: item.gst_5pct,
-            gst_18pct: item.gst_18pct,
-            hasGst5Flag: item.hasOwnProperty('gst_5pct'),
-            hasGst18Flag: item.hasOwnProperty('gst_18pct'),
-            gst5Value: item.gst_5pct,
-            gst18Value: item.gst_18pct
-          });
-        });
 
         const itemsWithoutVariant = enrichedItems.filter(item => !item.variantId);
         if (itemsWithoutVariant.length > 0) {
-          console.error("❌ Items missing variantId:", itemsWithoutVariant);
           throw new Error(
             `Some items are missing size selection. Please remove and re-add these items: ${itemsWithoutVariant.map(i => i.name).join(", ")}`
           );
         }
-        
-        console.log("✅ All cart items have variantId - validation passed");
 
         let customer;
         const { data: existingCustomer, error: customerFetchError } =
@@ -802,33 +720,18 @@ export const useCheckoutLogic = () => {
           customer = newCustomer;
         }
 
-        // 💰 CALCULATE TOTALS FROM ENRICHED ITEMS WITH FRESH GST DATA
+        // Calculate totals from enriched items with fresh GST data
         const shippingCost = 0;
         const recalculatedTotals = calculateOrderTotals(enrichedItems, shippingCost);
         
-        console.log("\n💰 CALCULATED ORDER TOTALS (Product-wise GST from database):");
-        console.log(`  Subtotal (Base): ₹${recalculatedTotals.subtotal}`);
-        console.log(`  GST @5%: ₹${recalculatedTotals.gst5Total}`);
-        console.log(`  GST @18%: ₹${recalculatedTotals.gst18Total}`);
-        console.log(`  Total GST: ₹${recalculatedTotals.totalGST}`);
-        console.log(`  Shipping: ₹${shippingCost}`);
-        console.log(`  Grand Total: ₹${recalculatedTotals.grandTotal}`);
-        console.log(`\n  ✅ VERIFICATION: Grand Total = Subtotal + Total GST + Shipping`);
-        console.log(`     ${recalculatedTotals.grandTotal} = ${recalculatedTotals.subtotal} + ${recalculatedTotals.totalGST} + ${shippingCost}`);
-        
         const customizationDetails = createCustomizationDetails(enrichedItems);
 
-        console.log("\n📋 Fetching variant data for order snapshot...");
         const variantIds = enrichedItems.map(item => item.variantId);
         
         const { data: variantsData, error: variantsError } = await supabase
           .from('product_variants')
           .select('id, size_display, sku')
           .in('id', variantIds);
-
-        if (variantsError) {
-          console.warn('⚠️ Could not fetch variant data:', variantsError);
-        }
 
         const variantDataMap = {};
         
@@ -838,12 +741,9 @@ export const useCheckoutLogic = () => {
           });
         }
 
-        // ✅ FIX: Map "razorpay" to "PayNow" for database compatibility
-        // Database CHECK constraint only allows: "PayNow", "COD", "PhonePe"
+        // Map "razorpay" to "PayNow" for database compatibility
         const dbPaymentMethod = paymentMethod === "razorpay" ? "PayNow" : paymentMethod;
-        console.log(`\n💳 Payment method mapping: '${paymentMethod}' -> '${dbPaymentMethod}' (for DB constraint)`);
 
-        // ✅ CREATE ORDER - Save to BOTH grand_total AND order_total for compatibility
         const orderData = {
           user_id: authUser.id,
           customer_id: customer.id,
@@ -862,20 +762,17 @@ export const useCheckoutLogic = () => {
             estimatedDays: "3-5",
           },
           
-          // 💰 BILLING SNAPSHOT (frozen at order time) - ALL IN RUPEES
           subtotal: recalculatedTotals.subtotal,
           total_gst: recalculatedTotals.totalGST,
           gst_5_total: recalculatedTotals.gst5Total,
           gst_18_total: recalculatedTotals.gst18Total,
           shipping_cost: shippingCost,
-          
-          // ✅ DATABASE COMPATIBILITY: Save to both columns
-          grand_total: recalculatedTotals.grandTotal,   // Old column (for backward compatibility)
-          order_total: recalculatedTotals.grandTotal,   // New column (correct name)
+          grand_total: recalculatedTotals.grandTotal,
+          order_total: recalculatedTotals.grandTotal,
           
           status: "pending",
           payment_status: "pending",
-          payment_method: dbPaymentMethod,  // ✅ Use mapped value ("PayNow" instead of "razorpay")
+          payment_method: dbPaymentMethod,
           upi_reference: null,
           transaction_id: null,
           order_notes: null,
@@ -890,22 +787,9 @@ export const useCheckoutLogic = () => {
           .single();
 
         if (orderError) {
-          console.error("Order creation error:", orderError);
           throw new Error(`Database error: ${orderError.message}`);
         }
 
-        console.log("✅ Order created with billing snapshot:", order.id);
-        console.log("   💰 Saved to BOTH columns:");
-        console.log(`      grand_total: ₹${order.grand_total} (old column)`);
-        console.log(`      order_total: ₹${order.order_total} (new column)`);
-        console.log("   📊 Billing breakdown:");
-        console.log(`      Subtotal: ₹${order.subtotal}`);
-        console.log(`      GST @5%: ₹${order.gst_5_total}`);
-        console.log(`      GST @18%: ₹${order.gst_18_total}`);
-        console.log(`      Total GST: ₹${order.total_gst}`);
-        console.log(`      Payment Method: ${order.payment_method} (mapped from '${paymentMethod}')`);
-
-        console.log("\n📤 UPLOADING CUSTOMIZATION IMAGES...");
         const processedCartItems = [];
         
         for (const item of enrichedItems) {
@@ -928,8 +812,6 @@ export const useCheckoutLogic = () => {
               };
               
             } catch (error) {
-              console.error('Upload failed after retries:', error);
-              
               await supabase.from('orders').delete().eq('id', order.id);
               
               toast({
@@ -959,28 +841,17 @@ export const useCheckoutLogic = () => {
             processedCustomization: customizationData
           });
         }
-
-        console.log("\n📝 Inserting order_items with pricing snapshot...");
         
-        // ✅ CREATE ORDER ITEMS WITH PRICING SNAPSHOT - CLEAN SCHEMA
         const orderItemsData = processedCartItems.map(item => {
           const productData = gstDataMap[item.productId] || {};
           const variantData = variantDataMap[item.variantId] || {};
           const pricing = calculateItemPricing(item, productData);
-          
-          console.log(`  📊 Item pricing for ${item.name}:`, {
-            basePrice: pricing.basePrice,
-            gstRate: pricing.gstRate,
-            gstAmount: pricing.gstAmount,
-            total: pricing.itemTotal
-          });
           
           return {
             order_id: order.id,
             product_id: item.productId,
             variant_id: item.variantId,
             
-            // ✅ Product snapshot (at time of order)
             product_name: item.name || productData.title || 'Unknown Product',
             product_catalog_number: productData.catalog_number || null,
             variant_size_display: item.variant || variantData.size_display || 'Unknown Size',
@@ -988,7 +859,6 @@ export const useCheckoutLogic = () => {
             
             quantity: pricing.quantity,
             
-            // ✅ CLEAN PRICING SNAPSHOT - ALL IN RUPEES
             base_price: pricing.basePrice,
             gst_rate: pricing.gstRate,
             gst_amount: pricing.gstAmount,
@@ -1007,16 +877,12 @@ export const useCheckoutLogic = () => {
           .select('*');
 
         if (itemsError) {
-          console.error("❌ Failed to insert order_items:", itemsError);
           await supabase.from('orders').delete().eq('id', order.id);
           throw new Error(
             `Failed to create order items: ${itemsError.message}. Order cancelled.`
           );
         }
 
-        console.log("✅ Order items inserted with pricing snapshot:", insertedItems.length);
-
-        console.log("\n🎨 CREATING CUSTOMIZATION REQUESTS...");
         const customizationRequests = [];
 
         for (let i = 0; i < insertedItems.length; i++) {
@@ -1052,35 +918,20 @@ export const useCheckoutLogic = () => {
               status: 'pending',
               admin_notes: null
             });
-            
-            console.log(`  ✅ Queued request for item ${orderItem.id} (${customizationType})`);
           }
         }
 
         if (customizationRequests.length > 0) {
-          const { data: createdRequests, error: reqError } = await supabase
+          await supabase
             .from('customization_requests')
             .insert(customizationRequests)
             .select('*');
-          
-          if (reqError) {
-            console.error('❌ Failed to create customization requests:', reqError);
-            console.warn('  ⚠️ Order will proceed without customization request tracking');
-          } else {
-            console.log(`  ✅ Created ${createdRequests.length} customization requests`);
-          }
-        } else {
-          console.log('  ℹ️ No customization requests needed');
         }
 
-        console.log("\n🔒 RESERVING & CONFIRMING STOCK ATOMICALLY...");
         const stockReservations = [];
         
         try {
-          console.log("  📦 Step 1: Creating reservations...");
           for (const item of processedCartItems) {
-            console.log(`    - Reserving: ${item.name} (qty: ${item.quantity})`);
-            
             if (!item.variantId) {
               throw new Error(`Missing variantId for ${item.name}`);
             }
@@ -1098,34 +949,15 @@ export const useCheckoutLogic = () => {
               quantity: item.quantity,
               reservationId: reservationId
             });
-            
-            console.log(`    ✅ Reserved: ${reservationId}`);
           }
 
-          console.log(`  ✅ All reservations created: ${stockReservations.length} items`);
-
-          console.log("\n  🎯 Step 2: Batch confirming reservations (atomic stock decrement)...");
           const reservationIds = stockReservations.map(r => r.reservationId);
-          
-          const confirmResult = await confirmMultipleReservations(reservationIds);
-          
-          console.log(`  ✅ ATOMIC CONFIRMATION SUCCESS: ${confirmResult.confirmedCount} items`);
-          console.log(`     Stock decremented in database via single transaction ✅`);
-          
-          stockReservations.forEach(r => {
-            console.log(`    ✅ ${r.item}: -${r.quantity} units (stock updated)`);
-          });
+          await confirmMultipleReservations(reservationIds);
 
         } catch (error) {
-          console.error("\n  ❌ STOCK RESERVATION/CONFIRMATION FAILED:", error);
-          
-          console.log("  🔄 Rolling back order due to stock failure...");
-          
           await supabase.from('customization_requests').delete().eq('order_id', order.id);
           await supabase.from('order_items').delete().eq('order_id', order.id);
           await supabase.from('orders').delete().eq('id', order.id);
-          
-          console.log("  ✅ Rollback complete");
           
           let userMessage = error.message;
           if (error.message.includes('Insufficient stock')) {
@@ -1136,19 +968,9 @@ export const useCheckoutLogic = () => {
           
           throw new Error(userMessage);
         }
-
-        console.log("\n✅ ORDER CREATION COMPLETE WITH GST FROM DATABASE");
-        console.log("   💰 Billing totals saved to BOTH database columns (immutable)");
-        console.log("   📸 Per-item pricing snapshot saved with correct GST");
-        console.log("   🔒 Stock decremented atomically ✅");
-        console.log("   🏷️ GST data fetched fresh from database ✅");
-        console.log("   ✅ Compatible with both grand_total AND order_total columns");
-        console.log("   💳 Payment method mapped to DB-compatible value ✅");
-        console.log("\n🎉 ORDER READY FOR PAYMENT\n");
         
         return order;
       } catch (error) {
-        console.error("\n🚨 ORDER CREATION FAILED:", error);
         throw error;
       }
     },
@@ -1175,24 +997,10 @@ export const useCheckoutLogic = () => {
   setProcessingPayment(true);
 
   try {
-    console.log('\n🚀 STARTING RAZORPAY PAYMENT FLOW');
-
-    // ✅ Create order with "razorpay" - will be mapped to "PayNow" in createOrder()
     const order = await createOrder("razorpay");
-    console.log('✅ Order created:', order.id);
 
-    // Get order total (use order_total or grand_total)
     const orderTotal = order.order_total || order.grand_total;
-    
-    console.log('💰 Payment Details:', {
-      orderId: order.id,
-      amount: orderTotal,
-      customer: `${formData.firstName} ${formData.lastName}`,
-      email: formData.email,
-      phone: formData.phone,
-    });
 
-    // Initiate Razorpay payment
     await initiateRazorpayPayment({
       orderId: order.id,
       amount: orderTotal,
@@ -1200,12 +1008,8 @@ export const useCheckoutLogic = () => {
       customerEmail: formData.email,
       customerPhone: formData.phone,
       
-      // Success callback
       onSuccess: async (paymentData) => {
-        console.log('✅ PAYMENT SUCCESS CALLBACK:', paymentData);
-        
         try {
-          // Clear cart
           const cartCleared = await clearCart();
           
           if (!cartCleared) {
@@ -1217,20 +1021,17 @@ export const useCheckoutLogic = () => {
             });
           }
 
-          // Show success message
           toast({
             title: "Payment Successful! 🎉",
             description: `Order #${order.id.slice(0, 8)} has been confirmed. Redirecting...`,
             duration: 3000,
           });
 
-          // Redirect to order page
           setTimeout(() => {
             navigate(`/order/${order.id}`, { replace: true });
           }, 2000);
 
         } catch (error) {
-          console.error('Post-payment processing error:', error);
           toast({
             title: "Payment Successful",
             description: "Your payment was successful. Redirecting to order page...",
@@ -1243,12 +1044,8 @@ export const useCheckoutLogic = () => {
         }
       },
       
-      // Failure callback
       onFailure: async (errorData) => {
-        console.error('❌ PAYMENT FAILURE CALLBACK:', errorData);
-        
         try {
-          // Update order status to failed
           await supabase
             .from('orders')
             .update({
@@ -1258,7 +1055,6 @@ export const useCheckoutLogic = () => {
             })
             .eq('id', order.id);
 
-          // Show error message
           toast({
             title: "Payment Failed",
             description: errorData.error || "Payment could not be completed. Please try again.",
@@ -1266,19 +1062,14 @@ export const useCheckoutLogic = () => {
             duration: 8000,
           });
         } catch (dbError) {
-          console.error('Failed to update order status:', dbError);
+          // Silent error - order status update failed
         }
         
         setProcessingPayment(false);
       },
     });
 
-    // Note: Don't set processingPayment to false here - modal is still open
-    // It will be set to false in the callbacks
-
   } catch (error) {
-    console.error('❌ Payment initiation failed:', error);
-    
     toast({
       title: "Payment Error",
       description: error.message || "Failed to initiate payment. Please try again.",
@@ -1339,7 +1130,6 @@ export const useCheckoutLogic = () => {
 
       navigate(`/order/${order.id}`);
     } catch (error) {
-      console.error("COD Payment error:", error);
       toast({
         title: "Order Failed",
         description: error.message || "Failed to place order",
@@ -1415,7 +1205,6 @@ export const useCheckoutLogic = () => {
           });
         }
       } catch (error) {
-        console.error("Payment verification failed:", error);
         toast({
           title: "Payment Verification Failed",
           description: error.message || "Please contact support.",
@@ -1435,12 +1224,6 @@ export const useCheckoutLogic = () => {
         clearUrlParams();
 
         const parsedError = parsePaymentError(message);
-        
-        console.error('🚨 Payment failed:', {
-          orderId,
-          rawMessage: message,
-          parsedError
-        });
 
         await supabase
           .from("orders")
@@ -1464,7 +1247,6 @@ export const useCheckoutLogic = () => {
           setProcessingPayment(false);
         }, 1000);
       } catch (error) {
-        console.error("Error handling payment failure:", error);
         toast({
           title: "Error",
           description:
@@ -1519,7 +1301,6 @@ export const useCheckoutLogic = () => {
     }
   }, [user, fetchUserProfile]);
 
-  // ✅ FIX: Removed PHONEPE_PAY_URL from return statement
   return {
     loading: loading || !gstDataLoaded,
     processingPayment,
@@ -1536,6 +1317,5 @@ export const useCheckoutLogic = () => {
     handlePaymentSuccess,
     handlePaymentFailure,
     validateForm,
-    // PHONEPE_PAY_URL removed - no longer needed with Razorpay
   };
 };
