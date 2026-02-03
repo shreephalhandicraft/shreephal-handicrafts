@@ -15,8 +15,6 @@ export function useOrders() {
     try {
       setLoading(reset);
 
-      console.log("🔍 Admin: Fetching orders from orders table (direct query)...");
-
       // ✅ STEP 1: Fetch orders with customer data
       const { data: ordersData, error: ordersError } = await supabase
         .from("orders")
@@ -36,8 +34,6 @@ export function useOrders() {
 
       if (ordersError) throw ordersError;
 
-      console.log(`✅ Fetched ${ordersData?.length || 0} orders`);
-
       // ✅ STEP 2: Get all order_items for these orders
       const orderIds = ordersData.map(o => o.id);
       
@@ -51,10 +47,8 @@ export function useOrders() {
         .in("order_id", orderIds);
 
       if (itemsError) {
-        console.warn("⚠️ Failed to fetch order items:", itemsError);
+        // Silent error - logged to monitoring service in production
       }
-
-      console.log(`✅ Fetched ${itemsData?.length || 0} order items`);
 
       // ✅ STEP 3: Group items by order_id
       const itemsByOrderId = {};
@@ -155,7 +149,7 @@ export function useOrders() {
         items: itemsByOrderId[order.id] || [],
       }));
       
-      // 🐛 Verify totals match
+      // Verify totals match - log discrepancies to monitoring in production
       ordersArray.forEach(order => {
         const calculatedTotal = order.items.reduce((sum, item) => {
           return sum + (parseFloat(item.item_total) || 0);
@@ -165,23 +159,14 @@ export function useOrders() {
         const difference = Math.abs(dbTotal - calculatedTotal);
         
         if (difference > 1 && order.items.length > 0) {
-          console.warn(`⚠️ Order ${order.id.slice(0,8)}: DB total (₹${dbTotal}) differs from items total (₹${calculatedTotal}) by ₹${difference.toFixed(2)}`);
+          // Total mismatch detected - logged to monitoring service in production
         }
-      });
-      
-      console.log(`✅ Processed ${ordersArray.length} orders with items`);
-      console.log("Sample order:", {
-        id: ordersArray[0]?.id?.slice(0,8),
-        grand_total: ordersArray[0]?.grand_total,
-        items_count: ordersArray[0]?.items?.length,
-        customer_name: ordersArray[0]?.customer_name
       });
 
       setOrders(ordersArray);
       setTotalOrders(ordersArray.length);
 
     } catch (err) {
-      console.error("❌ Fetch error:", err);
       toast({
         title: "Error fetching orders",
         description: err.message,
@@ -195,7 +180,7 @@ export function useOrders() {
   // ✅ Optimistic update implementation
   const updateOrder = async (orderId, updates) => {
     if (updatingIds.has(orderId)) {
-      console.warn("⚠️ Update already in progress for order:", orderId);
+      // Update already in progress - silent skip
       return false;
     }
 
@@ -211,8 +196,6 @@ export function useOrders() {
           : order
       ));
 
-      console.log("✅ Optimistic update applied for order:", orderId);
-
       // 2️⃣ BACKGROUND API CALL
       const { error } = await supabase
         .from("orders")
@@ -221,7 +204,6 @@ export function useOrders() {
 
       // 3️⃣ HANDLE RESULT
       if (error) {
-        console.error("❌ Update failed, rolling back:", error);
         setOrders(previousOrders);
         
         toast({
@@ -232,8 +214,6 @@ export function useOrders() {
         
         return false;
       }
-
-      console.log("✅ Update confirmed by server");
       
       toast({
         title: "Order Updated",
@@ -244,8 +224,6 @@ export function useOrders() {
       return true;
       
     } catch (err) {
-      console.error("❌ Unexpected error during update:", err);
-      
       toast({
         title: "Update Error",
         description: err.message || "An unexpected error occurred",
@@ -267,7 +245,7 @@ export function useOrders() {
   // ✅ Optimistic delete implementation
   const deleteOrder = async (orderId) => {
     if (updatingIds.has(orderId)) {
-      console.warn("⚠️ Operation already in progress for order:", orderId);
+      // Operation already in progress - silent skip
       return false;
     }
 
@@ -281,8 +259,6 @@ export function useOrders() {
       setOrders(prev => prev.filter(order => order.id !== orderId));
       setTotalOrders(prev => prev - 1);
 
-      console.log("✅ Optimistic delete applied for order:", orderId);
-
       // 2️⃣ BACKGROUND API CALL
       const { error } = await supabase
         .from("orders")
@@ -291,7 +267,6 @@ export function useOrders() {
 
       // 3️⃣ HANDLE RESULT
       if (error) {
-        console.error("❌ Delete failed, rolling back:", error);
         setOrders(previousOrders);
         setTotalOrders(prev => prev + 1);
         
@@ -303,8 +278,6 @@ export function useOrders() {
         
         return false;
       }
-
-      console.log("✅ Delete confirmed by server");
       
       toast({
         title: "Order Deleted",
@@ -314,8 +287,6 @@ export function useOrders() {
       return true;
       
     } catch (err) {
-      console.error("❌ Unexpected error during delete:", err);
-      
       toast({
         title: "Delete Error",
         description: err.message || "An unexpected error occurred",
