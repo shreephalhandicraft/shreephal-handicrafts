@@ -130,7 +130,6 @@ const CheckoutForm = ({ onDataLoaded, onValidationChange }) => {
   }, [formData, isFormValid, validateForm]);
 
   useEffect(() => {
-    console.log("User in useEffect:", user);
     if (user?.id) {
       loadCustomerData();
     } else {
@@ -140,14 +139,12 @@ const CheckoutForm = ({ onDataLoaded, onValidationChange }) => {
 
   const loadCustomerData = async () => {
     if (!user?.id) {
-      console.error("No user ID available");
       setLoading(false);
       return;
     }
 
     try {
       setLoading(true);
-      console.log("Loading customer data for checkout:", user.id);
 
       const { data: customerRecords, error } = await supabase
         .from("customers")
@@ -155,17 +152,12 @@ const CheckoutForm = ({ onDataLoaded, onValidationChange }) => {
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
 
-      console.log("Supabase response:", { customerRecords, error });
-
       if (error) {
-        console.error("Supabase error:", error);
         throw error;
       }
 
       if (customerRecords && customerRecords.length > 0) {
         const existingCustomer = customerRecords[0];
-
-        console.log("Found customer data for checkout:", existingCustomer);
 
         let parsedAddress = {
           street: "",
@@ -182,7 +174,7 @@ const CheckoutForm = ({ onDataLoaded, onValidationChange }) => {
                 ? JSON.parse(existingCustomer.address)
                 : existingCustomer.address;
           } catch (parseError) {
-            console.error("Error parsing address JSON:", parseError);
+            // Silent parsing error
           }
         }
 
@@ -218,11 +210,8 @@ const CheckoutForm = ({ onDataLoaded, onValidationChange }) => {
           title: "Information Pre-filled",
           description: "Your saved details have been loaded.",
         });
-      } else {
-        console.log("No existing customer found for checkout");
       }
     } catch (err) {
-      console.error("Error in loadCustomerData:", err);
       toast({
         title: "Error",
         description: `Failed to load customer data: ${err.message}`,

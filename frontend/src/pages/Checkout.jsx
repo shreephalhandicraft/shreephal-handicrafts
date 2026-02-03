@@ -57,8 +57,6 @@ const Checkout = () => {
   // ✅ FIX: Wrap in useCallback for stability
   // Handle data loaded from database
   const handleDataLoaded = useCallback((loadedData) => {
-    console.log("Customer data loaded in checkout:", loadedData);
-
     // Update checkout logic with loaded data
     Object.keys(loadedData).forEach((key) => {
       if (key !== "isValid") {
