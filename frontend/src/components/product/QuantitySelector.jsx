@@ -49,10 +49,7 @@ const QuantitySelector = ({
 
         {quantity > 1 && (
           <div className="text-sm text-gray-600">
-            Total: ₹
-            {(((getCurrentPrice() || 0) * quantity) / 100).toLocaleString(
-              "en-IN"
-            )}
+            Total: ₹{formatPrice(getCurrentPrice() * quantity)}
           </div>
         )}
       </div>
