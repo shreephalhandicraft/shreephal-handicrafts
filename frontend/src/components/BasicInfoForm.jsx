@@ -2,9 +2,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { User } from "lucide-react";
+import { User, AlertCircle } from "lucide-react";
 
-export function BasicInfoForm({ formData, onInputChange }) {
+export function BasicInfoForm({ formData, onInputChange, errors = {} }) {
   return (
     <Card className="border border-gray-200">
       <CardHeader className="pb-4 sm:pb-6">
@@ -13,7 +13,7 @@ export function BasicInfoForm({ formData, onInputChange }) {
           Basic Information
         </CardTitle>
         <p className="text-xs sm:text-sm text-gray-600">
-          Fields marked with * are required
+          Fields marked with <span className="text-red-500">*</span> are required
         </p>
       </CardHeader>
       <CardContent className="space-y-4 sm:space-y-6">
@@ -27,9 +27,17 @@ export function BasicInfoForm({ formData, onInputChange }) {
               value={formData.name}
               onChange={(e) => onInputChange("name", e.target.value)}
               required
-              className="h-10 sm:h-11"
+              className={`h-10 sm:h-11 ${
+                errors.name ? "border-red-500 focus:border-red-500" : ""
+              }`}
               placeholder="Enter your full name"
             />
+            {errors.name && (
+              <p className="text-red-500 text-xs sm:text-sm flex items-center gap-1">
+                <AlertCircle className="h-3 w-3" />
+                {errors.name}
+              </p>
+            )}
           </div>
           <div className="space-y-2">
             <Label htmlFor="email" className="text-sm sm:text-base font-medium">
@@ -41,9 +49,17 @@ export function BasicInfoForm({ formData, onInputChange }) {
               value={formData.email}
               onChange={(e) => onInputChange("email", e.target.value)}
               required
-              className="h-10 sm:h-11"
+              className={`h-10 sm:h-11 ${
+                errors.email ? "border-red-500 focus:border-red-500" : ""
+              }`}
               placeholder="Enter your email address"
             />
+            {errors.email && (
+              <p className="text-red-500 text-xs sm:text-sm flex items-center gap-1">
+                <AlertCircle className="h-3 w-3" />
+                {errors.email}
+              </p>
+            )}
           </div>
         </div>
 
@@ -55,9 +71,17 @@ export function BasicInfoForm({ formData, onInputChange }) {
             id="phone"
             value={formData.phone}
             onChange={(e) => onInputChange("phone", e.target.value)}
-            className="h-10 sm:h-11"
+            className={`h-10 sm:h-11 ${
+              errors.phone ? "border-red-500 focus:border-red-500" : ""
+            }`}
             placeholder="Enter your phone number"
           />
+          {errors.phone && (
+            <p className="text-red-500 text-xs sm:text-sm flex items-center gap-1">
+              <AlertCircle className="h-3 w-3" />
+              {errors.phone}
+            </p>
+          )}
         </div>
 
         <div className="space-y-2">

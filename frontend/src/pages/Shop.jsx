@@ -60,7 +60,7 @@ const CategoryImage = ({ category, className }) => {
         <img
           src={category.image}
           alt={category.name}
-          className={`w-full h-full object-cover transition-all duration-500 group-hover:scale-105 ${
+          className={`w-full h-full object-cover transition-all duration-500 group-hover:scale-110 ${
             imageState === "loaded" ? "opacity-100" : "opacity-0"
           }`}
           onLoad={handleImageLoad}
@@ -70,7 +70,7 @@ const CategoryImage = ({ category, className }) => {
       )}
 
       {imageState === "loaded" && (
-        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors duration-300"></div>
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-300"></div>
       )}
     </div>
   );
@@ -204,7 +204,16 @@ const Shop = () => {
                 <div
                   key={category.id}
                   onClick={() => handleCategoryClick(category.slug)}
-                  className="bg-white rounded-xl sm:rounded-2xl shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden group relative border border-gray-100 hover:-translate-y-1 cursor-pointer"
+                  className="bg-white rounded-xl sm:rounded-2xl shadow-md hover:shadow-2xl transition-all duration-300 overflow-hidden group relative border border-gray-100 hover:border-primary/30 hover:-translate-y-2 cursor-pointer hover:ring-2 hover:ring-primary/20 active:scale-[0.98]"
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleCategoryClick(category.slug);
+                    }
+                  }}
+                  aria-label={`Browse ${category.name} products`}
                 >
                   {/* Image Container */}
                   <div className="relative aspect-square bg-gray-50 overflow-hidden">
@@ -221,6 +230,9 @@ const Shop = () => {
                         </span>
                       </div>
                     )}
+
+                    {/* Hover Overlay Indicator */}
+                    <div className="absolute inset-0 border-4 border-primary/0 group-hover:border-primary/10 transition-all duration-300 pointer-events-none"></div>
                   </div>
 
                   {/* Content */}
@@ -231,7 +243,7 @@ const Shop = () => {
                     </h3>
 
                     {/* Price & Rating */}
-                    <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center justify-between gap-2 mb-3 sm:mb-4">
                       {category.price && (
                         <div className="flex flex-col min-w-0 flex-1">
                           <span className="text-xs text-gray-500 mb-1">Starting at</span>
@@ -251,14 +263,11 @@ const Shop = () => {
                       )}
                     </div>
 
-                    {/* Browse Button */}
+                    {/* Browse Button - Visual only, card handles click */}
                     <Button
                       size="sm"
-                      className="w-full mt-3 sm:mt-4 text-xs sm:text-sm transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleCategoryClick(category.slug);
-                      }}
+                      className="w-full text-xs sm:text-sm transition-all duration-200 group-hover:shadow-lg group-hover:-translate-y-0.5 pointer-events-none"
+                      aria-hidden="true"
                     >
                       Browse Products
                     </Button>

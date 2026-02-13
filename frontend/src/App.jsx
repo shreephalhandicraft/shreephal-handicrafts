@@ -11,6 +11,7 @@ import {
   GuestRoute,
 } from "@/contexts/RouteGuards";
 import OfflineDetector from "@/components/OfflineDetector";
+import ScrollToTop from "@/components/ScrollToTop";
 
 // Lazy load pages for better performance
 const Index = lazy(() => import("./pages/Index"));
@@ -23,6 +24,9 @@ const Cart = lazy(() => import("./pages/Cart"));
 const Checkout = lazy(() => import("./pages/Checkout"));
 const Login = lazy(() => import("./pages/Login"));
 const Register = lazy(() => import("./pages/Register"));
+// ✅ NEW: Password reset pages
+const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
+const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const Favourites = lazy(() => import("./pages/Favourites"));
 const MyOrders = lazy(() => import("./pages/MyOrders"));
 const OrderDetail = lazy(() => import("./pages/OrderDetail"));
@@ -47,9 +51,13 @@ const PageLoader = () => (
  * - Reduced nesting complexity (5 layers → 1 layer visible here)
  * - All context providers centralized in AppProviders.jsx
  * - Easier to maintain and debug
+ * ✅ FIXED: Added ScrollToTop component to fix scroll position on navigation
  */
 const App = () => (
   <AppProviders>
+    {/* ✅ Scroll to top on route change */}
+    <ScrollToTop />
+    
     {/* ✅ Offline detection for better mobile UX */}
     <OfflineDetector />
     
@@ -166,6 +174,23 @@ const App = () => (
           element={
             <PublicRoute>
               <Register />
+            </PublicRoute>
+          }
+        />
+        {/* ✅ NEW: Password reset routes */}
+        <Route
+          path="/forgot-password"
+          element={
+            <PublicRoute>
+              <ForgotPassword />
+            </PublicRoute>
+          }
+        />
+        <Route
+          path="/reset-password"
+          element={
+            <PublicRoute>
+              <ResetPassword />
             </PublicRoute>
           }
         />

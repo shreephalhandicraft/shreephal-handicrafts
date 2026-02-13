@@ -170,7 +170,7 @@ const Cart = () => {
                     Browse Products
                   </Button>
                 </Link>
-                <Link to="/categories">
+                <Link to="/shop">
                   <Button size="lg" variant="outline" className="px-8">
                     View Categories
                   </Button>

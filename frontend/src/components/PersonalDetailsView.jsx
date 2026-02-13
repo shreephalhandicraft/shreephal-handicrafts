@@ -1,10 +1,11 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { User, Edit3 } from "lucide-react";
+import { User, Edit3, Shield } from "lucide-react";
 import { PersonalDetailsHeader } from "./PersonalDetailsHeader";
 import { PersonalInfoCard } from "./PersonalInfoCard";
 import { AddressInfoCard } from "./AddressInfoCard";
 import { EmptyStateCard } from "./EmptyStateCard";
+import ChangePassword from "./ChangePassword";
 
 export function PersonalDetailsView({ formData, onEditClick }) {
   const getProfileCompleteness = () => {
@@ -39,6 +40,26 @@ export function PersonalDetailsView({ formData, onEditClick }) {
         <div className="grid gap-4 sm:gap-6">
           <PersonalInfoCard formData={formData} />
           <AddressInfoCard address={formData.address} />
+          
+          {/* ✅ NEW: Security section with password change */}
+          <Card className="overflow-hidden border-gray-200 shadow-sm">
+            <CardContent className="p-4 sm:p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <Shield className="h-5 w-5 text-primary" />
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900">
+                  Security
+                </h3>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <p className="text-sm text-gray-600 mb-3">
+                    Keep your account secure by using a strong password and changing it regularly.
+                  </p>
+                  <ChangePassword />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       ) : (
         <EmptyStateCard />

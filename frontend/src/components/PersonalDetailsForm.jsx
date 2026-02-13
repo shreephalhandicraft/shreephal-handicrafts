@@ -13,6 +13,7 @@ export function PersonalDetailsForm({
   onCancel,
   saving,
   customerId,
+  errors = {},
 }) {
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -30,6 +31,18 @@ export function PersonalDetailsForm({
     }));
   };
 
+  // Separate address errors from other errors
+  const addressErrors = {};
+  const formErrors = {};
+  
+  Object.keys(errors).forEach(key => {
+    if (['street', 'city', 'state', 'zipCode', 'country'].includes(key)) {
+      addressErrors[key] = errors[key];
+    } else {
+      formErrors[key] = errors[key];
+    }
+  });
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6 sm:space-y-8">
       <PersonalDetailsHeader
@@ -38,11 +51,35 @@ export function PersonalDetailsForm({
         subtitle="Update your profile information"
       />
 
-      <BasicInfoForm formData={formData} onInputChange={handleInputChange} />
+      {/* Show general form errors */}
+      {Object.keys(errors).length > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <p className="text-red-800 font-medium text-sm">
+            Please correct the following errors:
+          </p>
+          <ul className="mt-2 space-y-1 text-red-700 text-sm list-disc list-inside">
+            {Object.entries(errors).map(([field, message]) => (
+              <li key={field}>
+                <span className="font-medium capitalize">
+                  {field.replace(/([A-Z])/g, ' $1').trim()}:
+                </span>{' '}
+                {message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <BasicInfoForm 
+        formData={formData} 
+        onInputChange={handleInputChange}
+        errors={formErrors}
+      />
 
       <AddressForm
         address={formData.address}
         onAddressChange={handleAddressChange}
+        errors={addressErrors}
       />
 
       <Card className="border border-gray-200">

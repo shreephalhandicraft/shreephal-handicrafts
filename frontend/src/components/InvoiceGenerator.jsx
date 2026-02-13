@@ -183,19 +183,19 @@ const InvoiceGenerator = ({ order, onClose }) => {
                   <div className="flex items-start gap-2">
                     <MapPin className="h-3 w-3 sm:h-4 sm:w-4 text-gray-600 mt-0.5 flex-shrink-0" />
                     <div>
-                      <div>123 Craft Street</div>
-                      <div>Artisan District, Mumbai 400001</div>
-                      <div>Maharashtra, India</div>
+                      <div>Main Road, Kachiyana</div>
+                      <div>Lordganj, Jabalpur</div>
+                      <div>Madhya Pradesh - 482002, India</div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <Phone className="h-3 w-3 sm:h-4 sm:w-4 text-gray-600 flex-shrink-0" />
-                    <span>+91 98765 43210</span>
+                    <span>+91 9424626008</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <Mail className="h-3 w-3 sm:h-4 sm:w-4 text-gray-600 flex-shrink-0" />
                     <span className="break-all">
-                      orders@shreephalhandicrafts.com
+                      shreephalhandicraft@gmail.com
                     </span>
                   </div>
                 </div>
@@ -503,17 +503,17 @@ const InvoiceGenerator = ({ order, onClose }) => {
                 <p className="font-medium">Thank you for your business!</p>
                 <p className="px-2">
                   For any questions regarding this invoice, please contact us at
-                  orders@shreephalhandicrafts.com
+                  shreephalhandicraft@gmail.com
                 </p>
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-4 mt-4">
                   <div className="flex items-center gap-1">
                     <Phone className="h-3 w-3" />
-                    <span>+91 98765 43210</span>
+                    <span>+91 9424626008</span>
                   </div>
                   <div className="flex items-center gap-1">
                     <Mail className="h-3 w-3" />
                     <span className="break-all">
-                      orders@shreephalhandicrafts.com
+                      shreephalhandicraft@gmail.com
                     </span>
                   </div>
                 </div>

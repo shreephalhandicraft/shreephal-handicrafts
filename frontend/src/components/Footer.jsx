@@ -254,15 +254,18 @@ export const Footer = () => {
           </div>
         </div>
 
-        {/* Bottom Section */}
-        <div className="border-t border-gray-800/50 mt-12 sm:mt-16 pt-6 sm:pt-8">
-          {/* Copyright & Legal Links */}
-          <div className="flex flex-col sm:flex-row justify-between items-center space-y-4 sm:space-y-0 mb-8">
-            <div className="flex flex-col sm:flex-row items-center space-y-2 sm:space-y-0 sm:space-x-6 text-center sm:text-left">
-              <p className="text-sm text-gray-400">
+        {/* Bottom Section - Redesigned for Professional Look */}
+        <div className="border-t border-gray-800/50 mt-12 sm:mt-16 pt-8">
+          <div className="space-y-6">
+            {/* Copyright & Legal Links - Single Row */}
+            <div className="flex flex-col lg:flex-row justify-between items-center gap-4">
+              {/* Copyright */}
+              <p className="text-sm text-gray-400 text-center lg:text-left">
                 &copy; 2024 Shreephal-Handicrafts. All rights reserved.
               </p>
-              <div className="flex items-center space-x-4 text-xs sm:text-sm">
+              
+              {/* Legal Links */}
+              <div className="flex flex-wrap items-center justify-center gap-3 text-sm">
                 <Link
                   to="/terms-conditions"
                   className="text-gray-400 hover:text-primary transition-colors"
@@ -286,65 +289,54 @@ export const Footer = () => {
               </div>
             </div>
 
-            <div className="text-xs sm:text-sm text-gray-400 text-center sm:text-right">
-              <p>Made with ❤️ for celebrating your achievements</p>
-            </div>
-          </div>
+            {/* Developer Credits - Professional Format */}
+            <div className="border-t border-gray-800/30 pt-6">
+              <div className="flex flex-col items-center space-y-4">
+                {/* Header with Icon */}
+                <div className="flex items-center space-x-2">
+                  <Code2 className="h-4 w-4 text-gray-500" aria-hidden="true" />
+                  <span className="text-sm text-gray-500">Designed & Developed by</span>
+                </div>
 
-          {/* Developer Credits Section - Enhanced */}
-          <div className="border-t border-gray-800/30 pt-6">
-            <div className="flex flex-col items-center space-y-4">
-              {/* Header */}
-              <div className="flex items-center space-x-2 text-gray-500">
-                <Code2 className="h-4 w-4" aria-hidden="true" />
-                <span className="text-sm font-medium">Designed & Developed by</span>
+                {/* Developer Cards - Compact & Professional */}
+                <div className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-6">
+                  {/* Archi Jain */}
+                  <a
+                    href="https://www.linkedin.com/in/jainarchi/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group flex items-center space-x-3 px-5 py-3 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-primary/30 rounded-lg transition-all duration-300"
+                  >
+                    <div className="p-2 rounded-lg bg-primary/10 group-hover:bg-primary/20 transition-colors">
+                      <Linkedin className="h-4 w-4 text-primary" aria-hidden="true" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-white group-hover:text-primary transition-colors">
+                        Archi Jain
+                      </p>
+                      <p className="text-xs text-gray-400">Lead Developer</p>
+                    </div>
+                  </a>
+
+                  {/* Ayush Tiwari */}
+                  <a
+                    href="https://www.linkedin.com/in/tiwariaayush/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group flex items-center space-x-3 px-5 py-3 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-primary/30 rounded-lg transition-all duration-300"
+                  >
+                    <div className="p-2 rounded-lg bg-primary/10 group-hover:bg-primary/20 transition-colors">
+                      <Linkedin className="h-4 w-4 text-primary" aria-hidden="true" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-white group-hover:text-primary transition-colors">
+                        Ayush Tiwari
+                      </p>
+                      <p className="text-xs text-gray-400">Support Developer</p>
+                    </div>
+                  </a>
+                </div>
               </div>
-
-              {/* Developer Cards - Mobile Friendly */}
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-6 w-full max-w-2xl">
-                {/* Archi Jain - Lead */}
-                <a
-                  href="https://www.linkedin.com/in/jainarchi/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="group flex items-center space-x-3 px-4 py-3 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-primary/30 rounded-xl transition-all duration-300 w-full sm:w-auto min-w-[280px]"
-                >
-                  <div className="p-2 rounded-lg bg-primary/20 group-hover:bg-primary/30 transition-colors">
-                    <Linkedin className="h-5 w-5 text-primary" aria-hidden="true" />
-                  </div>
-                  <div className="flex-1 text-left">
-                    <p className="text-sm font-semibold text-white group-hover:text-primary transition-colors">
-                      Archi Jain
-                    </p>
-                    <p className="text-xs text-gray-400">Lead Developer</p>
-                  </div>
-                  <ArrowRight className="h-4 w-4 text-gray-400 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all duration-300" aria-hidden="true" />
-                </a>
-
-                {/* Ayush Tiwari - Support Developer */}
-                <a
-                  href="https://www.linkedin.com/in/tiwariaayush/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="group flex items-center space-x-3 px-4 py-3 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-primary/30 rounded-xl transition-all duration-300 w-full sm:w-auto min-w-[280px]"
-                >
-                  <div className="p-2 rounded-lg bg-primary/20 group-hover:bg-primary/30 transition-colors">
-                    <Linkedin className="h-5 w-5 text-primary" aria-hidden="true" />
-                  </div>
-                  <div className="flex-1 text-left">
-                    <p className="text-sm font-semibold text-white group-hover:text-primary transition-colors">
-                      Ayush Tiwari
-                    </p>
-                    <p className="text-xs text-gray-400">Support Developer</p>
-                  </div>
-                  <ArrowRight className="h-4 w-4 text-gray-400 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all duration-300" aria-hidden="true" />
-                </a>
-              </div>
-
-              {/* Tagline */}
-              <p className="text-xs text-gray-600 text-center">
-                Crafting digital excellence with passion
-              </p>
             </div>
           </div>
         </div>
