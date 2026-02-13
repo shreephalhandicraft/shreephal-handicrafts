@@ -172,6 +172,85 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  /**
+   * ✅ NEW: Request password reset email
+   * @param {string} email - User's email address
+   * @returns {Promise<{error: string | null}>}
+   */
+  const requestPasswordReset = async (email) => {
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+
+      if (error) {
+        return { error: error.message };
+      }
+
+      return { error: null };
+    } catch (err) {
+      console.error("Password reset request error:", err);
+      return { error: "Failed to send reset email. Please try again." };
+    }
+  };
+
+  /**
+   * ✅ NEW: Update password for logged-in user
+   * @param {string} newPassword - New password
+   * @returns {Promise<{error: string | null}>}
+   */
+  const changePassword = async (newPassword) => {
+    try {
+      if (!user) {
+        return { error: "You must be logged in to change your password" };
+      }
+
+      if (newPassword.length < 6) {
+        return { error: "Password must be at least 6 characters long" };
+      }
+
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+
+      if (error) {
+        return { error: error.message };
+      }
+
+      return { error: null };
+    } catch (err) {
+      console.error("Password change error:", err);
+      return { error: "Failed to change password. Please try again." };
+    }
+  };
+
+  /**
+   * ✅ NEW: Update password during reset flow (with token)
+   * @param {string} newPassword - New password
+   * @returns {Promise<{error: string | null}>}
+   */
+  const resetPassword = async (newPassword) => {
+    try {
+      if (newPassword.length < 6) {
+        return { error: "Password must be at least 6 characters long" };
+      }
+
+      // Supabase automatically detects the recovery session from URL
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+
+      if (error) {
+        return { error: error.message };
+      }
+
+      return { error: null };
+    } catch (err) {
+      console.error("Password reset error:", err);
+      return { error: "Failed to reset password. Please try again." };
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -185,6 +264,10 @@ export const AuthProvider = ({ children }) => {
         isAdmin: adminStatus && adminStatus !== false,
         adminRole: adminStatus,
         adminLoading,
+        // ✅ NEW: Password management methods
+        requestPasswordReset,
+        changePassword,
+        resetPassword,
       }}
     >
       {!loading && children}
