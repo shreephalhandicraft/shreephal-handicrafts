@@ -8,6 +8,8 @@ import { PersonalDetailsView } from "../components/PersonalDetailsView";
 import { PersonalDetailsForm } from "../components/PersonalDetailsForm";
 import { LoadingCard } from "../components/LoadingCard";
 
+const AUTOSAVE_KEY = "shreephal_personal_details_autosave";
+
 export default function PersonalDetails() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -15,6 +17,7 @@ export default function PersonalDetails() {
   const [saving, setSaving] = useState(false);
   const [customerId, setCustomerId] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [validationErrors, setValidationErrors] = useState({});
 
   const [formData, setFormData] = useState({
     name: "",
@@ -25,13 +28,24 @@ export default function PersonalDetails() {
       city: "",
       state: "",
       zipCode: "",
-      country: "",
+      country: "India", // Default to India
     },
     bio: "",
   });
 
+  // Auto-save form data to localStorage
   useEffect(() => {
-    console.log("User in useEffect:", user); // Debug log
+    if (isEditing && user?.id) {
+      const autoSaveData = {
+        ...formData,
+        userId: user.id,
+        timestamp: new Date().toISOString(),
+      };
+      localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(autoSaveData));
+    }
+  }, [formData, isEditing, user?.id]);
+
+  useEffect(() => {
     if (user?.id) {
       loadCustomerData();
     } else {
@@ -41,14 +55,12 @@ export default function PersonalDetails() {
 
   const loadCustomerData = async () => {
     if (!user?.id) {
-      console.error("No user ID available");
       setLoading(false);
       return;
     }
 
     try {
       setLoading(true);
-      console.log("Loading customer data for user:", user.id);
 
       const { data: customerRecords, error } = await supabase
         .from("customers")
@@ -56,54 +68,67 @@ export default function PersonalDetails() {
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
 
-      console.log("Supabase response:", { customerRecords, error });
-
       if (error) {
-        console.error("Supabase error:", error);
         throw error;
       }
 
       if (customerRecords && customerRecords.length > 0) {
         const existingCustomer = customerRecords[0];
-
-        console.log(
-          `Found ${customerRecords.length} customer records, using most recent:`,
-          existingCustomer
-        );
-
         setCustomerId(existingCustomer.id);
 
-        // Parse address if it's a JSON string
+        // Parse address
         let parsedAddress = {
           street: "",
           city: "",
           state: "",
           zipCode: "",
-          country: "",
+          country: "India",
         };
 
         if (existingCustomer.address) {
           try {
-            // If address is a string, parse it; if it's already an object, use it
             parsedAddress =
               typeof existingCustomer.address === "string"
                 ? JSON.parse(existingCustomer.address)
                 : existingCustomer.address;
+            
+            // Ensure country is set to India
+            if (!parsedAddress.country) {
+              parsedAddress.country = "India";
+            }
           } catch (parseError) {
-            console.error("Error parsing address JSON:", parseError);
-            // Keep default empty address if parsing fails
+            console.error("Error parsing address:", parseError);
           }
         }
 
-        setFormData({
+        const loadedData = {
           name: existingCustomer.name || "",
           email: existingCustomer.email || "",
           phone: existingCustomer.phone || "",
           address: parsedAddress,
           bio: existingCustomer.bio || "",
-        });
+        };
+
+        setFormData(loadedData);
+
+        // Check for auto-saved data
+        const autoSaved = localStorage.getItem(AUTOSAVE_KEY);
+        if (autoSaved) {
+          try {
+            const parsed = JSON.parse(autoSaved);
+            if (parsed.userId === user.id) {
+              // Show toast asking if user wants to restore
+              toast({
+                title: "Unsaved Changes Found",
+                description: "You have unsaved changes. Edit to restore them.",
+                duration: 5000,
+              });
+            }
+          } catch (e) {
+            // Ignore parse errors
+          }
+        }
       } else {
-        console.log("No existing customer found");
         setFormData({
           name: "",
           email: "",
@@ -113,14 +138,13 @@ export default function PersonalDetails() {
             city: "",
             state: "",
             zipCode: "",
-            country: "",
+            country: "India",
           },
           bio: "",
         });
         setCustomerId(null);
       }
     } catch (err) {
-      console.error("Error in loadCustomerData:", err);
       toast({
         title: "Error",
         description: `Failed to load customer data: ${err.message}`,
@@ -131,6 +155,56 @@ export default function PersonalDetails() {
     }
   };
 
+  const validateAddress = (address) => {
+    const errors = {};
+
+    if (!address.street || address.street.trim().length < 5) {
+      errors.street = "Street address must be at least 5 characters";
+    }
+
+    if (!address.state || address.state.trim() === "") {
+      errors.state = "Please select a state";
+    }
+
+    if (!address.city || address.city.trim() === "") {
+      errors.city = "Please select a city";
+    }
+
+    if (!address.zipCode || address.zipCode.trim() === "") {
+      errors.zipCode = "PIN code is required";
+    } else if (!/^\d{6}$/.test(address.zipCode)) {
+      errors.zipCode = "PIN code must be exactly 6 digits";
+    }
+
+    return errors;
+  };
+
+  const validateForm = (data) => {
+    const errors = {};
+
+    if (!data.name || data.name.trim().length < 2) {
+      errors.name = "Name must be at least 2 characters";
+    }
+
+    if (!data.email || !data.email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
+      errors.email = "Please enter a valid email address";
+    }
+
+    if (data.phone && data.phone.trim() !== "") {
+      const phoneDigits = data.phone.replace(/\D/g, "");
+      if (phoneDigits.length < 10) {
+        errors.phone = "Phone number must be at least 10 digits";
+      }
+    }
+
+    // Validate address
+    const addressErrors = validateAddress(data.address);
+    if (Object.keys(addressErrors).length > 0) {
+      Object.assign(errors, addressErrors);
+    }
+
+    return errors;
+  };
 
   const handleSubmit = async (updatedFormData) => {
     if (!user?.id) {
@@ -142,40 +216,46 @@ export default function PersonalDetails() {
       return;
     }
 
-    if (!updatedFormData.name.trim() || !updatedFormData.email.trim()) {
-      return toast({
+    // Validate form
+    const errors = validateForm(updatedFormData);
+    if (Object.keys(errors).length > 0) {
+      setValidationErrors(errors);
+      toast({
         title: "Validation Error",
-        description: "Name and email are required.",
+        description: "Please fill all required fields correctly.",
         variant: "destructive",
       });
+      return;
     }
+
+    setValidationErrors({});
 
     try {
       setSaving(true);
 
-      const cleanAddress = Object.fromEntries(
-        Object.entries(updatedFormData.address).filter(
-          ([_, v]) => v && v.trim() !== ""
-        )
-      );
+      // Clean address - ensure country is India
+      const cleanAddress = {
+        street: updatedFormData.address.street.trim(),
+        city: updatedFormData.address.city.trim(),
+        state: updatedFormData.address.state.trim(),
+        zipCode: updatedFormData.address.zipCode.trim(),
+        country: "India", // Always India
+      };
 
       const customerData = {
         name: updatedFormData.name.trim(),
         email: updatedFormData.email.trim(),
         phone: updatedFormData.phone.trim() || null,
-        // Store address as JSON object, not string
-        address: Object.keys(cleanAddress).length > 0 ? cleanAddress : null,
+        address: cleanAddress,
         bio: updatedFormData.bio.trim() || null,
         user_id: user.id,
         profile_completed: true,
       };
 
-      console.log("Saving customer data:", customerData);
-
       let result;
 
       if (customerId) {
-        console.log("Updating existing customer:", customerId);
+        // Update existing customer
         result = await supabase
           .from("customers")
           .update(customerData)
@@ -184,18 +264,44 @@ export default function PersonalDetails() {
           .select()
           .single();
       } else {
-        console.log("Creating new customer");
-        result = await supabase
+        // Check for duplicates before insert
+        const { data: existingCustomers, error: checkError } = await supabase
           .from("customers")
-          .insert([customerData])
-          .select()
-          .single();
+          .select("id")
+          .eq("user_id", user.id);
+
+        if (checkError) {
+          throw checkError;
+        }
+
+        if (existingCustomers && existingCustomers.length > 0) {
+          // Duplicate found - update instead of insert
+          const existingId = existingCustomers[0].id;
+          setCustomerId(existingId);
+          
+          result = await supabase
+            .from("customers")
+            .update(customerData)
+            .eq("id", existingId)
+            .select()
+            .single();
+
+          toast({
+            title: "Note",
+            description: "Existing profile found and updated.",
+            duration: 3000,
+          });
+        } else {
+          // No duplicate - safe to insert
+          result = await supabase
+            .from("customers")
+            .insert([customerData])
+            .select()
+            .single();
+        }
       }
 
-      console.log("Save result:", result); // Debug log
-
       if (result.error) {
-        console.error("Save error:", result.error);
         throw result.error;
       }
 
@@ -203,34 +309,31 @@ export default function PersonalDetails() {
         setCustomerId(result.data.id);
       }
 
+      // Clear auto-save
+      localStorage.removeItem(AUTOSAVE_KEY);
+
       toast({
         title: "Success!",
-        description: "Details updated successfully.",
+        description: "Your profile has been updated successfully.",
       });
 
       // Update auth metadata
       try {
-        const { error: metadataError } = await supabase.auth.updateUser({
+        await supabase.auth.updateUser({
           data: { profile_completed: true },
         });
-
-        if (metadataError) {
-          console.error("Failed to update auth metadata:", metadataError);
-        } else {
-          console.log("✅ profile_completed metadata set to true");
-        }
       } catch (metaErr) {
         console.error("Metadata update error:", metaErr);
       }
 
-      // Reload data after successful save
+      // Reload data
       await loadCustomerData();
       setIsEditing(false);
     } catch (err) {
-      console.error("Error in handleSubmit:", err);
+      console.error("Save error:", err);
       toast({
         title: "Error",
-        description: err.message || "Save failed.",
+        description: err.message || "Failed to save profile.",
         variant: "destructive",
       });
     } finally {
@@ -239,11 +342,42 @@ export default function PersonalDetails() {
   };
 
   const handleCancelEdit = () => {
+    // Ask user if they want to discard changes
+    const autoSaved = localStorage.getItem(AUTOSAVE_KEY);
+    if (autoSaved) {
+      const confirmed = window.confirm(
+        "You have unsaved changes. Are you sure you want to discard them?"
+      );
+      if (!confirmed) return;
+      localStorage.removeItem(AUTOSAVE_KEY);
+    }
+
+    setValidationErrors({});
     setIsEditing(false);
-    loadCustomerData(); // Reload original data
+    loadCustomerData();
   };
 
-  // Show loading if user is not yet loaded
+  const handleEditClick = () => {
+    // Try to restore auto-saved data
+    const autoSaved = localStorage.getItem(AUTOSAVE_KEY);
+    if (autoSaved) {
+      try {
+        const parsed = JSON.parse(autoSaved);
+        if (parsed.userId === user.id) {
+          const { userId, timestamp, ...savedFormData } = parsed;
+          setFormData(savedFormData);
+          toast({
+            title: "Unsaved Changes Restored",
+            description: "Your previous changes have been restored.",
+          });
+        }
+      } catch (e) {
+        // Ignore
+      }
+    }
+    setIsEditing(true);
+  };
+
   if (!user && loading) {
     return (
       <Layout>
@@ -258,7 +392,6 @@ export default function PersonalDetails() {
     );
   }
 
-  // Show error if user is not authenticated
   if (!user) {
     return (
       <Layout>
@@ -295,11 +428,12 @@ export default function PersonalDetails() {
                 onCancel={handleCancelEdit}
                 saving={saving}
                 customerId={customerId}
+                errors={validationErrors}
               />
             ) : (
               <PersonalDetailsView
                 formData={formData}
-                onEditClick={() => setIsEditing(true)}
+                onEditClick={handleEditClick}
               />
             )}
           </div>
