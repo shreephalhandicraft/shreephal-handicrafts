@@ -10,7 +10,7 @@ const TrophyShopJabalpur = () => {
   const features = [
     { icon: Trophy, title: '500+ Trophy Designs', desc: 'Sports, corporate, academic awards' },
     { icon: Award, title: 'Custom Engraving', desc: 'Free text engraving on all trophies' },
-    { icon: Zap, title: 'Fast Delivery', desc: 'Same-day delivery in Jabalpur' },
+    { icon: Zap, title: 'Fast Delivery', desc: 'Quick delivery in Jabalpur' },
     { icon: Shield, title: 'Quality Guaranteed', desc: '100% satisfaction or money back' }
   ];
 
@@ -47,13 +47,13 @@ const TrophyShopJabalpur = () => {
     <>
       <Helmet>
         <title>Trophy Shop in Jabalpur | Custom Trophies & Awards | Shreephal Handicrafts</title>
-        <meta name="description" content="#1 Trophy Shop in Jabalpur with 23+ years experience. Custom trophies, sports awards, corporate plaques & medals. Same-day delivery. Visit Ganjipura or call now!" />
-        <meta name="keywords" content="trophy shop jabalpur, custom trophies jabalpur, awards shop jabalpur, sports trophies, corporate awards, medal shop, trophy makers near me" />
+        <meta name="description" content="#1 Trophy Shop in Jabalpur with 23+ years experience. Custom trophies, sports awards, corporate plaques & medals. Located at Lordganj. Call +91 9424626008" />
+        <meta name="keywords" content="trophy shop jabalpur, custom trophies jabalpur, awards shop jabalpur, sports trophies, corporate awards, medal shop, trophy makers near me, lordganj trophy shop" />
         <link rel="canonical" href="https://shreephalhandicrafts.com/trophy-shop-jabalpur" />
         
         {/* Open Graph */}
         <meta property="og:title" content="Trophy Shop in Jabalpur | Shreephal Handicrafts" />
-        <meta property="og:description" content="#1 Trophy Shop in Jabalpur. Custom trophies, awards & medals. 23+ years experience. Same-day delivery." />
+        <meta property="og:description" content="#1 Trophy Shop in Jabalpur. Custom trophies, awards & medals. 23+ years experience. Quick delivery. Call +91 9424626008" />
         <meta property="og:url" content="https://shreephalhandicrafts.com/trophy-shop-jabalpur" />
         <meta property="og:type" content="website" />
         
@@ -65,12 +65,13 @@ const TrophyShopJabalpur = () => {
             "name": "Shreephal Handicrafts - Trophy Shop Jabalpur",
             "image": "https://shreephalhandicrafts.com/banner-hero.jpg",
             "url": "https://shreephalhandicrafts.com/trophy-shop-jabalpur",
-            "telephone": "+91-XXXX-XXXXXX",
+            "telephone": "+919424626008",
+            "email": "shreephalhandicraft@gmail.com",
             "priceRange": "₹₹",
             "address": {
               "@type": "PostalAddress",
-              "streetAddress": "Near Lardgunj Thana, Ganjipura",
-              "addressLocality": "Jabalpur",
+              "streetAddress": "Main Road, Kachiyana",
+              "addressLocality": "Lordganj, Jabalpur",
               "addressRegion": "Madhya Pradesh",
               "postalCode": "482002",
               "addressCountry": "IN"
@@ -158,13 +159,13 @@ const TrophyShopJabalpur = () => {
             <div className="max-w-4xl mx-auto text-center">
               <div className="flex items-center justify-center gap-2 mb-4">
                 <MapPin className="w-6 h-6" />
-                <span className="text-lg font-semibold">Jabalpur, Madhya Pradesh</span>
+                <span className="text-lg font-semibold">Lordganj, Jabalpur, Madhya Pradesh</span>
               </div>
               <h1 className="text-5xl font-bold mb-6">
                 #1 Trophy Shop in Jabalpur
               </h1>
               <p className="text-xl mb-8 opacity-95">
-                Custom Trophies, Awards & Medals | 23+ Years of Excellence | Same-Day Delivery
+                Custom Trophies, Awards & Medals | 23+ Years of Excellence | Quick Delivery
               </p>
               <div className="flex flex-wrap justify-center gap-4">
                 <Link 
@@ -174,11 +175,11 @@ const TrophyShopJabalpur = () => {
                   Browse Trophies
                 </Link>
                 <a 
-                  href="tel:+91XXXXXXXXXX"
+                  href="tel:+919424626008"
                   className="bg-amber-800 text-white px-8 py-4 rounded-lg font-semibold text-lg hover:bg-amber-900 transition-all shadow-lg flex items-center gap-2"
                 >
                   <Phone className="w-5 h-5" />
-                  Call Now
+                  Call +91 9424626008
                 </a>
               </div>
             </div>
@@ -278,21 +279,43 @@ const TrophyShopJabalpur = () => {
             <div className="max-w-4xl mx-auto text-center">
               <h2 className="text-4xl font-bold mb-8">Visit Our Trophy Shop in Jabalpur</h2>
               <div className="grid md:grid-cols-3 gap-6 mb-8">
-                <div className="bg-white/10 backdrop-blur-sm p-6 rounded-lg">
+                <a
+                  href="https://maps.google.com/?q=Main+Road+Kachiyana+Lordganj+Jabalpur+Madhya+Pradesh"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-white/10 backdrop-blur-sm p-6 rounded-lg hover:bg-white/20 transition-all cursor-pointer"
+                >
                   <MapPin className="w-8 h-8 mx-auto mb-3" />
                   <h3 className="font-semibold mb-2">Address</h3>
-                  <p className="text-sm">Near Lardgunj Thana, Ganjipura<br />Jabalpur, MP 482002</p>
+                  <p className="text-sm">Main Road, Kachiyana<br />Lordganj, Jabalpur<br />Madhya Pradesh - 482002</p>
+                </a>
+                <div className="bg-white/10 backdrop-blur-sm p-6 rounded-lg">
+                  <div className="space-y-4">
+                    <a 
+                      href="tel:+919424626008" 
+                      className="block hover:bg-white/10 p-2 rounded transition-all"
+                    >
+                      <Phone className="w-8 h-8 mx-auto mb-3" />
+                      <h3 className="font-semibold mb-2">Call Us</h3>
+                      <p className="text-sm font-medium">+91 9424626008</p>
+                    </a>
+                  </div>
                 </div>
                 <div className="bg-white/10 backdrop-blur-sm p-6 rounded-lg">
-                  <Phone className="w-8 h-8 mx-auto mb-3" />
-                  <h3 className="font-semibold mb-2">Call Us</h3>
-                  <p className="text-sm">+91-XXXX-XXXXXX</p>
+                  <a 
+                    href="mailto:shreephalhandicraft@gmail.com" 
+                    className="block hover:bg-white/10 p-2 rounded transition-all"
+                  >
+                    <Mail className="w-8 h-8 mx-auto mb-3" />
+                    <h3 className="font-semibold mb-2">Email Us</h3>
+                    <p className="text-sm break-all">shreephalhandicraft@gmail.com</p>
+                  </a>
                 </div>
-                <div className="bg-white/10 backdrop-blur-sm p-6 rounded-lg">
-                  <Clock className="w-8 h-8 mx-auto mb-3" />
-                  <h3 className="font-semibold mb-2">Hours</h3>
-                  <p className="text-sm">Mon-Sat: 9 AM - 6 PM<br />Sunday: Closed</p>
-                </div>
+              </div>
+              <div className="bg-white/10 backdrop-blur-sm p-6 rounded-lg max-w-md mx-auto mb-8">
+                <Clock className="w-8 h-8 mx-auto mb-3" />
+                <h3 className="font-semibold mb-2">Business Hours</h3>
+                <p className="text-sm">Monday - Saturday: 9:00 AM - 6:00 PM<br />Sunday: Closed</p>
               </div>
               <Link 
                 to="/contact"
@@ -310,7 +333,7 @@ const TrophyShopJabalpur = () => {
             <div className="prose dark:prose-invert max-w-none">
               <h2 className="text-3xl font-bold mb-6 dark:text-white">Best Trophy Shop in Jabalpur - Shreephal Handicrafts</h2>
               <p className="text-gray-700 dark:text-gray-300 mb-4">
-                Looking for a reliable <strong>trophy shop in Jabalpur</strong>? Shreephal Handicrafts has been the city's premier destination for custom trophies, awards, and medals for over 23 years. Located in Ganjipura near Lardgunj Thana, we serve schools, colleges, sports clubs, corporate offices, and individuals across Jabalpur and Madhya Pradesh.
+                Looking for a reliable <strong>trophy shop in Jabalpur</strong>? Shreephal Handicrafts has been the city's premier destination for custom trophies, awards, and medals for over 23 years. Located at Main Road, Kachiyana, Lordganj, we serve schools, colleges, sports clubs, corporate offices, and individuals across Jabalpur and Madhya Pradesh.
               </p>
               
               <h3 className="text-2xl font-semibold mb-4 mt-8 dark:text-white">Our Trophy Collection</h3>
@@ -318,9 +341,14 @@ const TrophyShopJabalpur = () => {
                 We offer an extensive range of trophies including sports trophies for cricket, football, badminton, and athletics; corporate awards for employee recognition and milestones; academic trophies for schools and colleges; and custom-designed trophies for special events. All our trophies come with free engraving services to personalize your awards.
               </p>
               
+              <h3 className="text-2xl font-semibold mb-4 mt-8 dark:text-white">Contact Us Today</h3>
+              <p className="text-gray-700 dark:text-gray-300 mb-4">
+                Visit our showroom at Lordganj, Jabalpur or call us at <strong>+91 9424626008</strong> to discuss your trophy requirements. We also accept orders via email at <strong>shreephalhandicraft@gmail.com</strong>. Our team is ready to help you create the perfect awards for your special occasion.
+              </p>
+              
               <h3 className="text-2xl font-semibold mb-4 mt-8 dark:text-white">Why Jabalpur Trusts Us</h3>
               <p className="text-gray-700 dark:text-gray-300 mb-4">
-                With 23+ years of experience serving Jabalpur, we've become the go-to trophy shop for quality and reliability. Our competitive pricing, same-day delivery for stock items, and commitment to customer satisfaction have earned us the trust of over 5,000 customers. Visit our showroom to see our complete collection, or call us for bulk orders and special customization requests.
+                With 23+ years of experience serving Jabalpur, we've become the go-to trophy shop for quality and reliability. Our competitive pricing, quick delivery for stock items, and commitment to customer satisfaction have earned us the trust of over 5,000 customers. Visit our showroom to see our complete collection, or call us for bulk orders and special customization requests.
               </p>
             </div>
           </div>
