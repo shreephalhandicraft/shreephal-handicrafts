@@ -18,11 +18,11 @@ const Contact = () => {
   ];
 
   const businessInfo = {
-    phone: "+91-XXXXXXXXXX",
-    email: "info@shreephalhandicrafts.com",
-    city: "Narnaund",
-    state: "Haryana",
-    street: "",
+    phone: "+919424626008",
+    email: "shreephalhandicraft@gmail.com",
+    city: "Lordganj, Jabalpur",
+    state: "Madhya Pradesh",
+    street: "Main Road, Kachiyana",
   };
 
   return (
@@ -48,17 +48,17 @@ const Contact = () => {
                 <div className="space-y-6">
                   <div className="flex items-start gap-4">
                     <div className="bg-primary/10 p-3 rounded-lg"><Phone className="h-6 w-6 text-primary" /></div>
-                    <div><h3 className="font-semibold text-gray-900 mb-1">Phone</h3><p className="text-gray-600">{businessInfo.phone}</p></div>
+                    <div><h3 className="font-semibold text-gray-900 mb-1">Phone</h3><p className="text-gray-600"><a href="tel:+919424626008" className="hover:text-primary">+91 9424626008</a></p></div>
                   </div>
 
                   <div className="flex items-start gap-4">
                     <div className="bg-primary/10 p-3 rounded-lg"><Mail className="h-6 w-6 text-primary" /></div>
-                    <div><h3 className="font-semibold text-gray-900 mb-1">Email</h3><p className="text-gray-600">{businessInfo.email}</p></div>
+                    <div><h3 className="font-semibold text-gray-900 mb-1">Email</h3><p className="text-gray-600"><a href="mailto:shreephalhandicraft@gmail.com" className="hover:text-primary">shreephalhandicraft@gmail.com</a></p></div>
                   </div>
 
                   <div className="flex items-start gap-4">
                     <div className="bg-primary/10 p-3 rounded-lg"><MapPin className="h-6 w-6 text-primary" /></div>
-                    <div><h3 className="font-semibold text-gray-900 mb-1">Location</h3><p className="text-gray-600">{businessInfo.city}, {businessInfo.state}, India</p></div>
+                    <div><h3 className="font-semibold text-gray-900 mb-1">Location</h3><p className="text-gray-600">Main Road, Kachiyana<br />Lordganj, Jabalpur<br />Madhya Pradesh - 482002, India</p></div>
                   </div>
                 </div>
 

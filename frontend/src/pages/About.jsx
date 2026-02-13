@@ -7,11 +7,11 @@ import { generateLocalBusinessSchema } from "@/utils/schemaGenerators";
 const About = () => {
   // Business information for schema
   const businessInfo = {
-    phone: "+91-XXXXXXXXXX", // Update with actual phone
-    email: "info@shreephalhandicrafts.com", // Update with actual email
-    city: "Narnaund",
-    state: "Haryana",
-    street: "", // Add if available
+    phone: "+919424626008",
+    email: "shreephalhandicraft@gmail.com",
+    city: "Lordganj, Jabalpur",
+    state: "Madhya Pradesh",
+    street: "Main Road, Kachiyana",
   };
 
   return (
