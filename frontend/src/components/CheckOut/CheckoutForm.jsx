@@ -1,11 +1,19 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 import { AlertTriangle, CheckCircle } from "lucide-react";
+import { INDIAN_STATES, getCitiesByState } from "@/data/indianLocations";
 
 const CheckoutForm = ({ onDataLoaded, onValidationChange }) => {
   const { user } = useAuth();
@@ -13,6 +21,8 @@ const CheckoutForm = ({ onDataLoaded, onValidationChange }) => {
   const [loading, setLoading] = useState(true);
   const [errors, setErrors] = useState({});
   const [touched, setTouched] = useState({});
+  const [cities, setCities] = useState([]);
+  const [citySearch, setCitySearch] = useState("");
 
   const [formData, setFormData] = useState({
     firstName: "",
@@ -25,9 +35,32 @@ const CheckoutForm = ({ onDataLoaded, onValidationChange }) => {
     zipCode: "",
   });
 
+  // Update cities when state changes
+  useEffect(() => {
+    if (formData.state) {
+      const stateCities = getCitiesByState(formData.state);
+      setCities(stateCities);
+      
+      // If current city is not in the new state's cities, clear it
+      if (formData.city && !stateCities.includes(formData.city)) {
+        setFormData(prev => ({ ...prev, city: "" }));
+      }
+    } else {
+      setCities([]);
+      setFormData(prev => ({ ...prev, city: "" }));
+    }
+  }, [formData.state]);
+
+  // Filter cities based on search
+  const filteredCities = citySearch
+    ? cities.filter(city => 
+        city.toLowerCase().includes(citySearch.toLowerCase())
+      )
+    : cities;
+
   // Validation rules
   const validateField = (name, value) => {
-    const trimmedValue = value.trim();
+    const trimmedValue = typeof value === 'string' ? value.trim() : '';
 
     switch (name) {
       case "firstName":
@@ -62,30 +95,22 @@ const CheckoutForm = ({ onDataLoaded, onValidationChange }) => {
         return "";
 
       case "address":
-        if (!trimmedValue) return "Address is required";
+        if (!trimmedValue) return "Street address is required";
         if (trimmedValue.length < 5) return "Please enter a complete address";
         return "";
 
       case "city":
         if (!trimmedValue) return "City is required";
-        if (trimmedValue.length < 2)
-          return "City name must be at least 2 characters";
-        if (!/^[a-zA-Z\s'-]+$/.test(trimmedValue))
-          return "City name contains invalid characters";
         return "";
 
       case "state":
         if (!trimmedValue) return "State is required";
-        if (trimmedValue.length < 2)
-          return "State must be at least 2 characters";
         return "";
 
       case "zipCode":
-        if (!trimmedValue) return "ZIP code is required";
-        // Support various ZIP code formats (US, Canada, UK, etc.)
-        const zipRegex = /^[a-zA-Z0-9\s\-]{3,10}$/;
-        if (!zipRegex.test(trimmedValue))
-          return "Please enter a valid ZIP/postal code";
+        if (!trimmedValue) return "PIN code is required";
+        if (!/^\d{6}$/.test(trimmedValue))
+          return "PIN code must be exactly 6 digits";
         return "";
 
       default:
@@ -105,17 +130,18 @@ const CheckoutForm = ({ onDataLoaded, onValidationChange }) => {
     return newErrors;
   }, [formData]);
 
-  // Check if form is valid - memoized to prevent infinite loops
+  // Check if form is valid
   const isFormValid = useCallback(() => {
     const currentErrors = validateForm();
     return (
       Object.keys(currentErrors).length === 0 &&
-      Object.values(formData).every((value) => value.trim().length > 0)
+      Object.values(formData).every((value) => 
+        typeof value === 'string' ? value.trim().length > 0 : !!value
+      )
     );
   }, [formData, validateForm]);
 
   // Notify parent about validation changes
-  // CRITICAL FIX: Removed onValidationChange from dependencies to prevent infinite loop
   useEffect(() => {
     if (onValidationChange) {
       const valid = isFormValid();
@@ -174,7 +200,7 @@ const CheckoutForm = ({ onDataLoaded, onValidationChange }) => {
                 ? JSON.parse(existingCustomer.address)
                 : existingCustomer.address;
           } catch (parseError) {
-            // Silent parsing error
+            console.error("Address parse error:", parseError);
           }
         }
 
@@ -225,7 +251,35 @@ const CheckoutForm = ({ onDataLoaded, onValidationChange }) => {
   const handleInputChange = (e) => {
     const { name, value } = e.target;
 
-    // Update form data
+    // Special handling for ZIP code - only digits, max 6
+    if (name === "zipCode") {
+      const cleaned = value.replace(/\D/g, "").slice(0, 6);
+      setFormData((prev) => ({
+        ...prev,
+        [name]: cleaned,
+      }));
+    } else {
+      setFormData((prev) => ({
+        ...prev,
+        [name]: value,
+      }));
+    }
+
+    // Mark field as touched
+    setTouched((prev) => ({
+      ...prev,
+      [name]: true,
+    }));
+
+    // Validate the field
+    const error = validateField(name, name === "zipCode" ? value.replace(/\D/g, "").slice(0, 6) : value);
+    setErrors((prev) => ({
+      ...prev,
+      [name]: error,
+    }));
+  };
+
+  const handleSelectChange = (name, value) => {
     setFormData((prev) => ({
       ...prev,
       [name]: value,
@@ -269,7 +323,8 @@ const CheckoutForm = ({ onDataLoaded, onValidationChange }) => {
   const getFieldStyle = (fieldName) => {
     if (!touched[fieldName]) return "";
     if (errors[fieldName]) return "border-red-500 focus:border-red-500";
-    if (formData[fieldName].trim())
+    const fieldValue = formData[fieldName];
+    if (typeof fieldValue === 'string' && fieldValue.trim())
       return "border-green-500 focus:border-green-500";
     return "";
   };
@@ -295,7 +350,6 @@ const CheckoutForm = ({ onDataLoaded, onValidationChange }) => {
   }
 
   const formIsValid = isFormValid();
-  const hasErrors = Object.values(errors).some((error) => error);
 
   return (
     <div className="space-y-6">
@@ -406,7 +460,7 @@ const CheckoutForm = ({ onDataLoaded, onValidationChange }) => {
               onChange={handleInputChange}
               onBlur={handleBlur}
               className={`mt-1 ${getFieldStyle("phone")}`}
-              placeholder="(555) 123-4567"
+              placeholder="9876543210"
             />
             {getFieldError("phone") && (
               <p className="text-red-500 text-sm mt-1">
@@ -425,7 +479,7 @@ const CheckoutForm = ({ onDataLoaded, onValidationChange }) => {
         <div className="space-y-4">
           <div>
             <Label htmlFor="address" className="text-sm font-medium">
-              Address *
+              Street Address *
             </Label>
             <Input
               id="address"
@@ -435,7 +489,7 @@ const CheckoutForm = ({ onDataLoaded, onValidationChange }) => {
               onChange={handleInputChange}
               onBlur={handleBlur}
               className={`mt-1 ${getFieldStyle("address")}`}
-              placeholder="123 Main Street, Apt 4B"
+              placeholder="House No., Building, Street Name"
             />
             {getFieldError("address") && (
               <p className="text-red-500 text-sm mt-1">
@@ -445,41 +499,29 @@ const CheckoutForm = ({ onDataLoaded, onValidationChange }) => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <Label htmlFor="city" className="text-sm font-medium">
-                City *
-              </Label>
-              <Input
-                id="city"
-                name="city"
-                required
-                value={formData.city}
-                onChange={handleInputChange}
-                onBlur={handleBlur}
-                className={`mt-1 ${getFieldStyle("city")}`}
-                placeholder="New York"
-              />
-              {getFieldError("city") && (
-                <p className="text-red-500 text-sm mt-1">
-                  {getFieldError("city")}
-                </p>
-              )}
-            </div>
-
+            {/* State Dropdown */}
             <div>
               <Label htmlFor="state" className="text-sm font-medium">
-                State *
+                State / UT *
               </Label>
-              <Input
-                id="state"
-                name="state"
-                required
+              <Select
                 value={formData.state}
-                onChange={handleInputChange}
-                onBlur={handleBlur}
-                className={`mt-1 ${getFieldStyle("state")}`}
-                placeholder="NY"
-              />
+                onValueChange={(value) => handleSelectChange("state", value)}
+                required
+              >
+                <SelectTrigger
+                  className={`mt-1 ${getFieldStyle("state")}`}
+                >
+                  <SelectValue placeholder="Select state" />
+                </SelectTrigger>
+                <SelectContent className="max-h-[300px]">
+                  {INDIAN_STATES.map((state) => (
+                    <SelectItem key={state.value} value={state.value}>
+                      {state.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               {getFieldError("state") && (
                 <p className="text-red-500 text-sm mt-1">
                   {getFieldError("state")}
@@ -487,9 +529,65 @@ const CheckoutForm = ({ onDataLoaded, onValidationChange }) => {
               )}
             </div>
 
+            {/* City Dropdown */}
+            <div>
+              <Label htmlFor="city" className="text-sm font-medium">
+                City *
+              </Label>
+              {!formData.state ? (
+                <div className="mt-1 h-10 flex items-center px-3 border border-gray-300 rounded-md bg-gray-50 text-gray-500 text-sm">
+                  Select state first
+                </div>
+              ) : cities.length === 0 ? (
+                <div className="mt-1 h-10 flex items-center px-3 border border-gray-300 rounded-md bg-gray-50 text-gray-500 text-sm">
+                  Loading cities...
+                </div>
+              ) : (
+                <Select
+                  value={formData.city}
+                  onValueChange={(value) => handleSelectChange("city", value)}
+                  required
+                >
+                  <SelectTrigger
+                    className={`mt-1 ${getFieldStyle("city")}`}
+                  >
+                    <SelectValue placeholder="Select city" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-[300px]">
+                    <div className="sticky top-0 bg-white p-2 border-b z-10">
+                      <Input
+                        placeholder="Search city..."
+                        value={citySearch}
+                        onChange={(e) => setCitySearch(e.target.value)}
+                        className="h-8"
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </div>
+                    {filteredCities.length > 0 ? (
+                      filteredCities.map((city) => (
+                        <SelectItem key={city} value={city}>
+                          {city}
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <div className="p-2 text-sm text-gray-500 text-center">
+                        No cities found
+                      </div>
+                    )}
+                  </SelectContent>
+                </Select>
+              )}
+              {getFieldError("city") && (
+                <p className="text-red-500 text-sm mt-1">
+                  {getFieldError("city")}
+                </p>
+              )}
+            </div>
+
+            {/* PIN Code */}
             <div>
               <Label htmlFor="zipCode" className="text-sm font-medium">
-                ZIP Code *
+                PIN Code *
               </Label>
               <Input
                 id="zipCode"
@@ -499,11 +597,18 @@ const CheckoutForm = ({ onDataLoaded, onValidationChange }) => {
                 onChange={handleInputChange}
                 onBlur={handleBlur}
                 className={`mt-1 ${getFieldStyle("zipCode")}`}
-                placeholder="10001"
+                placeholder="452001"
+                maxLength={6}
+                inputMode="numeric"
               />
               {getFieldError("zipCode") && (
                 <p className="text-red-500 text-sm mt-1">
                   {getFieldError("zipCode")}
+                </p>
+              )}
+              {formData.zipCode && formData.zipCode.length > 0 && formData.zipCode.length < 6 && (
+                <p className="text-yellow-600 text-sm mt-1">
+                  {6 - formData.zipCode.length} more digits needed
                 </p>
               )}
             </div>
@@ -519,8 +624,9 @@ const CheckoutForm = ({ onDataLoaded, onValidationChange }) => {
           </span>
           <span className="text-sm text-gray-600">
             {
-              Object.values(formData).filter((val) => val.trim().length > 0)
-                .length
+              Object.values(formData).filter((val) => 
+                typeof val === 'string' ? val.trim().length > 0 : !!val
+              ).length
             }
             /8 fields completed
           </span>
