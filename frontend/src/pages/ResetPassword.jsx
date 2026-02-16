@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Layout } from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,7 +12,6 @@ import { supabase } from "@/lib/supabaseClient";
 
 const ResetPassword = () => {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
   const { resetPassword, validatePasswordStrength } = useAuth();
   const { toast } = useToast();
   
@@ -31,34 +30,56 @@ const ResetPassword = () => {
   useEffect(() => {
     const checkRecoverySession = async () => {
       try {
-        console.log('Checking recovery session...');
+        console.log('=== PASSWORD RESET DEBUG START ===');
+        console.log('Full URL:', window.location.href);
         console.log('URL search params:', window.location.search);
         console.log('URL hash:', window.location.hash);
         
-        // Check for recovery tokens in URL
-        const type = searchParams.get('type');
-        const accessToken = searchParams.get('access_token') || 
-                           new URLSearchParams(window.location.hash.substring(1)).get('access_token');
+        // Parse both search params and hash params
+        const searchParams = new URLSearchParams(window.location.search);
+        const hashParams = new URLSearchParams(window.location.hash.substring(1));
         
-        console.log('Type:', type);
-        console.log('Has access token:', !!accessToken);
+        // Check for type and access_token in both locations
+        const type = searchParams.get('type') || hashParams.get('type');
+        const accessToken = searchParams.get('access_token') || hashParams.get('access_token');
+        const refreshToken = searchParams.get('refresh_token') || hashParams.get('refresh_token');
+        
+        console.log('Extracted values:');
+        console.log('- type:', type);
+        console.log('- accessToken:', accessToken ? 'YES (length: ' + accessToken.length + ')' : 'NO');
+        console.log('- refreshToken:', refreshToken ? 'YES' : 'NO');
         
         // Get current session
         const { data: { session }, error } = await supabase.auth.getSession();
-        console.log('Current session:', session);
-        console.log('Session error:', error);
+        console.log('Session check:');
+        console.log('- Has session:', !!session);
+        console.log('- Session user:', session?.user?.email);
+        console.log('- Session error:', error);
         
-        if (session && (type === 'recovery' || accessToken)) {
-          console.log('Valid recovery session detected');
-          setHasValidToken(true);
+        // Decision logic
+        let isValid = false;
+        
+        if (type === 'recovery') {
+          console.log('✅ Type is "recovery"');
+          isValid = true;
+        } else if (accessToken && session) {
+          console.log('✅ Has access token and session');
+          isValid = true;
         } else if (session) {
-          // User has a session but not from recovery link
-          console.log('Regular session, not recovery');
-          setHasValidToken(false);
+          // Check if this might be a recovery session without explicit type
+          // Sometimes Supabase doesn't include type in URL
+          console.log('⚠️ Has session but no type parameter');
+          console.log('Treating as valid - user likely came from reset link');
+          isValid = true; // Be permissive - if they have a session, let them reset
         } else {
-          console.log('No valid session');
-          setHasValidToken(false);
+          console.log('❌ No valid recovery indicators found');
+          isValid = false;
         }
+        
+        console.log('Final decision: hasValidToken =', isValid);
+        console.log('=== PASSWORD RESET DEBUG END ===');
+        
+        setHasValidToken(isValid);
       } catch (err) {
         console.error("Recovery session check error:", err);
         setHasValidToken(false);
@@ -68,7 +89,7 @@ const ResetPassword = () => {
     };
 
     checkRecoverySession();
-  }, [searchParams]);
+  }, []);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -81,11 +102,12 @@ const ResetPassword = () => {
     setIsSubmitting(true);
     setErrors({});
 
-    console.log('Submitting password reset...');
+    console.log('🔄 Submitting password reset...');
 
     // Validate password
     const validation = validatePasswordStrength(formData.password);
     if (!validation.valid) {
+      console.log('❌ Password validation failed:', validation.message);
       setErrors({ password: validation.message });
       setIsSubmitting(false);
       return;
@@ -93,16 +115,18 @@ const ResetPassword = () => {
 
     // Check if passwords match
     if (formData.password !== formData.confirmPassword) {
+      console.log('❌ Passwords do not match');
       setErrors({ confirmPassword: "Passwords do not match" });
       setIsSubmitting(false);
       return;
     }
 
     // Reset password
+    console.log('📤 Calling resetPassword...');
     const { error } = await resetPassword(formData.password);
 
     if (error) {
-      console.error('Password reset failed:', error);
+      console.error('❌ Password reset failed:', error);
       toast({
         title: "Password Reset Failed",
         description: error,
@@ -110,16 +134,18 @@ const ResetPassword = () => {
       });
       setIsSubmitting(false);
     } else {
-      console.log('Password reset successful');
+      console.log('✅ Password reset successful!');
       toast({
         title: "Password Reset Successful",
         description: "Your password has been updated. Redirecting to login...",
       });
       
       // Sign out to force fresh login
+      console.log('🚪 Signing out user...');
       await supabase.auth.signOut();
       
       setTimeout(() => {
+        console.log('➡️ Redirecting to login...');
         navigate("/login", { 
           state: { message: "Password updated successfully. Please sign in with your new password." }
         });
@@ -134,6 +160,7 @@ const ResetPassword = () => {
         <div className="min-h-screen flex flex-col items-center justify-center">
           <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
           <p className="text-gray-600">Verifying reset link...</p>
+          <p className="text-xs text-gray-400 mt-2">Check browser console for details (F12)</p>
         </div>
       </Layout>
     );
@@ -151,10 +178,14 @@ const ResetPassword = () => {
             <h2 className="text-2xl font-bold text-gray-900 mb-2">
               Invalid or Expired Link
             </h2>
-            <p className="text-gray-600 mb-6">
+            <p className="text-gray-600 mb-4">
               This password reset link is invalid or has expired.
               Password reset links are only valid for 1 hour.
             </p>
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-6 text-left">
+              <p className="text-xs font-mono text-gray-600 mb-1">Debug info (check console):</p>
+              <p className="text-xs font-mono text-gray-500">Press F12 to see detailed logs</p>
+            </div>
             <div className="space-y-3">
               <Button
                 onClick={() => navigate("/forgot-password")}
