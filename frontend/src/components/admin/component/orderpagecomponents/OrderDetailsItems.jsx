@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Package, CheckCircle } from "lucide-react";
+import { Package, CheckCircle, ImageOff } from "lucide-react";
 
 export function OrderDetailsItems({
   items,
@@ -47,16 +47,36 @@ export function OrderDetailsItems({
       <CardContent>
         <div className="space-y-4">
           {rawItems.map((item, index) => {
+            console.log('Order item data:', item); // Debug log
+
             // ✅ Extract the product ID
             const originalProductId = item.productId || item.product_id || item.id;
 
             // ✅ USE SNAPSHOT DATA DIRECTLY - No database lookup needed!
             const displayName = item.product_name || item.name || "Product Unavailable";
-            const displayImage = item.product_image_url || item.product_image || item.image;
+            
+            // ✅ FIX: Handle multiple image field formats
+            const displayImage = 
+              item.product_image_url || 
+              item.product_image || 
+              item.image ||
+              null;
+            
             const itemPrice = item.unit_price_with_gst || item.price || item.base_price || 0;
             const catalogNumber = item.catalog_number || item.product_catalog_number;
             const itemSku = item.sku || item.variant_sku;
-            const itemSize = item.size_display || item.variant_size_display;
+            
+            // ✅ FIX: Handle size as string or object
+            let itemSize = '';
+            const sizeData = item.size_display || item.variant_size_display;
+            
+            if (typeof sizeData === 'string') {
+              // If it's already a string, use it directly
+              itemSize = sizeData;
+            } else if (typeof sizeData === 'object' && sizeData !== null) {
+              // If it's an object, extract sizeDisplay property
+              itemSize = sizeData.sizeDisplay || sizeData.size_display || '';
+            }
 
             // ✅ CUSTOMIZATION LOGIC: Check BOTH sources
             // 1. Item-level customization_data (from order_items.customization_data JSONB)
@@ -119,15 +139,26 @@ export function OrderDetailsItems({
                   <div className="flex-1">
                     <div className="flex items-start gap-3">
                       {/* Product Image */}
-                      {displayImage && (
+                      {displayImage ? (
                         <img
                           src={displayImage}
                           alt={displayName}
                           className="w-12 h-12 sm:w-16 sm:h-16 object-cover rounded-lg border flex-shrink-0"
                           onError={(e) => {
+                            console.error('Failed to load image:', displayImage);
                             e.target.style.display = "none";
+                            // Show placeholder
+                            const placeholder = e.target.nextElementSibling;
+                            if (placeholder) placeholder.style.display = 'flex';
                           }}
                         />
+                      ) : null}
+                      
+                      {/* ✅ Image placeholder for missing images */}
+                      {!displayImage && (
+                        <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gray-100 rounded-lg border flex items-center justify-center flex-shrink-0">
+                          <ImageOff className="h-6 w-6 text-gray-400" />
+                        </div>
                       )}
 
                       <div className="flex-1">
@@ -184,11 +215,11 @@ export function OrderDetailsItems({
                     <span>{item.quantity || 1}</span>
                   </div>
 
-                  {/* Variant Size */}
+                  {/* ✅ Variant Size - Now properly parsed */}
                   {itemSize && (
                     <div className="flex items-center gap-2">
                       <span className="font-medium">Size:</span>
-                      <span>{itemSize}</span>
+                      <span className="text-sm">{itemSize}</span>
                     </div>
                   )}
 
