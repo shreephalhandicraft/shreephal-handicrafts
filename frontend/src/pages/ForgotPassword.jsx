@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Layout } from "@/components/Layout";
 import { Button } from "@/components/ui/button";
@@ -6,7 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useAuth } from "@/contexts/AuthContext";
-import { CheckCircle2, AlertCircle, Mail } from "lucide-react";
+import { CheckCircle2, AlertCircle, Mail, Clock } from "lucide-react";
+
+const RATE_LIMIT_SECONDS = 60; // 60 second cooldown
 
 const ForgotPassword = () => {
   const { requestPasswordReset } = useAuth();
@@ -14,9 +16,41 @@ const ForgotPassword = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState(null);
+  
+  // ✅ FIX BUG #3: Add rate limiting
+  const [cooldownRemaining, setCooldownRemaining] = useState(0);
+
+  // ✅ Check for existing cooldown on mount
+  useEffect(() => {
+    const lastRequestTime = localStorage.getItem('password_reset_last_request');
+    if (lastRequestTime) {
+      const elapsedSeconds = Math.floor((Date.now() - parseInt(lastRequestTime)) / 1000);
+      const remaining = RATE_LIMIT_SECONDS - elapsedSeconds;
+      if (remaining > 0) {
+        setCooldownRemaining(remaining);
+      }
+    }
+  }, []);
+
+  // ✅ Cooldown timer
+  useEffect(() => {
+    if (cooldownRemaining > 0) {
+      const timer = setTimeout(() => {
+        setCooldownRemaining(cooldownRemaining - 1);
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [cooldownRemaining]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // ✅ FIX BUG #3: Check rate limit
+    if (cooldownRemaining > 0) {
+      setError(`Please wait ${cooldownRemaining} seconds before requesting another reset email`);
+      return;
+    }
+    
     setIsSubmitting(true);
     setError(null);
 
@@ -34,6 +68,10 @@ const ForgotPassword = () => {
       setError(resetError);
       setIsSubmitting(false);
     } else {
+      // ✅ Set cooldown after successful request
+      localStorage.setItem('password_reset_last_request', Date.now().toString());
+      setCooldownRemaining(RATE_LIMIT_SECONDS);
+      
       setSuccess(true);
       setIsSubmitting(false);
     }
@@ -71,6 +109,17 @@ const ForgotPassword = () => {
                   </div>
                 </div>
               </div>
+              
+              {/* ✅ Show cooldown message */}
+              {cooldownRemaining > 0 && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
+                  <div className="flex items-center justify-center text-yellow-700 text-sm">
+                    <Clock className="h-4 w-4 mr-2" />
+                    <span>You can request another email in {cooldownRemaining} seconds</span>
+                  </div>
+                </div>
+              )}
+              
               <div className="space-y-3">
                 <Button
                   onClick={() => {
@@ -79,6 +128,7 @@ const ForgotPassword = () => {
                   }}
                   variant="outline"
                   className="w-full"
+                  disabled={cooldownRemaining > 0}
                 >
                   Send to Different Email
                 </Button>
@@ -115,6 +165,16 @@ const ForgotPassword = () => {
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
+          
+          {/* ✅ Show cooldown warning */}
+          {cooldownRemaining > 0 && (
+            <Alert>
+              <Clock className="h-4 w-4" />
+              <AlertDescription>
+                Please wait {cooldownRemaining} seconds before requesting another reset email
+              </AlertDescription>
+            </Alert>
+          )}
 
           <form onSubmit={handleSubmit} className="mt-8 space-y-6">
             <div>
@@ -128,14 +188,14 @@ const ForgotPassword = () => {
                 onChange={(e) => setEmail(e.target.value)}
                 className="mt-1"
                 placeholder="your.email@example.com"
-                disabled={isSubmitting}
+                disabled={isSubmitting || cooldownRemaining > 0}
               />
             </div>
 
             <Button
               type="submit"
               className="w-full"
-              disabled={isSubmitting}
+              disabled={isSubmitting || cooldownRemaining > 0}
             >
               {isSubmitting ? (
                 <div className="flex items-center justify-center">
@@ -160,6 +220,8 @@ const ForgotPassword = () => {
                   </svg>
                   Sending...
                 </div>
+              ) : cooldownRemaining > 0 ? (
+                `Wait ${cooldownRemaining}s`
               ) : (
                 "Send Reset Link"
               )}
