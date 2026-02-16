@@ -195,26 +195,46 @@ export const AuthProvider = ({ children }) => {
   };
 
   /**
-   * ✅ NEW: Update password for logged-in user
+   * ✅ UPDATED: Update password for logged-in user with old password verification
+   * @param {string} currentPassword - Current password for verification
    * @param {string} newPassword - New password
    * @returns {Promise<{error: string | null}>}
    */
-  const changePassword = async (newPassword) => {
+  const changePassword = async (currentPassword, newPassword) => {
     try {
       if (!user) {
         return { error: "You must be logged in to change your password" };
       }
 
-      if (newPassword.length < 6) {
-        return { error: "Password must be at least 6 characters long" };
+      if (!currentPassword || currentPassword.trim() === "") {
+        return { error: "Current password is required" };
       }
 
-      const { error } = await supabase.auth.updateUser({
+      if (newPassword.length < 6) {
+        return { error: "New password must be at least 6 characters long" };
+      }
+
+      if (currentPassword === newPassword) {
+        return { error: "New password must be different from current password" };
+      }
+
+      // ✅ SECURITY: Verify current password by attempting to sign in
+      const { error: verifyError } = await supabase.auth.signInWithPassword({
+        email: user.email,
+        password: currentPassword,
+      });
+
+      if (verifyError) {
+        return { error: "Current password is incorrect" };
+      }
+
+      // ✅ If verification successful, update to new password
+      const { error: updateError } = await supabase.auth.updateUser({
         password: newPassword,
       });
 
-      if (error) {
-        return { error: error.message };
+      if (updateError) {
+        return { error: updateError.message };
       }
 
       return { error: null };
