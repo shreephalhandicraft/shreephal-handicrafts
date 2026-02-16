@@ -21,6 +21,24 @@ export const PublicRoute = ({ children, redirectTo = "/" }) => {
   return children;
 };
 
+/**
+ * ✅ NEW: ResetPasswordRoute - Special route for password reset
+ * Allows access regardless of authentication state
+ * Users can be logged in (via recovery token) but still need to reset password
+ */
+export const ResetPasswordRoute = ({ children }) => {
+  const { loading } = useAuth();
+
+  if (loading) {
+    return <LoadingScreen />;
+  }
+
+  // Allow access regardless of auth state
+  // This is crucial for password reset flow where user gets
+  // a temporary session from the reset link
+  return children;
+};
+
 // Private Route - Requires authentication
 export const PrivateRoute = ({ children, redirectTo = "/login" }) => {
   const { user, loading } = useAuth();
