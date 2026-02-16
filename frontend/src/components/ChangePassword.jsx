@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/dialog";
 
 const ChangePassword = () => {
-  const { changePassword } = useAuth();
+  const { changePassword, validatePasswordStrength } = useAuth();
   const { toast } = useToast();
   
   const [open, setOpen] = useState(false);
@@ -38,13 +38,6 @@ const ChangePassword = () => {
     setErrors((prev) => ({ ...prev, [name]: null }));
   };
 
-  const validatePassword = (password) => {
-    if (password.length < 6) {
-      return "Password must be at least 6 characters long";
-    }
-    return null;
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -57,10 +50,10 @@ const ChangePassword = () => {
       return;
     }
 
-    // Validate new password
-    const passwordError = validatePassword(formData.newPassword);
-    if (passwordError) {
-      setErrors({ newPassword: passwordError });
+    // ✅ FIX BUG #2: Use consistent strong password validation
+    const passwordValidation = validatePasswordStrength(formData.newPassword);
+    if (!passwordValidation.valid) {
+      setErrors({ newPassword: passwordValidation.message });
       setIsSubmitting(false);
       return;
     }
@@ -187,6 +180,16 @@ const ChangePassword = () => {
             {errors.newPassword && (
               <p className="text-red-500 text-sm mt-1">{errors.newPassword}</p>
             )}
+            {/* ✅ FIX BUG #2: Add password requirements hint */}
+            <div className="mt-2 text-xs text-gray-500 space-y-1">
+              <p>Password must contain:</p>
+              <ul className="list-disc list-inside pl-2">
+                <li>At least 6 characters</li>
+                <li>One uppercase letter</li>
+                <li>One lowercase letter</li>
+                <li>One number</li>
+              </ul>
+            </div>
           </div>
 
           <div>
