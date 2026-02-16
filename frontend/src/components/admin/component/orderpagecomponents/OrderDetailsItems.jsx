@@ -1,12 +1,10 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Package, AlertCircle, CheckCircle } from "lucide-react";
+import { Package, CheckCircle } from "lucide-react";
 
 export function OrderDetailsItems({
   items,
   customizationDetails,
-  productsCache = new Map(),
-  loadingProducts = false,
 }) {
   if (!Array.isArray(items) || items.length === 0) {
     return (
@@ -44,34 +42,21 @@ export function OrderDetailsItems({
       <CardHeader>
         <CardTitle className="text-base sm:text-lg flex items-center gap-2">
           Order Items ({rawItems.length})
-          {loadingProducts && (
-            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-          )}
         </CardTitle>
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
           {rawItems.map((item, index) => {
-            // Extract the product ID
+            // ✅ Extract the product ID
             const originalProductId = item.productId || item.product_id || item.id;
 
-            // Get product details from cache
-            const productDetails = productsCache.get(originalProductId);
-
-            // ✅ Use snapshot data as primary source
-            const displayName =
-              item.name || item.product_name || productDetails?.title || "Unknown Product";
-            const displayImage = item.image || item.product_image || productDetails?.image_url;
-            const itemPrice = item.price || item.unit_price || productDetails?.price || 0;
-
-            // Product details from database
-            const catalogNumber = item.catalog_number || productDetails?.catalog_number;
-            const materialType = productDetails?.material_type;
-            const weightGrams = productDetails?.weight_grams;
-            const dimensions = productDetails?.dimensions;
-            const thickness = productDetails?.thickness;
-            const baseType = productDetails?.base_type;
-            const description = item.description || item.product_description || productDetails?.description;
+            // ✅ USE SNAPSHOT DATA DIRECTLY - No database lookup needed!
+            const displayName = item.product_name || item.name || "Product Unavailable";
+            const displayImage = item.product_image_url || item.product_image || item.image;
+            const itemPrice = item.unit_price_with_gst || item.price || item.base_price || 0;
+            const catalogNumber = item.catalog_number || item.product_catalog_number;
+            const itemSku = item.sku || item.variant_sku;
+            const itemSize = item.size_display || item.variant_size_display;
 
             // ✅ CUSTOMIZATION LOGIC: Check BOTH sources
             // 1. Item-level customization_data (from order_items.customization_data JSONB)
@@ -161,32 +146,13 @@ export function OrderDetailsItems({
                             </Badge>
                           )}
 
-                          {materialType && (
-                            <Badge
-                              variant="outline"
-                              className="text-xs px-2 py-0.5"
-                            >
-                              🏭️ {materialType}
-                            </Badge>
-                          )}
-
-                          {productDetails ? (
-                            <Badge
-                              variant="default"
-                              className="text-xs px-2 py-0.5 bg-green-100 text-green-800"
-                            >
-                              <CheckCircle className="h-3 w-3 mr-1" />
-                              Details Loaded
-                            </Badge>
-                          ) : (
-                            <Badge
-                              variant="secondary"
-                              className="text-xs px-2 py-0.5 bg-blue-100 text-blue-800"
-                            >
-                              <AlertCircle className="h-3 w-3 mr-1" />
-                              Using Snapshot Data
-                            </Badge>
-                          )}
+                          <Badge
+                            variant="default"
+                            className="text-xs px-2 py-0.5 bg-green-100 text-green-800"
+                          >
+                            <CheckCircle className="h-3 w-3 mr-1" />
+                            Snapshot Data
+                          </Badge>
 
                           {/* ✅ Customization Indicator */}
                           {hasAnyCustomizationData && (
@@ -210,13 +176,6 @@ export function OrderDetailsItems({
                   </Badge>
                 </div>
 
-                {/* Product Description */}
-                {description && (
-                  <p className="text-sm text-muted-foreground mb-3 break-words bg-gray-50 p-2 rounded">
-                    {description}
-                  </p>
-                )}
-
                 {/* Product Information Grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 text-sm mb-3">
                   <div className="flex items-center gap-2">
@@ -226,47 +185,34 @@ export function OrderDetailsItems({
                   </div>
 
                   {/* Variant Size */}
-                  {(item.size_display || item.variant?.size) && (
+                  {itemSize && (
                     <div className="flex items-center gap-2">
                       <span className="font-medium">Size:</span>
-                      <span>{item.size_display || item.variant?.size}</span>
+                      <span>{itemSize}</span>
                     </div>
                   )}
 
                   {/* SKU */}
-                  {item.sku && (
+                  {itemSku && (
                     <div className="flex items-center gap-2">
                       <span className="font-medium">SKU:</span>
-                      <span className="font-mono text-xs">{item.sku}</span>
+                      <span className="font-mono text-xs">{itemSku}</span>
                     </div>
                   )}
 
-                  {/* Product details from DB */}
-                  {materialType && (
+                  {/* Base Price */}
+                  {item.base_price && (
                     <div className="flex items-center gap-2">
-                      <span className="font-medium">Material:</span>
-                      <span>{materialType}</span>
+                      <span className="font-medium">Base Price:</span>
+                      <span>₹{Number(item.base_price).toLocaleString()}</span>
                     </div>
                   )}
 
-                  {weightGrams && (
+                  {/* GST Rate */}
+                  {item.gst_rate && (
                     <div className="flex items-center gap-2">
-                      <span className="font-medium">Weight:</span>
-                      <span>{weightGrams}g</span>
-                    </div>
-                  )}
-
-                  {thickness && (
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">Thickness:</span>
-                      <span>{thickness}</span>
-                    </div>
-                  )}
-
-                  {baseType && (
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">Base:</span>
-                      <span>{baseType}</span>
+                      <span className="font-medium">GST:</span>
+                      <span>{item.gst_rate}%</span>
                     </div>
                   )}
                 </div>
