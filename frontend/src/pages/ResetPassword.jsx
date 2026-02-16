@@ -12,7 +12,7 @@ import { supabase } from "@/lib/supabaseClient";
 
 const ResetPassword = () => {
   const navigate = useNavigate();
-  const { resetPassword } = useAuth();
+  const { resetPassword, validatePasswordStrength, isRecoveryMode } = useAuth();
   const { toast } = useToast();
   
   const [showPassword, setShowPassword] = useState(false);
@@ -25,10 +25,19 @@ const ResetPassword = () => {
   });
   const [errors, setErrors] = useState({});
 
-  // Verify recovery session on mount
+  // ✅ Verify recovery session on mount
   useEffect(() => {
     const verifySession = async () => {
       try {
+        // Check if in recovery mode from AuthContext or sessionStorage
+        const recoveryActive = isRecoveryMode || sessionStorage.getItem('password_recovery_mode') === 'true';
+        
+        if (recoveryActive) {
+          setIsValidSession(true);
+          return;
+        }
+        
+        // Fallback: Check session and URL params
         const { data: { session }, error } = await supabase.auth.getSession();
         
         if (error || !session) {
@@ -36,9 +45,10 @@ const ResetPassword = () => {
           return;
         }
 
-        // Check if this is a recovery session
+        // Check if this is a recovery session from URL
         const urlParams = new URLSearchParams(window.location.search);
-        const type = urlParams.get('type');
+        const hashParams = new URLSearchParams(window.location.hash.substring(1));
+        const type = urlParams.get('type') || hashParams.get('type');
         
         if (type === 'recovery') {
           setIsValidSession(true);
@@ -52,23 +62,24 @@ const ResetPassword = () => {
     };
 
     verifySession();
-  }, []);
+  }, [isRecoveryMode]);
 
-  const validatePassword = (password) => {
-    if (password.length < 6) {
-      return "Password must be at least 6 characters long";
+  // ✅ Prevent navigation away from page during recovery
+  useEffect(() => {
+    if (isValidSession) {
+      const handleBeforeUnload = (e) => {
+        e.preventDefault();
+        e.returnValue = 'You must reset your password before leaving this page.';
+        return 'You must reset your password before leaving this page.';
+      };
+      
+      window.addEventListener('beforeunload', handleBeforeUnload);
+      
+      return () => {
+        window.removeEventListener('beforeunload', handleBeforeUnload);
+      };
     }
-    if (!/[a-z]/.test(password)) {
-      return "Password must contain at least one lowercase letter";
-    }
-    if (!/[A-Z]/.test(password)) {
-      return "Password must contain at least one uppercase letter";
-    }
-    if (!/[0-9]/.test(password)) {
-      return "Password must contain at least one number";
-    }
-    return null;
-  };
+  }, [isValidSession]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -83,10 +94,10 @@ const ResetPassword = () => {
     setIsSubmitting(true);
     setErrors({});
 
-    // Validate password
-    const passwordError = validatePassword(formData.password);
-    if (passwordError) {
-      setErrors({ password: passwordError });
+    // ✅ Use unified password validation from AuthContext
+    const validation = validatePasswordStrength(formData.password);
+    if (!validation.valid) {
+      setErrors({ password: validation.message });
       setIsSubmitting(false);
       return;
     }
@@ -114,7 +125,7 @@ const ResetPassword = () => {
         description: "Your password has been updated. Redirecting to login...",
       });
       
-      // Sign out to force fresh login
+      // ✅ Sign out to force fresh login with new password
       await supabase.auth.signOut();
       
       setTimeout(() => {
@@ -187,6 +198,12 @@ const ResetPassword = () => {
             <p className="text-gray-600">
               Choose a strong password for your account
             </p>
+            {/* ✅ Security notice */}
+            <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+              <p className="text-sm text-yellow-800">
+                🔒 You must reset your password to continue
+              </p>
+            </div>
           </div>
 
           <form onSubmit={handleSubmit} className="mt-8 space-y-6">
@@ -203,6 +220,7 @@ const ResetPassword = () => {
                   placeholder="Enter new password"
                   disabled={isSubmitting}
                   className={errors.password ? "border-red-500" : ""}
+                  autoFocus
                 />
                 <button
                   type="button"
