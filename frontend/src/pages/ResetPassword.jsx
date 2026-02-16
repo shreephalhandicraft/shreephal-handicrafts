@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Layout } from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,85 +7,72 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { Eye, EyeOff, CheckCircle2, AlertCircle, Lock } from "lucide-react";
+import { Eye, EyeOff, CheckCircle2, AlertCircle, Lock, Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 
 const ResetPassword = () => {
   const navigate = useNavigate();
-  const { resetPassword, validatePasswordStrength, isRecoveryMode } = useAuth();
+  const [searchParams] = useSearchParams();
+  const { resetPassword, validatePasswordStrength } = useAuth();
   const { toast } = useToast();
   
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isValidSession, setIsValidSession] = useState(null);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
+  const [hasValidToken, setHasValidToken] = useState(false);
   const [formData, setFormData] = useState({
     password: "",
     confirmPassword: "",
   });
   const [errors, setErrors] = useState({});
 
-  // ✅ Verify recovery session on mount
+  // Check if we have a valid recovery session
   useEffect(() => {
-    const verifySession = async () => {
+    const checkRecoverySession = async () => {
       try {
-        // Check if in recovery mode from AuthContext or sessionStorage
-        const recoveryActive = isRecoveryMode || sessionStorage.getItem('password_recovery_mode') === 'true';
+        console.log('Checking recovery session...');
+        console.log('URL search params:', window.location.search);
+        console.log('URL hash:', window.location.hash);
         
-        if (recoveryActive) {
-          setIsValidSession(true);
-          return;
-        }
+        // Check for recovery tokens in URL
+        const type = searchParams.get('type');
+        const accessToken = searchParams.get('access_token') || 
+                           new URLSearchParams(window.location.hash.substring(1)).get('access_token');
         
-        // Fallback: Check session and URL params
+        console.log('Type:', type);
+        console.log('Has access token:', !!accessToken);
+        
+        // Get current session
         const { data: { session }, error } = await supabase.auth.getSession();
+        console.log('Current session:', session);
+        console.log('Session error:', error);
         
-        if (error || !session) {
-          setIsValidSession(false);
-          return;
-        }
-
-        // Check if this is a recovery session from URL
-        const urlParams = new URLSearchParams(window.location.search);
-        const hashParams = new URLSearchParams(window.location.hash.substring(1));
-        const type = urlParams.get('type') || hashParams.get('type');
-        
-        if (type === 'recovery') {
-          setIsValidSession(true);
+        if (session && (type === 'recovery' || accessToken)) {
+          console.log('Valid recovery session detected');
+          setHasValidToken(true);
+        } else if (session) {
+          // User has a session but not from recovery link
+          console.log('Regular session, not recovery');
+          setHasValidToken(false);
         } else {
-          setIsValidSession(false);
+          console.log('No valid session');
+          setHasValidToken(false);
         }
       } catch (err) {
-        console.error("Session verification error:", err);
-        setIsValidSession(false);
+        console.error("Recovery session check error:", err);
+        setHasValidToken(false);
+      } finally {
+        setIsCheckingSession(false);
       }
     };
 
-    verifySession();
-  }, [isRecoveryMode]);
-
-  // ✅ Prevent navigation away from page during recovery
-  useEffect(() => {
-    if (isValidSession) {
-      const handleBeforeUnload = (e) => {
-        e.preventDefault();
-        e.returnValue = 'You must reset your password before leaving this page.';
-        return 'You must reset your password before leaving this page.';
-      };
-      
-      window.addEventListener('beforeunload', handleBeforeUnload);
-      
-      return () => {
-        window.removeEventListener('beforeunload', handleBeforeUnload);
-      };
-    }
-  }, [isValidSession]);
+    checkRecoverySession();
+  }, [searchParams]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
-    
-    // Clear error for this field
     setErrors((prev) => ({ ...prev, [name]: null }));
   };
 
@@ -94,7 +81,9 @@ const ResetPassword = () => {
     setIsSubmitting(true);
     setErrors({});
 
-    // ✅ Use unified password validation from AuthContext
+    console.log('Submitting password reset...');
+
+    // Validate password
     const validation = validatePasswordStrength(formData.password);
     if (!validation.valid) {
       setErrors({ password: validation.message });
@@ -113,6 +102,7 @@ const ResetPassword = () => {
     const { error } = await resetPassword(formData.password);
 
     if (error) {
+      console.error('Password reset failed:', error);
       toast({
         title: "Password Reset Failed",
         description: error,
@@ -120,12 +110,13 @@ const ResetPassword = () => {
       });
       setIsSubmitting(false);
     } else {
+      console.log('Password reset successful');
       toast({
         title: "Password Reset Successful",
         description: "Your password has been updated. Redirecting to login...",
       });
       
-      // ✅ Sign out to force fresh login with new password
+      // Sign out to force fresh login
       await supabase.auth.signOut();
       
       setTimeout(() => {
@@ -136,19 +127,20 @@ const ResetPassword = () => {
     }
   };
 
-  // Loading state
-  if (isValidSession === null) {
+  // Loading state while checking session
+  if (isCheckingSession) {
     return (
       <Layout>
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+        <div className="min-h-screen flex flex-col items-center justify-center">
+          <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+          <p className="text-gray-600">Verifying reset link...</p>
         </div>
       </Layout>
     );
   }
 
-  // Invalid/expired session
-  if (isValidSession === false) {
+  // Invalid or expired link
+  if (!hasValidToken) {
     return (
       <Layout>
         <div className="min-h-screen flex items-center justify-center py-12 px-4">
@@ -184,6 +176,7 @@ const ResetPassword = () => {
     );
   }
 
+  // Valid token - show reset form
   return (
     <Layout>
       <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
@@ -193,17 +186,11 @@ const ResetPassword = () => {
               <Lock className="h-8 w-8 text-primary" />
             </div>
             <h2 className="text-3xl font-bold text-gray-900 mb-2">
-              Set New Password
+              Reset Your Password
             </h2>
             <p className="text-gray-600">
-              Choose a strong password for your account
+              Enter a new strong password for your account
             </p>
-            {/* ✅ Security notice */}
-            <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-              <p className="text-sm text-yellow-800">
-                🔒 You must reset your password to continue
-              </p>
-            </div>
           </div>
 
           <form onSubmit={handleSubmit} className="mt-8 space-y-6">
@@ -228,23 +215,19 @@ const ResetPassword = () => {
                   className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
                   tabIndex="-1"
                 >
-                  {showPassword ? (
-                    <EyeOff className="h-4 w-4" />
-                  ) : (
-                    <Eye className="h-4 w-4" />
-                  )}
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
               {errors.password && (
                 <p className="text-red-500 text-sm mt-1">{errors.password}</p>
               )}
               <div className="mt-2 text-xs text-gray-500 space-y-1">
-                <p>Password must contain:</p>
-                <ul className="list-disc list-inside pl-2">
+                <p className="font-medium">Password must contain:</p>
+                <ul className="list-disc list-inside pl-2 space-y-0.5">
                   <li>At least 6 characters</li>
-                  <li>One uppercase letter</li>
-                  <li>One lowercase letter</li>
-                  <li>One number</li>
+                  <li>One uppercase letter (A-Z)</li>
+                  <li>One lowercase letter (a-z)</li>
+                  <li>One number (0-9)</li>
                 </ul>
               </div>
             </div>
@@ -269,11 +252,7 @@ const ResetPassword = () => {
                   className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
                   tabIndex="-1"
                 >
-                  {showConfirmPassword ? (
-                    <EyeOff className="h-4 w-4" />
-                  ) : (
-                    <Eye className="h-4 w-4" />
-                  )}
+                  {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
               {errors.confirmPassword && (
@@ -288,8 +267,26 @@ const ResetPassword = () => {
               className="w-full"
               disabled={isSubmitting}
             >
-              {isSubmitting ? "Resetting Password..." : "Reset Password"}
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Resetting Password...
+                </>
+              ) : (
+                "Reset Password"
+              )}
             </Button>
+
+            <div className="text-center text-sm text-gray-600">
+              Remember your password?{" "}
+              <button
+                type="button"
+                onClick={() => navigate("/login")}
+                className="text-primary hover:underline font-medium"
+              >
+                Sign in instead
+              </button>
+            </div>
           </form>
         </div>
       </div>
