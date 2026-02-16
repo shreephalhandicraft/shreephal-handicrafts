@@ -34,20 +34,38 @@ export function useOrders() {
 
       if (ordersError) throw ordersError;
 
-      // ✅ STEP 2: Get all order_items for these orders
+      // ✅ STEP 2: Get all order_items - USING SNAPSHOT DATA ONLY (no foreign keys)
       const orderIds = ordersData.map(o => o.id);
       
       const { data: itemsData, error: itemsError } = await supabase
         .from("order_items")
         .select(`
-          *,
-          products (id, title, image_url, description),
-          product_variants (id, size_display, sku)
+          id,
+          order_id,
+          product_id,
+          variant_id,
+          product_name,
+          product_image_url,
+          product_catalog_number,
+          variant_sku,
+          variant_size_display,
+          quantity,
+          base_price,
+          gst_rate,
+          gst_amount,
+          unit_price_with_gst,
+          item_subtotal,
+          item_gst_total,
+          item_total,
+          customization_data,
+          production_notes,
+          created_at
         `)
         .in("order_id", orderIds);
 
       if (itemsError) {
-        // Silent error - logged to monitoring service in production
+        console.error("Error fetching order items:", itemsError);
+        throw itemsError;
       }
 
       // ✅ STEP 3: Group items by order_id
@@ -57,7 +75,7 @@ export function useOrders() {
           itemsByOrderId[item.order_id] = [];
         }
         
-        // ✅ Map to expected format with new schema column names
+        // ✅ Map to expected format using ONLY snapshot data
         itemsByOrderId[item.order_id].push({
           item_id: item.id,
           product_id: item.product_id,
@@ -65,19 +83,20 @@ export function useOrders() {
           productId: item.product_id,
           variantId: item.variant_id,
           
-          // ✅ NEW SCHEMA: Use snapshot data from order_items
+          // ✅ SNAPSHOT DATA: Product info
           catalog_number: item.product_catalog_number,
-          name: item.product_name || item.products?.title || "Product Deleted",
-          image: item.products?.image_url || "/placeholder.png",
-          description: item.products?.description,
+          name: item.product_name || "Product Unavailable",
+          image: item.product_image_url || "/placeholder.png",
+          product_name: item.product_name || "Product Unavailable",
+          product_image: item.product_image_url || "/placeholder.png",
           
-          // ✅ NEW SCHEMA: Variant snapshot
+          // ✅ SNAPSHOT DATA: Variant info
           sku: item.variant_sku,
-          size_display: item.variant_size_display || item.product_variants?.size_display,
+          size_display: item.variant_size_display,
           
-          // ✅ NEW SCHEMA: Pricing columns
+          // ✅ SNAPSHOT DATA: Pricing columns
           quantity: item.quantity,
-          price: item.unit_price_with_gst, // ✅ NEW column name
+          price: item.unit_price_with_gst,
           unit_price: item.unit_price_with_gst,
           base_price: item.base_price,
           gst_rate: item.gst_rate,
@@ -89,11 +108,6 @@ export function useOrders() {
           // Customization
           customization_data: item.customization_data,
           production_notes: item.production_notes,
-          
-          // Display names
-          product_name: item.product_name || item.products?.title || "Product Deleted",
-          product_description: item.products?.description,
-          product_image: item.products?.image_url || "/placeholder.png",
         });
       });
 
@@ -159,7 +173,7 @@ export function useOrders() {
         const difference = Math.abs(dbTotal - calculatedTotal);
         
         if (difference > 1 && order.items.length > 0) {
-          // Total mismatch detected - logged to monitoring service in production
+          console.warn(`Order ${order.id} total mismatch: DB=${dbTotal}, Calculated=${calculatedTotal}`);
         }
       });
 
@@ -167,6 +181,7 @@ export function useOrders() {
       setTotalOrders(ordersArray.length);
 
     } catch (err) {
+      console.error("Error in fetchOrders:", err);
       toast({
         title: "Error fetching orders",
         description: err.message,
