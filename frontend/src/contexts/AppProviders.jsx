@@ -4,15 +4,18 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { AuthProvider } from './AuthContext';
 import { CartProvider } from './CartContext';
 import { FavouritesProvider } from './FavouritesContext';
+import PasswordRecoveryGuard from './PasswordRecoveryGuard';
 
 /**
  * ✅ FIX ARCH #1: Unified App Providers
+ * ✅ FIX BUG #8: Added PasswordRecoveryGuard to prevent auto-login on password reset
  * 
  * Combines all context providers into a single component to:
- * 1. Reduce nesting complexity (5 layers → 3 layers)
+ * 1. Reduce nesting complexity
  * 2. Improve debugging (single point of failure)
  * 3. Centralize provider configuration
  * 4. Better performance (optimized render tree)
+ * 5. Enforce password reset before app access
  * 
  * Usage:
  * ```jsx
@@ -53,11 +56,14 @@ export const AppProviders = ({ children }) => {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <AuthProvider>
-          <CartProvider>
-            <FavouritesProvider>
-              {children}
-            </FavouritesProvider>
-          </CartProvider>
+          {/* ✅ FIX BUG #8: Add PasswordRecoveryGuard */}
+          <PasswordRecoveryGuard>
+            <CartProvider>
+              <FavouritesProvider>
+                {children}
+              </FavouritesProvider>
+            </CartProvider>
+          </PasswordRecoveryGuard>
         </AuthProvider>
       </TooltipProvider>
     </QueryClientProvider>
