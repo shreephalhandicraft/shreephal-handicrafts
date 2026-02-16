@@ -9,6 +9,7 @@ import {
   PrivateRoute,
   AdminRoute,
   GuestRoute,
+  ResetPasswordRoute,
 } from "@/contexts/RouteGuards";
 import OfflineDetector from "@/components/OfflineDetector";
 import ScrollToTop from "@/components/ScrollToTop";
@@ -24,7 +25,6 @@ const Cart = lazy(() => import("./pages/Cart"));
 const Checkout = lazy(() => import("./pages/Checkout"));
 const Login = lazy(() => import("./pages/Login"));
 const Register = lazy(() => import("./pages/Register"));
-// ✅ NEW: Password reset pages
 const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
 const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const Favourites = lazy(() => import("./pages/Favourites"));
@@ -47,11 +47,9 @@ const PageLoader = () => (
 );
 
 /**
- * ✅ REFACTORED: Clean app structure using unified AppProviders
- * - Reduced nesting complexity (5 layers → 1 layer visible here)
- * - All context providers centralized in AppProviders.jsx
- * - Easier to maintain and debug
- * ✅ FIXED: Added ScrollToTop component to fix scroll position on navigation
+ * ✅ FIXED: Added ResetPasswordRoute for password reset flow
+ * This allows users to access reset-password page even when they have
+ * a temporary session from the recovery token
  */
 const App = () => (
   <AppProviders>
@@ -177,7 +175,6 @@ const App = () => (
             </PublicRoute>
           }
         />
-        {/* ✅ NEW: Password reset routes */}
         <Route
           path="/forgot-password"
           element={
@@ -186,12 +183,15 @@ const App = () => (
             </PublicRoute>
           }
         />
+        
+        {/* ✅ CRITICAL FIX: Use ResetPasswordRoute instead of PublicRoute */}
+        {/* This allows access even when user has recovery token session */}
         <Route
           path="/reset-password"
           element={
-            <PublicRoute>
+            <ResetPasswordRoute>
               <ResetPassword />
-            </PublicRoute>
+            </ResetPasswordRoute>
           }
         />
 

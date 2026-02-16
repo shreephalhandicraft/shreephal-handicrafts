@@ -4,31 +4,9 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { AuthProvider } from './AuthContext';
 import { CartProvider } from './CartContext';
 import { FavouritesProvider } from './FavouritesContext';
-import PasswordRecoveryGuard from './PasswordRecoveryGuard';
 
 /**
- * ✅ FIX ARCH #1: Unified App Providers
- * ✅ FIX BUG #8: Added PasswordRecoveryGuard to prevent auto-login on password reset
- * 
- * Combines all context providers into a single component to:
- * 1. Reduce nesting complexity
- * 2. Improve debugging (single point of failure)
- * 3. Centralize provider configuration
- * 4. Better performance (optimized render tree)
- * 5. Enforce password reset before app access
- * 
- * Usage:
- * ```jsx
- * import { AppProviders } from '@/contexts/AppProviders';
- * 
- * function App() {
- *   return (
- *     <AppProviders>
- *       <YourApp />
- *     </AppProviders>
- *   );
- * }
- * ```
+ * Unified App Providers - simplified without blocking guards
  */
 
 // Configure React Query client once
@@ -56,14 +34,11 @@ export const AppProviders = ({ children }) => {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <AuthProvider>
-          {/* ✅ FIX BUG #8: Add PasswordRecoveryGuard */}
-          <PasswordRecoveryGuard>
-            <CartProvider>
-              <FavouritesProvider>
-                {children}
-              </FavouritesProvider>
-            </CartProvider>
-          </PasswordRecoveryGuard>
+          <CartProvider>
+            <FavouritesProvider>
+              {children}
+            </FavouritesProvider>
+          </CartProvider>
         </AuthProvider>
       </TooltipProvider>
     </QueryClientProvider>

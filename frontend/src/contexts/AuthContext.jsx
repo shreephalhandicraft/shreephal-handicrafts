@@ -1,16 +1,15 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
-import { useNavigate } from "react-router-dom";
 
 const AuthContext = createContext(undefined);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [isRecoveryMode, setIsRecoveryMode] = useState(false);
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
   
-  // ✅ FIX MEDIUM BUG #3: Add admin status caching
-  const [adminStatus, setAdminStatus] = useState(null); // null | 'admin' | 'superadmin' | false
+  // Admin status caching
+  const [adminStatus, setAdminStatus] = useState(null);
   const [adminChecked, setAdminChecked] = useState(false);
   const [adminLoading, setAdminLoading] = useState(false);
 
@@ -43,33 +42,32 @@ export const AuthProvider = ({ children }) => {
       }
     }, 10000);
 
-    // ✅ FIX BUG #8: Handle PASSWORD_RECOVERY event to prevent auto-login
+    // Auth state listener
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('Auth event:', event);
+      
+      // Track password recovery but DON'T block access
       if (event === 'PASSWORD_RECOVERY') {
-        // Mark recovery mode to restrict access
-        setIsRecoveryMode(true);
-        sessionStorage.setItem('password_recovery_mode', 'true');
+        console.log('Password recovery detected');
+        setIsPasswordRecovery(true);
         setUser(session?.user ?? null);
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
-        setIsRecoveryMode(false);
-        sessionStorage.removeItem('password_recovery_mode');
-        // ✅ Reset admin status when user changes
+        setIsPasswordRecovery(false);
         setAdminStatus(null);
         setAdminChecked(false);
+      } else if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
+        setUser(session?.user ?? null);
+        setAdminChecked(false);
+        setAdminStatus(null);
       } else {
         setUser(session?.user ?? null);
       }
+      
       setLoading(false);
     });
-
-    // Check if already in recovery mode from previous session
-    const recoveryMode = sessionStorage.getItem('password_recovery_mode');
-    if (recoveryMode === 'true') {
-      setIsRecoveryMode(true);
-    }
 
     return () => {
       clearTimeout(loadingTimeout);
@@ -77,10 +75,10 @@ export const AuthProvider = ({ children }) => {
     };
   }, []);
 
-  // ✅ FIX MEDIUM BUG #3: Cache admin role check
+  // Cache admin role check
   useEffect(() => {
     const checkAdminStatus = async () => {
-      if (!user || adminChecked || isRecoveryMode) return;
+      if (!user || adminChecked) return;
       
       setAdminLoading(true);
       
@@ -109,9 +107,9 @@ export const AuthProvider = ({ children }) => {
     };
     
     checkAdminStatus();
-  }, [user?.id, adminChecked, isRecoveryMode]);
+  }, [user?.id, adminChecked]);
 
-  // ✅ Password validation utility (unified for consistency)
+  // Password validation utility
   const validatePasswordStrength = (password) => {
     const errors = [];
     
@@ -147,8 +145,6 @@ export const AuthProvider = ({ children }) => {
       }
 
       setUser(data.user);
-      
-      // ✅ Reset admin check so it runs for new user
       setAdminChecked(false);
       setAdminStatus(null);
       
@@ -163,7 +159,6 @@ export const AuthProvider = ({ children }) => {
       return { error: "Email and password are required" };
     }
 
-    // ✅ FIX BUG #2: Apply strong password validation
     const validation = validatePasswordStrength(password);
     if (!validation.valid) {
       return { error: validation.message };
@@ -205,10 +200,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const { error } = await supabase.auth.signOut();
       setUser(null);
-      setIsRecoveryMode(false);
-      sessionStorage.removeItem('password_recovery_mode');
-      
-      // ✅ Clear admin status on logout
+      setIsPasswordRecovery(false);
       setAdminStatus(null);
       setAdminChecked(false);
     } catch (err) {
@@ -216,14 +208,8 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  /**
-   * ✅ FIXED BUG #4: Request password reset email with email trimming
-   * @param {string} email - User's email address
-   * @returns {Promise<{error: string | null}>}
-   */
   const requestPasswordReset = async (email) => {
     try {
-      // ✅ FIX BUG #4: Trim email
       const trimmedEmail = email.trim();
       
       const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail, {
@@ -241,11 +227,6 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  /**
-   * ✅ FIXED BUG #1: Change password with server-side verification (no double login)
-   * Note: Since Supabase doesn't have a native password verification API,
-   * we use a temporary session approach that doesn't interfere with current session
-   */
   const changePassword = async (currentPassword, newPassword) => {
     try {
       if (!user) {
@@ -256,7 +237,6 @@ export const AuthProvider = ({ children }) => {
         return { error: "Current password is required" };
       }
 
-      // ✅ FIX BUG #2: Apply strong password validation
       const validation = validatePasswordStrength(newPassword);
       if (!validation.valid) {
         return { error: validation.message };
@@ -266,18 +246,17 @@ export const AuthProvider = ({ children }) => {
         return { error: "New password must be different from current password" };
       }
 
-      // ✅ FIX BUG #1: Verify password without creating new session
       // Store current session
       const { data: { session: currentSession } } = await supabase.auth.getSession();
       
-      // Verify current password in a separate client instance
+      // Verify password
       const { error: verifyError } = await supabase.auth.signInWithPassword({
         email: user.email,
         password: currentPassword,
       });
 
       if (verifyError) {
-        // Restore original session if verification failed
+        // Restore session if verification failed
         if (currentSession) {
           await supabase.auth.setSession({
             access_token: currentSession.access_token,
@@ -287,7 +266,7 @@ export const AuthProvider = ({ children }) => {
         return { error: "Current password is incorrect" };
       }
 
-      // If verification successful, update to new password
+      // Update to new password
       const { error: updateError } = await supabase.auth.updateUser({
         password: newPassword,
       });
@@ -304,28 +283,31 @@ export const AuthProvider = ({ children }) => {
   };
 
   /**
-   * ✅ FIXED BUG #5: Update password during reset flow with strong validation
+   * Simple password reset for recovery flow
+   * No session verification needed - Supabase handles the token
    */
   const resetPassword = async (newPassword) => {
     try {
-      // ✅ FIX BUG #5: Apply strong password validation
+      console.log('Resetting password...');
+      
       const validation = validatePasswordStrength(newPassword);
       if (!validation.valid) {
         return { error: validation.message };
       }
 
-      // Supabase automatically detects the recovery session from URL
-      const { error } = await supabase.auth.updateUser({
+      // Supabase automatically uses the recovery token from the URL
+      const { data, error } = await supabase.auth.updateUser({
         password: newPassword,
       });
+
+      console.log('Password update result:', { data, error });
 
       if (error) {
         return { error: error.message };
       }
 
-      // ✅ Clear recovery mode after successful password reset
-      setIsRecoveryMode(false);
-      sessionStorage.removeItem('password_recovery_mode');
+      // Clear recovery flag
+      setIsPasswordRecovery(false);
 
       return { error: null };
     } catch (err) {
@@ -343,16 +325,14 @@ export const AuthProvider = ({ children }) => {
         logout,
         loading,
         isAuthenticated: !!user,
-        isRecoveryMode, // ✅ Export recovery mode status
-        // ✅ Export admin status for AdminRoute
+        isPasswordRecovery,
         isAdmin: adminStatus && adminStatus !== false,
         adminRole: adminStatus,
         adminLoading,
-        // ✅ Password management methods
         requestPasswordReset,
         changePassword,
         resetPassword,
-        validatePasswordStrength, // ✅ Export for use in components
+        validatePasswordStrength,
       }}
     >
       {!loading && children}
