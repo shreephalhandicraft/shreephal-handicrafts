@@ -61,24 +61,28 @@ const getRelativeTime = (dateString) => {
 };
 
 // 🐛 FIX: Extract clean size display from variant
-const getCleanSizeDisplay = (variant) => {
-  if (!variant) return null;
+const getCleanSizeDisplay = (sizeData) => {
+  if (!sizeData) return null;
   
-  // If variant is already a string, return it
-  if (typeof variant === 'string') {
-    try {
-      // Try to parse if it's a JSON string
-      const parsed = JSON.parse(variant);
-      return parsed.sizeDisplay || parsed.size_display || null;
-    } catch {
-      // If not JSON, return as-is
-      return variant;
+  // If it's a string
+  if (typeof sizeData === 'string') {
+    // Check if it's a JSON string
+    if (sizeData.trim().startsWith('{') || sizeData.trim().startsWith('[')) {
+      try {
+        const parsed = JSON.parse(sizeData);
+        return parsed.sizeDisplay || parsed.size_display || null;
+      } catch {
+        // If parsing fails, return as-is
+        return sizeData;
+      }
     }
+    // Plain string
+    return sizeData;
   }
   
-  // If variant is an object, extract sizeDisplay
-  if (typeof variant === 'object' && variant !== null) {
-    return variant.sizeDisplay || variant.size_display || null;
+  // If it's an object, extract sizeDisplay
+  if (typeof sizeData === 'object' && sizeData !== null) {
+    return sizeData.sizeDisplay || sizeData.size_display || null;
   }
   
   return null;
@@ -179,11 +183,12 @@ const renderCustomizationDetails = (item) => {
     customizationObj = customizationData;
   }
 
-  // Extract customization fields
-  const customText = customizationObj.text?.trim() || "";
-  const customSize = customizationObj.size?.trim() || "";
-  const customColor = customizationObj.color?.trim() || "";
-  const customUploadedImage = customizationObj.uploadedImage || null;
+  // Extract customization fields - handle nested structure
+  const customizations = customizationObj.customizations || customizationObj || {};
+  const customText = customizations.text?.trim() || "";
+  const customSize = customizations.size?.trim() || "";
+  const customColor = customizations.color?.trim() || "";
+  const customUploadedImage = customizations.uploadedImage || null;
 
   const hasAnyCustomizationData =
     customText || customSize || customColor || customUploadedImage?.url?.trim();
@@ -309,19 +314,41 @@ export default function OrderDetail() {
         return;
       }
 
-      // ✅ STEP 2: Fetch order items with snapshot data
+      // ✅ CRITICAL FIX: Fetch order items with ONLY snapshot data, no JOINs
       const { data: itemsData, error: itemsError } = await supabase
         .from("order_items")
         .select(`
-          *,
-          products (id, title, image_url),
-          product_variants (id, size_display, size_numeric, size_unit)
+          id,
+          order_id,
+          product_id,
+          variant_id,
+          product_name,
+          product_image_url,
+          product_catalog_number,
+          variant_sku,
+          variant_size_display,
+          quantity,
+          base_price,
+          gst_rate,
+          gst_amount,
+          unit_price_with_gst,
+          item_subtotal,
+          item_gst_total,
+          item_total,
+          customization_data,
+          production_notes,
+          created_at
         `)
         .eq("order_id", orderId);
 
-      if (itemsError) console.warn("Failed to fetch items:", itemsError);
+      if (itemsError) {
+        console.error("Failed to fetch items:", itemsError);
+        throw itemsError;
+      }
 
-      // ✅ STEP 3: Map order data
+      console.log('Fetched items data:', itemsData);
+
+      // ✅ STEP 2: Map order data - use new schema field names
       const mappedOrder = {
         id: orderData.id,
         user_id: orderData.user_id,
@@ -329,8 +356,8 @@ export default function OrderDetail() {
         payment_status: orderData.payment_status,
         payment_method: orderData.payment_method,
         production_status: orderData.production_status,
-        order_total: parseFloat(orderData.order_total) || 0,
-        amount: parseFloat(orderData.order_total) || 0,
+        order_total: parseFloat(orderData.grand_total) || 0,
+        amount: parseFloat(orderData.grand_total) || 0,
         subtotal: parseFloat(orderData.subtotal) || 0,
         total_gst: parseFloat(orderData.total_gst) || 0,
         gst_5_total: parseFloat(orderData.gst_5_total) || 0,
@@ -346,23 +373,16 @@ export default function OrderDetail() {
         transaction_id: orderData.transaction_id,
       };
 
-      // ✅ STEP 4: Map items - PRIORITIZE snapshot data
+      // ✅ STEP 3: Map items using ONLY snapshot data
       const mappedItems = itemsData?.map((item) => {
         const gstRate = parseFloat(item.gst_rate) || 0;
         
-        // Use snapshot data as primary source
-        const productName = item.product_name || item.products?.title || 'Product';
-        const productImage = item.product_image_url || item.products?.image_url;
+        // Use snapshot data as PRIMARY and ONLY source
+        const productName = item.product_name || 'Product';
+        const productImage = item.product_image_url;
         
         // Get size from variant_size_display snapshot field
-        let cleanSizeDisplay = null;
-        if (item.variant_size_display) {
-          cleanSizeDisplay = getCleanSizeDisplay(item.variant_size_display);
-        }
-        // Fallback to joined variant data
-        if (!cleanSizeDisplay && item.product_variants?.size_display) {
-          cleanSizeDisplay = item.product_variants.size_display;
-        }
+        const cleanSizeDisplay = getCleanSizeDisplay(item.variant_size_display);
         
         const basePrice = parseFloat(item.base_price) || 0;
         const gstAmount = parseFloat(item.gst_amount) || 0;
@@ -384,14 +404,15 @@ export default function OrderDetail() {
           catalog_number: item.product_catalog_number || item.variant_sku,
           item_id: item.id,
           customization: item.customization_data,
-          customization_snapshot: item.customization_snapshot,
+          customization_data: item.customization_data,
+          customization_snapshot: item.customization_data,
           variant: {
             sizeDisplay: cleanSizeDisplay,
-            sizeNumeric: item.product_variants?.size_numeric,
-            sizeUnit: item.product_variants?.size_unit,
           },
         };
       }) || [];
+
+      console.log('Mapped items:', mappedItems);
 
       setOrder(mappedOrder);
       setItems(mappedItems);
@@ -701,96 +722,103 @@ export default function OrderDetail() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="p-6">
-                    <div className="space-y-6">
-                      {items.map((item, index) => {
-                        // ✅ FIXED: Get clean size display
-                        const sizeDisplay = item.variant?.sizeDisplay;
-                        const hasCustomization = item.customization_snapshot || item.customization_data || item.customization;
-                        
-                        return (
-                          <div key={item.item_id || index}>
-                            <div className="flex gap-4">
-                              {/* ✅ IMPROVED: Larger, clearer product image */}
-                              {item.image ? (
-                                <div className="relative group flex-shrink-0">
-                                  <img
-                                    src={item.image}
-                                    alt={item.name}
-                                    className="h-32 w-32 sm:h-40 sm:w-40 object-cover rounded-2xl shadow-lg border-2 border-gray-200 transition-transform group-hover:scale-105"
-                                    onError={(e) => {
-                                      e.target.style.display = "none";
-                                      e.target.nextSibling.style.display = "flex";
-                                    }}
-                                  />
-                                  <ProductFallbackIcon
-                                    className="h-32 w-32 sm:h-40 sm:w-40"
-                                    style={{ display: "none" }}
-                                  />
+                    {items.length === 0 ? (
+                      <div className="text-center py-8">
+                        <Package className="h-12 w-12 text-gray-400 mx-auto mb-2" />
+                        <p className="text-gray-500">No items found in this order</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-6">
+                        {items.map((item, index) => {
+                          // ✅ FIXED: Get clean size display
+                          const sizeDisplay = item.variant?.sizeDisplay;
+                          const hasCustomization = item.customization_snapshot || item.customization_data || item.customization;
+                          
+                          return (
+                            <div key={item.item_id || index}>
+                              <div className="flex gap-4">
+                                {/* ✅ IMPROVED: Larger, clearer product image */}
+                                {item.image ? (
+                                  <div className="relative group flex-shrink-0">
+                                    <img
+                                      src={item.image}
+                                      alt={item.name}
+                                      className="h-32 w-32 sm:h-40 sm:w-40 object-cover rounded-2xl shadow-lg border-2 border-gray-200 transition-transform group-hover:scale-105"
+                                      onError={(e) => {
+                                        e.target.style.display = "none";
+                                        e.target.nextSibling.style.display = "flex";
+                                      }}
+                                    />
+                                    <ProductFallbackIcon
+                                      className="h-32 w-32 sm:h-40 sm:w-40"
+                                      style={{ display: "none" }}
+                                    />
+                                  </div>
+                                ) : (
+                                  <ProductFallbackIcon className="h-32 w-32 sm:h-40 sm:w-40 flex-shrink-0" />
+                                )}
+
+                                <div className="flex-1 min-w-0">
+                                  <h4 className="font-bold text-base sm:text-lg text-gray-900 mb-2">
+                                    {item.name || item.title || "Product"}
+                                  </h4>
+
+                                  {/* ✅ FIXED: Only show relevant info - no IDs */}
+                                  <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600 mb-3">
+                                    {item.catalog_number && (
+                                      <Badge variant="outline" className="bg-gray-50">
+                                        {item.catalog_number}
+                                      </Badge>
+                                    )}
+                                    {sizeDisplay && (
+                                      <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                                        <Ruler className="h-3 w-3 mr-1" />
+                                        Size: {sizeDisplay}
+                                      </Badge>
+                                    )}
+                                    <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
+                                      <Package className="h-3 w-3 mr-1" />
+                                      Qty: {item.quantity}
+                                    </Badge>
+                                    {item.gst_rate > 0 && (
+                                      <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
+                                        GST @{item.gst_rate}%
+                                      </Badge>
+                                    )}
+                                    {hasCustomization && (
+                                      <Badge className="bg-orange-500 text-white">
+                                        <Wrench className="h-3 w-3 mr-1" />
+                                        Customized
+                                      </Badge>
+                                    )}
+                                  </div>
+
+                                  <div className="flex items-baseline gap-2">
+                                    <span className="text-xl sm:text-2xl font-bold text-gray-900">
+                                      {formatCurrency(item.item_total)}
+                                    </span>
+                                    {item.quantity > 1 && (
+                                      <span className="text-sm text-gray-500">
+                                        ({formatCurrency(item.unit_price_with_gst)} each)
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
-                              ) : (
-                                <ProductFallbackIcon className="h-32 w-32 sm:h-40 sm:w-40 flex-shrink-0" />
+                              </div>
+
+                              {/* ✅ IMPROVED: Better customization display */}
+                              {hasCustomization && (
+                                <div className="mt-4">
+                                  {renderCustomizationDetails(item)}
+                                </div>
                               )}
 
-                              <div className="flex-1 min-w-0">
-                                <h4 className="font-bold text-base sm:text-lg text-gray-900 mb-2">
-                                  {item.name || item.title || "Product"}
-                                </h4>
-
-                                {/* ✅ FIXED: Only show relevant info - no IDs */}
-                                <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600 mb-3">
-                                  {item.catalog_number && (
-                                    <Badge variant="outline" className="bg-gray-50">
-                                      {item.catalog_number}
-                                    </Badge>
-                                  )}
-                                  {sizeDisplay && (
-                                    <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                                      <Ruler className="h-3 w-3 mr-1" />
-                                      Size: {sizeDisplay}
-                                    </Badge>
-                                  )}
-                                  <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
-                                    <Package className="h-3 w-3 mr-1" />
-                                    Qty: {item.quantity}
-                                  </Badge>
-                                  {item.gst_rate > 0 && (
-                                    <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
-                                      GST @{item.gst_rate}%
-                                    </Badge>
-                                  )}
-                                  {hasCustomization && (
-                                    <Badge className="bg-orange-500 text-white">
-                                      <Wrench className="h-3 w-3 mr-1" />
-                                      Customized
-                                    </Badge>
-                                  )}
-                                </div>
-
-                                <div className="flex items-baseline gap-2">
-                                  <span className="text-xl sm:text-2xl font-bold text-gray-900">
-                                    {formatCurrency(item.item_total)}
-                                  </span>
-                                  {item.quantity > 1 && (
-                                    <span className="text-sm text-gray-500">
-                                      ({formatCurrency(item.unit_price_with_gst)} each)
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
+                              {index < items.length - 1 && <Separator className="mt-6" />}
                             </div>
-
-                            {/* ✅ IMPROVED: Better customization display */}
-                            {hasCustomization && (
-                              <div className="mt-4">
-                                {renderCustomizationDetails(item)}
-                              </div>
-                            )}
-
-                            {index < items.length - 1 && <Separator className="mt-6" />}
-                          </div>
-                        );
-                      })}
-                    </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
 
