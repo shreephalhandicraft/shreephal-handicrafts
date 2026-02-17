@@ -159,96 +159,103 @@ const getTimelineSteps = (status) => {
   });
 };
 
-// Helper function to render customization details
-const renderCustomizationDetails = (item, customizationDetails) => {
-  if (!customizationDetails) return null;
+// ✅ IMPROVED: Helper function to render customization details
+const renderCustomizationDetails = (item) => {
+  // Try to get customization from multiple possible sources
+  const customizationData = item.customization_snapshot || item.customization_data || item.customization;
+  
+  if (!customizationData) return null;
 
+  // Parse if string
   let customizationObj = {};
-  if (typeof customizationDetails === "string") {
+  if (typeof customizationData === "string") {
     try {
-      customizationObj = JSON.parse(customizationDetails);
+      customizationObj = JSON.parse(customizationData);
     } catch (e) {
+      console.error('Failed to parse customization data:', e);
       return null;
     }
-  } else if (typeof customizationDetails === "object" && customizationDetails !== null) {
-    customizationObj = customizationDetails;
+  } else if (typeof customizationData === "object" && customizationData !== null) {
+    customizationObj = customizationData;
   }
 
-  const productId = item.product_id || item.id;
-  const customizationDetail = customizationObj[productId];
-
-  if (!customizationDetail && Object.keys(customizationObj).length === 1) {
-    const onlyKey = Object.keys(customizationObj)[0];
-    const singleCustomization = customizationObj[onlyKey];
-    if (singleCustomization?.customizations) {
-      return renderCustomizationContent(singleCustomization);
-    }
-  }
-
-  if (!customizationDetail?.customizations) return null;
-  return renderCustomizationContent(customizationDetail);
-};
-
-const renderCustomizationContent = (customizationDetail) => {
-  const customizations = customizationDetail.customizations;
-  const customText = customizations.text?.trim() || "";
-  const customSize = customizations.size?.trim() || "";
-  const customColor = customizations.color?.trim() || "";
-  const customUploadedImage = customizations.uploadedImage || null;
-  const productTitle = customizationDetail.productTitle?.trim() || "";
+  // Extract customization fields
+  const customText = customizationObj.text?.trim() || "";
+  const customSize = customizationObj.size?.trim() || "";
+  const customColor = customizationObj.color?.trim() || "";
+  const customUploadedImage = customizationObj.uploadedImage || null;
 
   const hasAnyCustomizationData =
-    customText || customSize || customColor || customUploadedImage?.url?.trim() || productTitle;
+    customText || customSize || customColor || customUploadedImage?.url?.trim();
 
   if (!hasAnyCustomizationData) return null;
 
   return (
-    <div className="p-3 sm:p-4 bg-orange-50 rounded-lg border border-orange-200">
-      <div className="flex items-center gap-2 mb-3">
-        <Wrench className="h-4 w-4 text-orange-600" />
-        <span className="text-sm font-semibold text-orange-800">Customization Details</span>
+    <div className="p-4 bg-gradient-to-br from-orange-50 to-amber-50 rounded-xl border-2 border-orange-200 shadow-sm">
+      <div className="flex items-center gap-2 mb-4">
+        <div className="p-2 bg-orange-500 rounded-lg">
+          <Wrench className="h-4 w-4 text-white" />
+        </div>
+        <span className="text-base font-bold text-orange-900">Customization Details</span>
+        <Badge className="ml-auto bg-orange-500 text-white">Custom</Badge>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+      
+      <div className="space-y-3">
         {customText && (
-          <div className="flex items-center gap-2">
-            <FileText className="h-4 w-4 text-orange-600 flex-shrink-0" />
-            <span className="text-gray-700">Text: <strong>{customText}</strong></span>
-          </div>
-        )}
-        {customSize && (
-          <div className="flex items-center gap-2">
-            <Ruler className="h-4 w-4 text-orange-600 flex-shrink-0" />
-            <span className="text-gray-700">Size: <strong>{customSize}</strong></span>
-          </div>
-        )}
-        {customColor && (
-          <div className="flex items-center gap-2">
-            <Palette className="h-4 w-4 text-orange-600 flex-shrink-0" />
-            <span className="text-gray-700">Color: <strong>{customColor}</strong></span>
-          </div>
-        )}
-        {productTitle && (
-          <div className="flex items-center gap-2">
-            <Package className="h-4 w-4 text-orange-600 flex-shrink-0" />
-            <span className="text-gray-700">Product: <strong>{productTitle}</strong></span>
-          </div>
-        )}
-        {customUploadedImage?.url && (
-          <div className="col-span-full">
-            <div className="flex items-center gap-2 mb-2">
-              <ImageIcon className="h-4 w-4 text-orange-600" />
-              <span className="font-medium text-gray-700">Uploaded Image:</span>
+          <div className="flex items-start gap-3 p-3 bg-white rounded-lg border border-orange-100">
+            <FileText className="h-5 w-5 text-orange-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Custom Text</p>
+              <p className="text-sm font-medium text-gray-900">{customText}</p>
             </div>
-            <img
-              src={customUploadedImage.url}
-              alt={customUploadedImage.fileName || "Custom Image"}
-              className="max-w-full h-auto rounded-lg shadow-md border border-orange-200"
-              style={{ maxHeight: "200px" }}
-              onError={(e) => { e.target.style.display = "none"; }}
-            />
+          </div>
+        )}
+        
+        {customSize && (
+          <div className="flex items-start gap-3 p-3 bg-white rounded-lg border border-orange-100">
+            <Ruler className="h-5 w-5 text-orange-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Custom Size</p>
+              <p className="text-sm font-medium text-gray-900">{customSize}</p>
+            </div>
+          </div>
+        )}
+        
+        {customColor && (
+          <div className="flex items-start gap-3 p-3 bg-white rounded-lg border border-orange-100">
+            <Palette className="h-5 w-5 text-orange-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Custom Color</p>
+              <p className="text-sm font-medium text-gray-900">{customColor}</p>
+            </div>
+          </div>
+        )}
+        
+        {customUploadedImage?.url && (
+          <div className="p-3 bg-white rounded-lg border border-orange-100">
+            <div className="flex items-center gap-2 mb-3">
+              <ImageIcon className="h-5 w-5 text-orange-600" />
+              <p className="text-xs text-gray-500 uppercase tracking-wide">Uploaded Image</p>
+            </div>
+            <div className="relative group">
+              <img
+                src={customUploadedImage.url}
+                alt={customUploadedImage.fileName || "Custom Image"}
+                className="w-full h-auto rounded-lg shadow-md border-2 border-orange-200 transition-transform group-hover:scale-105"
+                style={{ maxHeight: "300px", objectFit: "contain" }}
+                onError={(e) => { 
+                  e.target.style.display = "none";
+                  e.target.nextSibling.style.display = "flex";
+                }}
+              />
+              <div className="hidden items-center justify-center h-40 bg-gray-100 rounded-lg">
+                <ImageIcon className="h-12 w-12 text-gray-400" />
+              </div>
+            </div>
             {customUploadedImage.fileName && (
-              <p className="text-xs text-gray-500 mt-2">
-                File: {customUploadedImage.fileName}
+              <p className="text-xs text-gray-500 mt-2 flex items-center gap-1">
+                <FileText className="h-3 w-3" />
+                {customUploadedImage.fileName}
               </p>
             )}
           </div>
@@ -302,15 +309,19 @@ export default function OrderDetail() {
         return;
       }
 
-      // ✅ STEP 2: Fetch order items
+      // ✅ STEP 2: Fetch order items with snapshot data
       const { data: itemsData, error: itemsError } = await supabase
         .from("order_items")
-        .select(`*, products (id, title, image_url), product_variants (id, size_display, size_numeric, size_unit)`)
+        .select(`
+          *,
+          products (id, title, image_url),
+          product_variants (id, size_display, size_numeric, size_unit)
+        `)
         .eq("order_id", orderId);
 
       if (itemsError) console.warn("Failed to fetch items:", itemsError);
 
-      // ✅ STEP 3: Map order data with CORRECT column name
+      // ✅ STEP 3: Map order data
       const mappedOrder = {
         id: orderData.id,
         user_id: orderData.user_id,
@@ -335,29 +346,28 @@ export default function OrderDetail() {
         transaction_id: orderData.transaction_id,
       };
 
-      // ✅ STEP 4: Map items with FIXED variant handling
+      // ✅ STEP 4: Map items - PRIORITIZE snapshot data
       const mappedItems = itemsData?.map((item) => {
         const gstRate = parseFloat(item.gst_rate) || 0;
-        const product = item.products || {};
-        const variant = item.product_variants || {};
+        
+        // Use snapshot data as primary source
+        const productName = item.product_name || item.products?.title || 'Product';
+        const productImage = item.product_image_url || item.products?.image_url;
+        
+        // Get size from variant_size_display snapshot field
+        let cleanSizeDisplay = null;
+        if (item.variant_size_display) {
+          cleanSizeDisplay = getCleanSizeDisplay(item.variant_size_display);
+        }
+        // Fallback to joined variant data
+        if (!cleanSizeDisplay && item.product_variants?.size_display) {
+          cleanSizeDisplay = item.product_variants.size_display;
+        }
         
         const basePrice = parseFloat(item.base_price) || 0;
         const gstAmount = parseFloat(item.gst_amount) || 0;
         const unitPriceWithGst = parseFloat(item.unit_price_with_gst) || (basePrice + gstAmount);
         const itemTotal = parseFloat(item.item_total) || 0;
-        
-        // 🐛 FIX: Extract clean size display from variant_size_display
-        let cleanSizeDisplay = null;
-        
-        // First try: variant_size_display from order_items table
-        if (item.variant_size_display) {
-          cleanSizeDisplay = getCleanSizeDisplay(item.variant_size_display);
-        }
-        
-        // Second try: size_display from product_variants join
-        if (!cleanSizeDisplay && variant.size_display) {
-          cleanSizeDisplay = variant.size_display;
-        }
         
         return {
           id: item.product_id,
@@ -368,16 +378,17 @@ export default function OrderDetail() {
           gst_amount: gstAmount,
           gst_rate: gstRate,
           unit_price_with_gst: unitPriceWithGst,
-          name: item.product_name || product.title,
-          title: item.product_name || product.title,
-          image: product.image_url,
-          catalog_number: item.product_catalog_number,
+          name: productName,
+          title: productName,
+          image: productImage,
+          catalog_number: item.product_catalog_number || item.variant_sku,
           item_id: item.id,
           customization: item.customization_data,
+          customization_snapshot: item.customization_snapshot,
           variant: {
-            sizeDisplay: cleanSizeDisplay,  // 🐛 FIX: Use cleaned size display
-            sizeNumeric: variant.size_numeric,
-            sizeUnit: variant.size_unit,
+            sizeDisplay: cleanSizeDisplay,
+            sizeNumeric: item.product_variants?.size_numeric,
+            sizeUnit: item.product_variants?.size_unit,
           },
         };
       }) || [];
@@ -582,7 +593,7 @@ export default function OrderDetail() {
                   </div>
                 </div>
 
-                {/* Status Badges - Max 2 */}
+                {/* Status Badges */}
                 <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                   <Badge className={`${statusConfig.color} text-sm sm:text-base px-3 py-1.5`}>
                     <StatusIcon className="h-4 w-4 mr-1.5" />
@@ -664,7 +675,7 @@ export default function OrderDetail() {
               </div>
             )}
 
-            {/* Production Status (only if active) */}
+            {/* Production Status */}
             {showProductionStatus && (
               <div className="bg-blue-50 border-2 border-blue-200 rounded-2xl p-4 mb-8">
                 <div className="flex items-center gap-3">
@@ -692,50 +703,66 @@ export default function OrderDetail() {
                   <CardContent className="p-6">
                     <div className="space-y-6">
                       {items.map((item, index) => {
-                        // 🐛 FIX: Clean size display
+                        // ✅ FIXED: Get clean size display
                         const sizeDisplay = item.variant?.sizeDisplay;
+                        const hasCustomization = item.customization_snapshot || item.customization_data || item.customization;
                         
                         return (
                           <div key={item.item_id || index}>
                             <div className="flex gap-4">
+                              {/* ✅ IMPROVED: Larger, clearer product image */}
                               {item.image ? (
-                                <img
-                                  src={item.image}
-                                  alt={item.name}
-                                  className="h-24 w-24 sm:h-32 sm:w-32 object-cover rounded-xl shadow-md border-2 border-gray-100 flex-shrink-0"
-                                  onError={(e) => {
-                                    e.target.style.display = "none";
-                                    e.target.nextSibling.style.display = "flex";
-                                  }}
-                                />
-                              ) : null}
-                              <ProductFallbackIcon
-                                className="h-24 w-24 sm:h-32 sm:w-32 flex-shrink-0"
-                                style={{ display: item.image ? "none" : "flex" }}
-                              />
+                                <div className="relative group flex-shrink-0">
+                                  <img
+                                    src={item.image}
+                                    alt={item.name}
+                                    className="h-32 w-32 sm:h-40 sm:w-40 object-cover rounded-2xl shadow-lg border-2 border-gray-200 transition-transform group-hover:scale-105"
+                                    onError={(e) => {
+                                      e.target.style.display = "none";
+                                      e.target.nextSibling.style.display = "flex";
+                                    }}
+                                  />
+                                  <ProductFallbackIcon
+                                    className="h-32 w-32 sm:h-40 sm:w-40"
+                                    style={{ display: "none" }}
+                                  />
+                                </div>
+                              ) : (
+                                <ProductFallbackIcon className="h-32 w-32 sm:h-40 sm:w-40 flex-shrink-0" />
+                              )}
 
                               <div className="flex-1 min-w-0">
                                 <h4 className="font-bold text-base sm:text-lg text-gray-900 mb-2">
                                   {item.name || item.title || "Product"}
                                 </h4>
 
+                                {/* ✅ FIXED: Only show relevant info - no IDs */}
                                 <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600 mb-3">
-                                  {item.catalog_number && <span>SKU: {item.catalog_number}</span>}
-                                  {sizeDisplay && (
-                                    <>
-                                      <span>•</span>
-                                      <span>Size: {sizeDisplay}</span>
-                                    </>
+                                  {item.catalog_number && (
+                                    <Badge variant="outline" className="bg-gray-50">
+                                      {item.catalog_number}
+                                    </Badge>
                                   )}
-                                  <span>•</span>
-                                  <span className="font-medium">Qty: {item.quantity}</span>
+                                  {sizeDisplay && (
+                                    <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                                      <Ruler className="h-3 w-3 mr-1" />
+                                      Size: {sizeDisplay}
+                                    </Badge>
+                                  )}
+                                  <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
+                                    <Package className="h-3 w-3 mr-1" />
+                                    Qty: {item.quantity}
+                                  </Badge>
                                   {item.gst_rate > 0 && (
-                                    <>
-                                      <span>•</span>
-                                      <Badge variant="outline" className="text-xs bg-orange-50 text-orange-700 border-orange-200">
-                                        GST @{item.gst_rate}%
-                                      </Badge>
-                                    </>
+                                    <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
+                                      GST @{item.gst_rate}%
+                                    </Badge>
+                                  )}
+                                  {hasCustomization && (
+                                    <Badge className="bg-orange-500 text-white">
+                                      <Wrench className="h-3 w-3 mr-1" />
+                                      Customized
+                                    </Badge>
                                   )}
                                 </div>
 
@@ -752,11 +779,10 @@ export default function OrderDetail() {
                               </div>
                             </div>
 
-                            {item.customization && Object.keys(item.customization).length > 0 && (
+                            {/* ✅ IMPROVED: Better customization display */}
+                            {hasCustomization && (
                               <div className="mt-4">
-                                {renderCustomizationDetails(item, {
-                                  [item.product_id]: { customizations: item.customization },
-                                })}
+                                {renderCustomizationDetails(item)}
                               </div>
                             )}
 
@@ -786,7 +812,7 @@ export default function OrderDetail() {
 
               {/* Right Column - Summary & Details */}
               <div className="space-y-8">
-                {/* Order Summary - Sticky on desktop */}
+                {/* Order Summary */}
                 <Card className="border border-gray-200 shadow-lg xl:sticky xl:top-8">
                   <CardHeader className="border-b border-gray-200 bg-gradient-to-r from-primary/5 to-primary/10">
                     <CardTitle className="text-xl">💰 Order Summary</CardTitle>
