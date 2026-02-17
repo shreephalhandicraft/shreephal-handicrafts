@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Package, CheckCircle, ImageOff } from "lucide-react";
+import { Package, CheckCircle, ImageOff, Ruler, Palette } from "lucide-react";
 
 export function OrderDetailsItems({
   items,
@@ -41,6 +41,7 @@ export function OrderDetailsItems({
     <Card className="lg:col-span-2">
       <CardHeader>
         <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+          <Package className="h-5 w-5 text-primary" />
           Order Items ({rawItems.length})
         </CardTitle>
       </CardHeader>
@@ -64,9 +65,8 @@ export function OrderDetailsItems({
             
             const itemPrice = item.unit_price_with_gst || item.price || item.base_price || 0;
             const catalogNumber = item.catalog_number || item.product_catalog_number;
-            const itemSku = item.sku || item.variant_sku;
             
-            // ✅ FIX: Handle size as string or object
+            // ✅ FIX: Handle size as string or object - EXTRACT ONLY THE NUMBER
             let itemSize = '';
             const sizeData = item.size_display || item.variant_size_display;
             
@@ -132,46 +132,48 @@ export function OrderDetailsItems({
             return (
               <div
                 key={item.item_id || originalProductId || index}
-                className="border rounded-lg p-3 sm:p-4 bg-muted/30"
+                className="border-2 rounded-xl p-4 sm:p-5 bg-gradient-to-br from-white to-gray-50 shadow-sm hover:shadow-md transition-shadow"
               >
                 {/* Product Header */}
-                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-3 space-y-2 sm:space-y-0">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-4 space-y-3 sm:space-y-0">
                   <div className="flex-1">
-                    <div className="flex items-start gap-3">
-                      {/* Product Image */}
+                    <div className="flex items-start gap-4">
+                      {/* 🎯 IMPROVED: Larger Product Image with better styling */}
                       {displayImage ? (
-                        <img
-                          src={displayImage}
-                          alt={displayName}
-                          className="w-12 h-12 sm:w-16 sm:h-16 object-cover rounded-lg border flex-shrink-0"
-                          onError={(e) => {
-                            console.error('Failed to load image:', displayImage);
-                            e.target.style.display = "none";
-                            // Show placeholder
-                            const placeholder = e.target.nextElementSibling;
-                            if (placeholder) placeholder.style.display = 'flex';
-                          }}
-                        />
+                        <div className="relative group">
+                          <img
+                            src={displayImage}
+                            alt={displayName}
+                            className="w-20 h-20 sm:w-24 sm:h-24 object-cover rounded-xl border-2 border-gray-200 flex-shrink-0 shadow-sm group-hover:scale-105 transition-transform"
+                            onError={(e) => {
+                              console.error('Failed to load image:', displayImage);
+                              e.target.style.display = "none";
+                              // Show placeholder
+                              const placeholder = e.target.nextElementSibling;
+                              if (placeholder) placeholder.style.display = 'flex';
+                            }}
+                          />
+                        </div>
                       ) : null}
                       
                       {/* ✅ Image placeholder for missing images */}
                       {!displayImage && (
-                        <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gray-100 rounded-lg border flex items-center justify-center flex-shrink-0">
-                          <ImageOff className="h-6 w-6 text-gray-400" />
+                        <div className="w-20 h-20 sm:w-24 sm:h-24 bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl border-2 border-gray-300 flex items-center justify-center flex-shrink-0 shadow-sm">
+                          <ImageOff className="h-8 w-8 text-gray-400" />
                         </div>
                       )}
 
-                      <div className="flex-1">
-                        <h4 className="font-medium text-sm sm:text-base break-words mb-1">
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-semibold text-base sm:text-lg text-gray-900 break-words mb-2">
                           {displayName}
                         </h4>
 
                         {/* Status Badges */}
-                        <div className="flex flex-wrap items-center gap-2 mb-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           {catalogNumber && (
                             <Badge
                               variant="secondary"
-                              className="text-xs px-2 py-0.5"
+                              className="text-xs px-2.5 py-1 bg-blue-50 text-blue-700 border border-blue-200"
                             >
                               📋 {catalogNumber}
                             </Badge>
@@ -179,19 +181,20 @@ export function OrderDetailsItems({
 
                           <Badge
                             variant="default"
-                            className="text-xs px-2 py-0.5 bg-green-100 text-green-800"
+                            className="text-xs px-2.5 py-1 bg-green-50 text-green-700 border border-green-200"
                           >
                             <CheckCircle className="h-3 w-3 mr-1" />
-                            Snapshot Data
+                            Snapshot
                           </Badge>
 
                           {/* ✅ Customization Indicator */}
                           {hasAnyCustomizationData && (
                             <Badge
                               variant="default"
-                              className="text-xs px-2 py-0.5 bg-purple-100 text-purple-800"
+                              className="text-xs px-2.5 py-1 bg-orange-50 text-orange-700 border border-orange-200"
                             >
-                              🎨 Customized
+                              <Palette className="h-3 w-3 mr-1" />
+                              Custom
                             </Badge>
                           )}
                         </div>
@@ -201,145 +204,119 @@ export function OrderDetailsItems({
 
                   <Badge
                     variant="outline"
-                    className="self-start text-sm px-3 py-1"
+                    className="self-start text-base sm:text-lg px-4 py-2 bg-white font-semibold border-2"
                   >
-                    ₹{Number(itemPrice).toLocaleString()}
+                    ₹{Number(itemPrice).toLocaleString('en-IN')}
                   </Badge>
                 </div>
 
-                {/* Product Information Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 text-sm mb-3">
+                {/* 🎯 CLEANED UP: Product Information Grid - Removed IDs, cleaned size display */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm bg-white rounded-lg p-3 border">
                   <div className="flex items-center gap-2">
-                    <Package className="h-3 w-3 text-gray-500" />
-                    <span className="font-medium">Qty:</span>
-                    <span>{item.quantity || 1}</span>
+                    <Package className="h-4 w-4 text-purple-500" />
+                    <span className="font-medium text-gray-700">Qty:</span>
+                    <span className="font-semibold text-gray-900">{item.quantity || 1}</span>
                   </div>
 
-                  {/* ✅ Variant Size - Now properly parsed */}
+                  {/* 🎯 IMPROVED: Show only size number with icon */}
                   {itemSize && (
                     <div className="flex items-center gap-2">
-                      <span className="font-medium">Size:</span>
-                      <span className="text-sm">{itemSize}</span>
-                    </div>
-                  )}
-
-                  {/* SKU */}
-                  {itemSku && (
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">SKU:</span>
-                      <span className="font-mono text-xs">{itemSku}</span>
-                    </div>
-                  )}
-
-                  {/* Base Price */}
-                  {item.base_price && (
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">Base Price:</span>
-                      <span>₹{Number(item.base_price).toLocaleString()}</span>
+                      <Ruler className="h-4 w-4 text-blue-500" />
+                      <span className="font-medium text-gray-700">Size:</span>
+                      <Badge variant="outline" className="font-semibold bg-blue-50 text-blue-700 border-blue-200">
+                        {itemSize}
+                      </Badge>
                     </div>
                   )}
 
                   {/* GST Rate */}
                   {item.gst_rate && (
                     <div className="flex items-center gap-2">
-                      <span className="font-medium">GST:</span>
-                      <span>{item.gst_rate}%</span>
+                      <span className="font-medium text-gray-700">GST:</span>
+                      <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
+                        {item.gst_rate}%
+                      </Badge>
                     </div>
                   )}
                 </div>
 
-                {/* Product ID Information */}
-                <div className="text-xs text-muted-foreground mb-3 p-2 bg-gray-50 rounded">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <div>
-                      <span className="font-medium">Product ID:</span>
-                      <span className="font-mono ml-1">
-                        {originalProductId?.slice(0, 16)}...
-                      </span>
-                    </div>
-                    {(item.variantId || item.variant_id) && (
-                      <div>
-                        <span className="font-medium">Variant ID:</span>
-                        <span className="font-mono ml-1">
-                          {(item.variantId || item.variant_id).slice(0, 12)}...
-                        </span>
-                      </div>
-                    )}
+                {/* 🎯 REMOVED: Product ID and Variant ID section completely */}
+
+                {/* Item Total */}
+                {item.item_total && (
+                  <div className="mt-3 pt-3 border-t flex justify-between items-center">
+                    <span className="font-semibold text-gray-700">Item Total:</span>
+                    <span className="text-lg font-bold text-green-600">
+                      ₹{Number(item.item_total).toLocaleString('en-IN')}
+                    </span>
                   </div>
-                  {item.item_total && (
-                    <div className="mt-2 pt-2 border-t">
-                      <span className="font-medium">Item Total:</span>
-                      <span className="ml-2 font-semibold text-green-700">
-                        ₹{Number(item.item_total).toLocaleString()}
-                      </span>
-                    </div>
-                  )}
-                </div>
+                )}
 
-                {/* ✅ Customization Details - Now showing data from BOTH sources */}
+                {/* ✅ IMPROVED: Customization Details with better styling */}
                 {hasAnyCustomizationData && (
-                  <div className="mt-3 p-3 bg-purple-50 rounded-lg border border-purple-200">
-                    <div className="font-medium text-purple-800 mb-2 flex items-center gap-2">
-                      <span>🎨 Customization Details</span>
+                  <div className="mt-4 p-4 bg-gradient-to-br from-orange-50 to-amber-50 rounded-xl border-2 border-orange-200 shadow-sm">
+                    <div className="font-semibold text-orange-800 mb-3 flex items-center gap-2 text-base">
+                      <Palette className="h-5 w-5" />
+                      <span>Customization Details</span>
                       {itemCustomization && (
-                        <Badge variant="outline" className="text-xs bg-white">
-                          From Item Data
+                        <Badge variant="outline" className="text-xs bg-white border-orange-300">
+                          Item Data
                         </Badge>
                       )}
                       {!itemCustomization && orderCustomization && (
-                        <Badge variant="outline" className="text-xs bg-white">
-                          From Order Data
+                        <Badge variant="outline" className="text-xs bg-white border-orange-300">
+                          Order Data
                         </Badge>
                       )}
                     </div>
 
-                    <div className="space-y-2">
-                      {customText !== "" && (
-                        <div className="flex items-start gap-2">
-                          <span className="font-medium text-purple-700 min-w-fit">
-                            Text:
+                    <div className="space-y-3">
+                      {productTitle !== "" && (
+                        <div className="bg-white rounded-lg p-3 border border-orange-200">
+                          <span className="font-semibold text-orange-700 block mb-1 uppercase text-xs">
+                            Product
                           </span>
-                          <span className="break-words">{customText}</span>
+                          <span className="text-gray-900">{productTitle}</span>
+                        </div>
+                      )}
+
+                      {customText !== "" && (
+                        <div className="bg-white rounded-lg p-3 border border-orange-200">
+                          <span className="font-semibold text-orange-700 block mb-1 uppercase text-xs">
+                            Custom Text
+                          </span>
+                          <span className="text-gray-900 break-words">{customText}</span>
                         </div>
                       )}
 
                       {customSize !== "" && (
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-purple-700">
-                            Custom Size:
+                        <div className="bg-white rounded-lg p-3 border border-orange-200">
+                          <span className="font-semibold text-orange-700 block mb-1 uppercase text-xs">
+                            Custom Size
                           </span>
-                          <span>{customSize}</span>
+                          <span className="text-gray-900">{customSize}</span>
                         </div>
                       )}
 
                       {customColor !== "" && (
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-purple-700">
-                            Custom Color:
+                        <div className="bg-white rounded-lg p-3 border border-orange-200">
+                          <span className="font-semibold text-orange-700 block mb-1 uppercase text-xs">
+                            Custom Color
                           </span>
-                          <span>{customColor}</span>
-                        </div>
-                      )}
-
-                      {productTitle !== "" && (
-                        <div className="flex items-start gap-2">
-                          <span className="font-medium text-purple-700 min-w-fit">
-                            Product:
-                          </span>
-                          <span className="break-words">{productTitle}</span>
+                          <span className="text-gray-900">{customColor}</span>
                         </div>
                       )}
 
                       {customUploadedImage?.url && (
-                        <div>
-                          <div className="font-medium text-purple-700 mb-2">
-                            📸 Uploaded Image:
-                          </div>
+                        <div className="bg-white rounded-lg p-3 border border-orange-200">
+                          <span className="font-semibold text-orange-700 block mb-2 uppercase text-xs">
+                            📸 Uploaded Image
+                          </span>
                           <img
                             src={customUploadedImage.url}
                             alt={customUploadedImage.fileName || "Custom Image"}
-                            className="max-w-full h-auto rounded-lg shadow-md border"
-                            style={{ maxHeight: "200px" }}
+                            className="max-w-full h-auto rounded-lg shadow-md border-2 border-orange-100"
+                            style={{ maxHeight: "300px" }}
                             onError={(e) => {
                               console.error(
                                 "Failed to load image:",
@@ -349,27 +326,27 @@ export function OrderDetailsItems({
                             }}
                           />
                           {customUploadedImage.fileName && (
-                            <p className="text-xs text-purple-600 mt-1">
-                              📄 File: {customUploadedImage.fileName}
+                            <p className="text-xs text-orange-600 mt-2 font-medium">
+                              📄 {customUploadedImage.fileName}
                             </p>
                           )}
                         </div>
                       )}
 
                       {customTimestamp && (
-                        <div className="text-xs text-purple-600 pt-2 border-t border-purple-200">
-                          ⏰ Customized:{" "}
-                          {new Date(customTimestamp).toLocaleString()}
+                        <div className="text-xs text-orange-600 pt-2 border-t border-orange-200 flex items-center gap-1">
+                          <span>⏰</span>
+                          <span>Customized: {new Date(customTimestamp).toLocaleString('en-IN')}</span>
                         </div>
                       )}
 
                       {/* ✅ Show production notes if available */}
                       {item.production_notes && (
-                        <div className="flex items-start gap-2 pt-2 border-t border-purple-200">
-                          <span className="font-medium text-purple-700 min-w-fit">
-                            📝 Production Notes:
+                        <div className="bg-white rounded-lg p-3 border border-orange-200">
+                          <span className="font-semibold text-orange-700 block mb-1 uppercase text-xs">
+                            📝 Production Notes
                           </span>
-                          <span className="break-words text-sm">{item.production_notes}</span>
+                          <span className="text-gray-900 break-words text-sm">{item.production_notes}</span>
                         </div>
                       )}
                     </div>
