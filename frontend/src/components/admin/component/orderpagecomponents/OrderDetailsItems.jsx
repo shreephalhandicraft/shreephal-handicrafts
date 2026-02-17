@@ -66,16 +66,39 @@ export function OrderDetailsItems({
             const itemPrice = item.unit_price_with_gst || item.price || item.base_price || 0;
             const catalogNumber = item.catalog_number || item.product_catalog_number;
             
-            // ✅ FIX: Handle size as string or object - EXTRACT ONLY THE NUMBER
+            // 🎯 CRITICAL FIX: Properly parse variant_size_display which can be:
+            // 1. A string containing JSON: '{"id":"...","sizeDisplay":"10\"","sku":"..."}'
+            // 2. An already parsed object: {id: "...", sizeDisplay: "10\"", sku: "..."}
+            // 3. A simple string: "10\""
             let itemSize = '';
             const sizeData = item.size_display || item.variant_size_display;
             
-            if (typeof sizeData === 'string') {
-              // If it's already a string, use it directly
-              itemSize = sizeData;
+            console.log('Raw sizeData:', sizeData, 'Type:', typeof sizeData);
+            
+            if (!sizeData) {
+              // No size data available
+              itemSize = '';
+            } else if (typeof sizeData === 'string') {
+              // Check if it's a JSON string
+              if (sizeData.trim().startsWith('{') || sizeData.trim().startsWith('[')) {
+                try {
+                  const parsed = JSON.parse(sizeData);
+                  // Extract sizeDisplay from parsed object
+                  itemSize = parsed.sizeDisplay || parsed.size_display || '';
+                  console.log('Parsed size from JSON string:', itemSize);
+                } catch (e) {
+                  console.error('Failed to parse size JSON:', e);
+                  // If parsing fails, use the string as-is
+                  itemSize = sizeData;
+                }
+              } else {
+                // Plain string, use directly
+                itemSize = sizeData;
+              }
             } else if (typeof sizeData === 'object' && sizeData !== null) {
-              // If it's an object, extract sizeDisplay property
+              // Already an object, extract sizeDisplay
               itemSize = sizeData.sizeDisplay || sizeData.size_display || '';
+              console.log('Extracted size from object:', itemSize);
             }
 
             // ✅ CUSTOMIZATION LOGIC: Check BOTH sources
@@ -210,15 +233,15 @@ export function OrderDetailsItems({
                   </Badge>
                 </div>
 
-                {/* 🎯 CLEANED UP: Product Information Grid - Removed IDs, cleaned size display */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm bg-white rounded-lg p-3 border">
+                {/* 🎯 FIXED: Product Information Grid - Now properly displays only size value */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm bg-white rounded-lg p-3 border">
                   <div className="flex items-center gap-2">
                     <Package className="h-4 w-4 text-purple-500" />
                     <span className="font-medium text-gray-700">Qty:</span>
                     <span className="font-semibold text-gray-900">{item.quantity || 1}</span>
                   </div>
 
-                  {/* 🎯 IMPROVED: Show only size number with icon */}
+                  {/* 🎯 FIXED: Show only size number - no more JSON display */}
                   {itemSize && (
                     <div className="flex items-center gap-2">
                       <Ruler className="h-4 w-4 text-blue-500" />
@@ -239,8 +262,6 @@ export function OrderDetailsItems({
                     </div>
                   )}
                 </div>
-
-                {/* 🎯 REMOVED: Product ID and Variant ID section completely */}
 
                 {/* Item Total */}
                 {item.item_total && (
