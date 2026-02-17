@@ -576,29 +576,45 @@ export default function MyOrders() {
                             </div>
                           )}
 
-                          {/* Action Buttons */}
+                          {/* 🎯 IMPROVED: Action Buttons - Always show View Order Details */}
                           <div className="flex flex-col sm:flex-row gap-3 mt-6">
-                            {/* Primary Action */}
+                            {/* Payment Pending: Show both Complete Payment AND View Order Details */}
                             {isPending ? (
-                              <Button
-                                onClick={() => handlePayNow(order)}
-                                disabled={isProcessingPayment}
-                                size="lg"
-                                className="flex-1 bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600 text-white shadow-lg hover:shadow-xl transition-all min-h-[44px]"
-                              >
-                                {isProcessingPayment ? (
-                                  <>
-                                    <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-                                    Processing...
-                                  </>
-                                ) : (
-                                  <>
-                                    <CreditCard className="h-5 w-5 mr-2" />
-                                    Complete Payment - ₹{orderTotal.toFixed(2)}
-                                  </>
-                                )}
-                              </Button>
+                              <>
+                                {/* Complete Payment Button (Primary) */}
+                                <Button
+                                  onClick={() => handlePayNow(order)}
+                                  disabled={isProcessingPayment}
+                                  size="lg"
+                                  className="flex-1 bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600 text-white shadow-lg hover:shadow-xl transition-all min-h-[44px]"
+                                >
+                                  {isProcessingPayment ? (
+                                    <>
+                                      <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                                      Processing...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <CreditCard className="h-5 w-5 mr-2" />
+                                      Complete Payment - ₹{orderTotal.toFixed(2)}
+                                    </>
+                                  )}
+                                </Button>
+                                
+                                {/* View Order Details Button (Secondary) */}
+                                <Link to={`/order/${order.order_id}`} className="flex-1 sm:flex-initial">
+                                  <Button
+                                    variant="outline"
+                                    size="lg"
+                                    className="w-full shadow-md hover:shadow-lg transition-all min-h-[44px] border-2 hover:border-primary"
+                                  >
+                                    <Eye className="h-5 w-5 mr-2" />
+                                    View Order Details
+                                  </Button>
+                                </Link>
+                              </>
                             ) : (
+                              /* Paid Orders: Just show View Order Details */
                               <Link to={`/order/${order.order_id}`} className="flex-1">
                                 <Button
                                   variant="default"
