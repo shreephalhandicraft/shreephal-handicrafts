@@ -44,6 +44,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabaseClient";
+import { CancellationNotice } from "@/components/CancellationNotice";
 
 // Utility: Get relative time
 const getRelativeTime = (dateString) => {
@@ -58,6 +59,14 @@ const getRelativeTime = (dateString) => {
   if (diffInSeconds < 2592000) return `${Math.floor(diffInSeconds / 604800)} weeks ago`;
   
   return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+};
+
+// ✅ Check if order is within 24 hours
+const isWithin24Hours = (dateString) => {
+  const orderDate = new Date(dateString);
+  const now = new Date();
+  const diffInHours = Math.floor((now - orderDate) / (1000 * 60 * 60));
+  return diffInHours < 24;
 };
 
 // 🐛 FIX: Extract clean size display from variant
@@ -554,6 +563,7 @@ export default function OrderDetail() {
   const timelineSteps = getTimelineSteps(order.status);
   const isPending = order.payment_status === "pending";
   const showProductionStatus = order.production_status && ["in_progress", "quality_check"].includes(order.production_status.toLowerCase());
+  const canCancelOrder = isWithin24Hours(order.created_at) && order.status !== "cancelled" && order.status !== "delivered";
 
   const subtotal = order.subtotal;
   const totalGST = order.total_gst;
@@ -678,6 +688,11 @@ export default function OrderDetail() {
                 )}
               </div>
             </div>
+
+            {/* ✨ NEW: Cancellation Notice - Show if within 24 hours */}
+            {canCancelOrder && (
+              <CancellationNotice className="mb-6" />
+            )}
 
             {/* Payment Pending Alert */}
             {isPending && (
