@@ -10,6 +10,7 @@ import { useCheckoutLogic } from "../components/CheckOut/useCheckoutLogic";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, ShoppingBag } from "lucide-react";
+import { CancellationNotice } from "@/components/CancellationNotice";
 
 const Checkout = () => {
   const {
@@ -142,6 +143,9 @@ const Checkout = () => {
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-white py-12">
         <div className="container mx-auto px-4">
           <h1 className="text-3xl font-bold text-gray-900 mb-8">Checkout</h1>
+
+          {/* ✨ NEW: Cancellation Notice */}
+          <CancellationNotice className="mb-6" />
 
           {/* Form validation warning */}
           {!formValidation.isValid &&
