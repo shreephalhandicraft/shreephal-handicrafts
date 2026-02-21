@@ -18,7 +18,7 @@ import {
   ShoppingCart,
   Shield,
   Truck,
-  RotateCcw,
+  Clock,
   Award
 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
@@ -417,7 +417,7 @@ const ProductDetail = () => {
   const productFAQs = product ? [
     { question: "Is this product customizable?", answer: product.is_customizable ? "Yes, this product can be customized. Select your preferences before adding to cart." : "This product comes as shown in the images." },
     { question: "How long does delivery take?", answer: "Delivery typically takes 5-7 business days depending on your location." },
-    { question: "What is the return policy?", answer: "We offer a 7-day return policy. Products must be unused and in original packaging." },
+    { question: "What is the cancellation policy?", answer: "You may cancel your order within 24 hours of placing it by calling us at +91 9424626008. We do not offer returns or exchanges. All sales are final." },
     { question: "Is bulk ordering available?", answer: "Yes! Contact us for bulk order discounts and custom quotes." },
   ] : [];
 
@@ -635,13 +635,13 @@ const ProductDetail = () => {
               <DeliveryInfo product={product} estimatedDays={7} />
               <ProductFeatures product={product} />
               
-              {/* 🛡️ Trust Badges Section */}
+              {/* 🛡️ Trust Badges Section - Updated with 24hr Cancellation */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 py-6 border-t border-gray-200">
                 {[
                   { icon: Shield, text: "Secure Payment", color: "text-green-600", bg: "bg-green-50" },
                   { icon: Truck, text: "Free Shipping", color: "text-blue-600", bg: "bg-blue-50" },
-                  { icon: RotateCcw, text: "7-Day Returns", color: "text-purple-600", bg: "bg-purple-50" },
-                  { icon: Award, text: "Premium Quality", color: "text-orange-600", bg: "bg-orange-50" },
+                  { icon: Clock, text: "24hr Cancellation", color: "text-orange-600", bg: "bg-orange-50" },
+                  { icon: Award, text: "Premium Quality", color: "text-amber-600", bg: "bg-amber-50" },
                 ].map((badge, idx) => {
                   const Icon = badge.icon;
                   return (
