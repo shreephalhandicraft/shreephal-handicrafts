@@ -652,12 +652,12 @@ export const useCheckoutLogic = () => {
 
         const cartItems = getCartForCheckout();
         
-        // Fetch fresh GST data from database
+        // 🐛 FIX: Fetch product data INCLUDING image_url for snapshot
         const productIds = [...new Set(cartItems.map(item => item.productId))];
         
         const { data: freshGSTData, error: gstError } = await supabase
           .from('products')
-          .select('id, gst_5pct, gst_18pct, title, catalog_number, price')
+          .select('id, gst_5pct, gst_18pct, title, catalog_number, price, image_url')  // ✅ ADDED: image_url
           .in('id', productIds);
         
         if (gstError) {
@@ -842,6 +842,7 @@ export const useCheckoutLogic = () => {
           });
         }
         
+        // 🐛 FIX: Create order items with product image snapshot
         const orderItemsData = processedCartItems.map(item => {
           const productData = gstDataMap[item.productId] || {};
           const variantData = variantDataMap[item.variantId] || {};
@@ -852,7 +853,9 @@ export const useCheckoutLogic = () => {
             product_id: item.productId,
             variant_id: item.variantId,
             
+            // ✅ SNAPSHOT DATA - ensures order details work even if product is deleted
             product_name: item.name || productData.title || 'Unknown Product',
+            product_image_url: productData.image_url || null,  // ✅ ADDED: Product image snapshot
             product_catalog_number: productData.catalog_number || null,
             variant_size_display: item.variant || variantData.size_display || 'Unknown Size',
             variant_sku: variantData.sku || null,

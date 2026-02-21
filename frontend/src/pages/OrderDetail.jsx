@@ -730,40 +730,33 @@ export default function OrderDetail() {
                     ) : (
                       <div className="space-y-6">
                         {items.map((item, index) => {
-                          // ✅ FIXED: Get clean size display
                           const sizeDisplay = item.variant?.sizeDisplay;
                           const hasCustomization = item.customization_snapshot || item.customization_data || item.customization;
                           
                           return (
                             <div key={item.item_id || index}>
+                              {/* ✅ FIXED: Removed empty container, simplified layout */}
                               <div className="flex gap-4">
-                                {/* ✅ IMPROVED: Larger, clearer product image */}
+                                {/* Product Image */}
                                 {item.image ? (
-                                  <div className="relative group flex-shrink-0">
-                                    <img
-                                      src={item.image}
-                                      alt={item.name}
-                                      className="h-32 w-32 sm:h-40 sm:w-40 object-cover rounded-2xl shadow-lg border-2 border-gray-200 transition-transform group-hover:scale-105"
-                                      onError={(e) => {
-                                        e.target.style.display = "none";
-                                        e.target.nextSibling.style.display = "flex";
-                                      }}
-                                    />
-                                    <ProductFallbackIcon
-                                      className="h-32 w-32 sm:h-40 sm:w-40"
-                                      style={{ display: "none" }}
-                                    />
-                                  </div>
+                                  <img
+                                    src={item.image}
+                                    alt={item.name}
+                                    className="h-32 w-32 sm:h-40 sm:w-40 object-cover rounded-2xl shadow-lg border-2 border-gray-200 transition-transform hover:scale-105 flex-shrink-0"
+                                    onError={(e) => {
+                                      e.target.outerHTML = `<div class="h-32 w-32 sm:h-40 sm:w-40 bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl flex items-center justify-center border-2 border-gray-200 flex-shrink-0"><svg class="h-8 w-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path></svg></div>`;
+                                    }}
+                                  />
                                 ) : (
                                   <ProductFallbackIcon className="h-32 w-32 sm:h-40 sm:w-40 flex-shrink-0" />
                                 )}
 
+                                {/* Product Details */}
                                 <div className="flex-1 min-w-0">
                                   <h4 className="font-bold text-base sm:text-lg text-gray-900 mb-2">
                                     {item.name || item.title || "Product"}
                                   </h4>
 
-                                  {/* ✅ FIXED: Only show relevant info - no IDs */}
                                   <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600 mb-3">
                                     {item.catalog_number && (
                                       <Badge variant="outline" className="bg-gray-50">
@@ -806,7 +799,7 @@ export default function OrderDetail() {
                                 </div>
                               </div>
 
-                              {/* ✅ IMPROVED: Better customization display */}
+                              {/* Customization Details */}
                               {hasCustomization && (
                                 <div className="mt-4">
                                   {renderCustomizationDetails(item)}
