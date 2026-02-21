@@ -18,6 +18,7 @@ import { useState } from "react";
 import { SEOHead } from "@/components/SEO/SEOHead";
 import { PAGE_SEO } from "@/config/seoConfig";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { CancellationNotice } from "@/components/CancellationNotice";
 
 // 🐛 FIX: Clean size display helper (same as ProductDetail & OrderDetail)
 const getCleanSize = (item) => {
@@ -140,6 +141,11 @@ const Cart = () => {
             </div>
           ) : (
             <h1 className="text-3xl font-bold mb-8 text-gray-900">Shopping Cart</h1>
+          )}
+
+          {/* ✨ NEW: Cancellation Notice */}
+          {items.length > 0 && (
+            <CancellationNotice className="mb-6" />
           )}
 
           {/* Global warning if invalid items exist */}
