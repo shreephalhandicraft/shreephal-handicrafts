@@ -15,6 +15,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 import { initiateRazorpayPayment } from "@/utils/razorpayPaymentHandler";
+import { CancellationNotice } from "@/components/CancellationNotice";
 
 import {
   Package,
@@ -391,6 +392,9 @@ export default function MyOrders() {
                 </div>
               </div>
             </div>
+
+            {/* ✨ NEW: Cancellation Notice */}
+            <CancellationNotice className="mb-6" />
 
             {/* Orders List */}
             <div className="space-y-6">
