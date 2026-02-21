@@ -284,7 +284,7 @@ export const Footer = () => {
                   to="/refund-policy"
                   className="text-gray-400 hover:text-primary transition-colors"
                 >
-                  Refund Policy
+                  Cancellation Policy
                 </Link>
               </div>
             </div>
