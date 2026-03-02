@@ -11,6 +11,9 @@ import { Eye, EyeOff, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { supabase } from "@/lib/supabaseClient.js";
 
+// ✅ Use custom domain so email verification links work for Indian users
+const APP_URL = import.meta.env.VITE_APP_URL || "https://shreephalhandicrafts.com";
+
 const Register = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -83,8 +86,8 @@ const Register = () => {
               name: `${formData.firstName} ${formData.lastName}`,
               phone: formData.phone,
             },
-            // This will be ignored if email confirmation is enabled in Supabase
-            emailRedirectTo: `${window.location.origin}/personal-details`,
+            // ✅ FIXED: Use custom domain so verification email links work for Indian users
+            emailRedirectTo: `${APP_URL}/personal-details`,
           },
         }
       );
