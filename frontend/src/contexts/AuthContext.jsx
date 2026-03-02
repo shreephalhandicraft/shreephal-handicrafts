@@ -3,6 +3,9 @@ import { supabase } from "../lib/supabaseClient";
 
 const AuthContext = createContext(undefined);
 
+// ✅ Centralized redirect base — works in dev and production
+const APP_URL = import.meta.env.VITE_APP_URL || "https://shreephalhandicrafts.com";
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -173,6 +176,8 @@ export const AuthProvider = ({ children }) => {
             name: name?.trim() || "",
             full_name: name?.trim() || "",
           },
+          // ✅ FIXED: Use custom domain so email links work for Indian users
+          emailRedirectTo: `${APP_URL}/personal-details`,
         },
       };
 
@@ -213,7 +218,8 @@ export const AuthProvider = ({ children }) => {
       const trimmedEmail = email.trim();
       
       const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail, {
-        redirectTo: `${window.location.origin}/reset-password`,
+        // ✅ FIXED: Use custom domain so reset links work for Indian users
+        redirectTo: `${APP_URL}/reset-password`,
       });
 
       if (error) {
