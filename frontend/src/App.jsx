@@ -37,6 +37,7 @@ const RefundPolicy = lazy(() => import("./pages/RefundPolicy"));
 const TrophyShopJabalpur = lazy(() => import("./pages/TrophyShopJabalpur"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const UnauthorizedPage = lazy(() => import("./pages/UnauthorizedPage"));
+const AuthCallback = lazy(() => import("./pages/AuthCallback"));
 const AdminDashboard = lazy(() => import("./components/admin/AdminDashboard").then(module => ({ default: module.AdminDashboard })));
 
 // Loading fallback component
@@ -46,17 +47,12 @@ const PageLoader = () => (
   </div>
 );
 
-/**
- * ✅ FIXED: Added ResetPasswordRoute for password reset flow
- * This allows users to access reset-password page even when they have
- * a temporary session from the recovery token
- */
 const App = () => (
   <AppProviders>
-    {/* ✅ Scroll to top on route change */}
+    {/* Scroll to top on route change */}
     <ScrollToTop />
     
-    {/* ✅ Offline detection for better mobile UX */}
+    {/* Offline detection for better mobile UX */}
     <OfflineDetector />
     
     {/* Toast notifications */}
@@ -67,189 +63,38 @@ const App = () => (
     <Suspense fallback={<PageLoader />}>
       <Routes>
         {/* Public Routes - Anyone can access */}
-        <Route
-          path="/"
-          element={
-            <GuestRoute>
-              <Index />
-            </GuestRoute>
-          }
-        />
-        <Route
-          path="/shop"
-          element={
-            <GuestRoute>
-              <Shop />
-            </GuestRoute>
-          }
-        />
-        <Route
-          path="/category/:slug/products"
-          element={
-            <GuestRoute>
-              <Category />
-            </GuestRoute>
-          }
-        />
-        <Route
-          path="/category/:slug/products/:productId"
-          element={
-            <GuestRoute>
-              <ProductDetail />
-            </GuestRoute>
-          }
-        />
-        <Route
-          path="/about"
-          element={
-            <GuestRoute>
-              <About />
-            </GuestRoute>
-          }
-        />
-        <Route
-          path="/contact"
-          element={
-            <GuestRoute>
-              <Contact />
-            </GuestRoute>
-          }
-        />
-        <Route
-          path="/terms-conditions"
-          element={
-            <GuestRoute>
-              <TermsConditions />
-            </GuestRoute>
-          }
-        />
-        <Route
-          path="/privacy-policy"
-          element={
-            <GuestRoute>
-              <PrivacyPolicy />
-            </GuestRoute>
-          }
-        />
-        <Route
-          path="/refund-policy"
-          element={
-            <GuestRoute>
-              <RefundPolicy />
-            </GuestRoute>
-          }
-        />
-        <Route
-          path="/cart"
-          element={
-            <GuestRoute>
-              <Cart />
-            </GuestRoute>
-          }
-        />
-        
-        {/* 🎯 SEO: Trophy Shop Jabalpur Landing Page */}
-        <Route
-          path="/trophy-shop-jabalpur"
-          element={
-            <GuestRoute>
-              <TrophyShopJabalpur />
-            </GuestRoute>
-          }
-        />
+        <Route path="/" element={<GuestRoute><Index /></GuestRoute>} />
+        <Route path="/shop" element={<GuestRoute><Shop /></GuestRoute>} />
+        <Route path="/category/:slug/products" element={<GuestRoute><Category /></GuestRoute>} />
+        <Route path="/category/:slug/products/:productId" element={<GuestRoute><ProductDetail /></GuestRoute>} />
+        <Route path="/about" element={<GuestRoute><About /></GuestRoute>} />
+        <Route path="/contact" element={<GuestRoute><Contact /></GuestRoute>} />
+        <Route path="/terms-conditions" element={<GuestRoute><TermsConditions /></GuestRoute>} />
+        <Route path="/privacy-policy" element={<GuestRoute><PrivacyPolicy /></GuestRoute>} />
+        <Route path="/refund-policy" element={<GuestRoute><RefundPolicy /></GuestRoute>} />
+        <Route path="/cart" element={<GuestRoute><Cart /></GuestRoute>} />
+        <Route path="/trophy-shop-jabalpur" element={<GuestRoute><TrophyShopJabalpur /></GuestRoute>} />
 
-        {/* Auth-Only Routes - Redirect authenticated users */}
-        <Route
-          path="/login"
-          element={
-            <PublicRoute>
-              <Login />
-            </PublicRoute>
-          }
-        />
-        <Route
-          path="/register"
-          element={
-            <PublicRoute>
-              <Register />
-            </PublicRoute>
-          }
-        />
-        <Route
-          path="/forgot-password"
-          element={
-            <PublicRoute>
-              <ForgotPassword />
-            </PublicRoute>
-          }
-        />
+        {/* ✅ Auth Callback - MUST be public, no guards, handles email verification & password reset */}
+        <Route path="/auth/callback" element={<AuthCallback />} />
+
+        {/* Auth-Only Routes - Redirect authenticated users away */}
+        <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
+        <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
+        <Route path="/forgot-password" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
         
-        {/* ✅ CRITICAL FIX: Use ResetPasswordRoute instead of PublicRoute */}
-        {/* This allows access even when user has recovery token session */}
-        <Route
-          path="/reset-password"
-          element={
-            <ResetPasswordRoute>
-              <ResetPassword />
-            </ResetPasswordRoute>
-          }
-        />
+        {/* Use ResetPasswordRoute - allows access with recovery token session */}
+        <Route path="/reset-password" element={<ResetPasswordRoute><ResetPassword /></ResetPasswordRoute>} />
 
         {/* Private Routes - Require authentication */}
-        <Route
-          path="/checkout"
-          element={
-            <PrivateRoute>
-              <Checkout />
-            </PrivateRoute>
-          }
-        />
+        <Route path="/checkout" element={<PrivateRoute><Checkout /></PrivateRoute>} />
+        <Route path="/my-orders" element={<PrivateRoute><MyOrders /></PrivateRoute>} />
+        <Route path="/order/:orderId" element={<PrivateRoute><OrderDetail /></PrivateRoute>} />
+        <Route path="/favourites" element={<PrivateRoute><Favourites /></PrivateRoute>} />
+        <Route path="/personal-details" element={<PrivateRoute><PersonalDetails /></PrivateRoute>} />
 
-        <Route
-          path="/my-orders"
-          element={
-            <PrivateRoute>
-              <MyOrders />
-            </PrivateRoute>
-          }
-        />
-
-        <Route
-          path="/order/:orderId"
-          element={
-            <PrivateRoute>
-              <OrderDetail />
-            </PrivateRoute>
-          }
-        />
-
-        <Route
-          path="/favourites"
-          element={
-            <PrivateRoute>
-              <Favourites />
-            </PrivateRoute>
-          }
-        />
-
-        <Route
-          path="/personal-details"
-          element={
-            <PrivateRoute>
-              <PersonalDetails />
-            </PrivateRoute>
-          }
-        />
-
-        {/* Admin Routes - Require admin privileges */}
-        <Route
-          path="/admin/*"
-          element={
-            <AdminRoute redirectTo="/unauthorized">
-              <AdminDashboard />
-            </AdminRoute>
-          }
-        />
+        {/* Admin Routes */}
+        <Route path="/admin/*" element={<AdminRoute redirectTo="/unauthorized"><AdminDashboard /></AdminRoute>} />
 
         {/* Error Routes */}
         <Route path="/unauthorized" element={<UnauthorizedPage />} />
