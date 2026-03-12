@@ -79,7 +79,7 @@ export default async function handler(req) {
 
     // Create Razorpay order payload
     const orderPayload = {
-      amount: parseInt(amount) * 100, // Convert to paise (smallest currency unit)
+      amount: Math.round(parseFloat(amount) * 100), // ✅ FIX: Use Math.round to avoid decimal truncation (e.g. ₹499.50 → 49950 paise correctly)
       currency: 'INR',
       receipt: orderId,
       notes: {
